@@ -1,0 +1,832 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BankParse — Statements &amp; Receipts to Spreadsheet</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        :root {
+            --primary: #1B4F72;
+            --primary-light: #2E86C1;
+            --accent: #27AE60;
+            --danger: #E74C3C;
+            --bg: #F8F9FA;
+            --card: #FFFFFF;
+            --text: #2C3E50;
+            --muted: #7F8C8D;
+            --border: #E5E7EB;
+            --receipt: #8E44AD;
+            --receipt-light: #A569BD;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+        }
+
+        /* Header */
+        .header {
+            background: linear-gradient(135deg, var(--primary), var(--primary-light));
+            color: white;
+            padding: 2rem 1rem;
+            text-align: center;
+        }
+        .header h1 { font-size: 2rem; margin-bottom: 0.5rem; }
+        .header p { opacity: 0.9; font-size: 1.05rem; }
+        .header .badges { margin-top: 0.75rem; }
+        .header .badge {
+            display: inline-block;
+            background: rgba(255,255,255,0.2);
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            margin: 0.25rem;
+        }
+
+        /* Main content */
+        .container {
+            max-width: 720px;
+            margin: -2rem auto 2rem;
+            padding: 0 1rem;
+        }
+
+        .card {
+            background: var(--card);
+            border-radius: 12px;
+            box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+            padding: 2rem;
+            margin-bottom: 1.5rem;
+        }
+
+        /* Mode toggle */
+        .mode-toggle {
+            display: flex;
+            background: var(--bg);
+            border-radius: 10px;
+            padding: 4px;
+            margin-bottom: 1.5rem;
+        }
+        .mode-toggle button {
+            flex: 1;
+            padding: 0.7rem 1rem;
+            border: none;
+            border-radius: 8px;
+            font-size: 0.95rem;
+            font-weight: 600;
+            cursor: pointer;
+            background: transparent;
+            color: var(--muted);
+            transition: all 0.25s;
+        }
+        .mode-toggle button.active {
+            background: white;
+            color: var(--primary);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        }
+        .mode-toggle button.active.receipt-mode {
+            color: var(--receipt);
+        }
+
+        /* Upload area */
+        .upload-area {
+            border: 2px dashed var(--border);
+            border-radius: 12px;
+            padding: 3rem 2rem;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+            position: relative;
+        }
+        .upload-area:hover, .upload-area.dragover {
+            border-color: var(--primary-light);
+            background: #EBF5FB;
+        }
+        .upload-area svg { width: 48px; height: 48px; color: var(--primary); margin-bottom: 1rem; }
+        .upload-area h3 { margin-bottom: 0.5rem; }
+        .upload-area p { color: var(--muted); font-size: 0.9rem; }
+        .upload-area input[type="file"] {
+            position: absolute; inset: 0; opacity: 0; cursor: pointer;
+        }
+
+        /* File info */
+        .file-info {
+            display: none;
+            align-items: center;
+            gap: 1rem;
+            padding: 1rem;
+            background: #EBF5FB;
+            border-radius: 8px;
+            margin-top: 1rem;
+        }
+        .file-info.show { display: flex; }
+        .file-info .icon { font-size: 1.5rem; }
+        .file-info .details { flex: 1; }
+        .file-info .name { font-weight: 600; }
+        .file-info .size { color: var(--muted); font-size: 0.85rem; }
+        .file-info .remove {
+            background: none; border: none; color: var(--danger);
+            cursor: pointer; font-size: 1.2rem; padding: 0.25rem;
+        }
+
+        /* Button */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            padding: 0.85rem 2rem;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            width: 100%;
+            margin-top: 1.5rem;
+        }
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+        }
+        .btn-primary:hover { background: var(--primary-light); }
+        .btn-primary:disabled {
+            background: var(--border);
+            color: var(--muted);
+            cursor: not-allowed;
+        }
+        .btn-success {
+            background: var(--accent);
+            color: white;
+        }
+        .btn-success:hover { background: #219A52; }
+        .btn-receipt {
+            background: var(--receipt);
+            color: white;
+        }
+        .btn-receipt:hover { background: var(--receipt-light); }
+
+        /* Progress */
+        .progress-section {
+            display: none;
+            margin-top: 1.5rem;
+        }
+        .progress-section.show { display: block; }
+        .progress-bar-track {
+            background: var(--border);
+            border-radius: 100px;
+            height: 8px;
+            overflow: hidden;
+        }
+        .progress-bar {
+            background: linear-gradient(90deg, var(--primary), var(--accent));
+            height: 100%;
+            border-radius: 100px;
+            transition: width 0.5s ease;
+            width: 0%;
+        }
+        .progress-text {
+            text-align: center;
+            margin-top: 0.75rem;
+            color: var(--muted);
+            font-size: 0.9rem;
+        }
+
+        /* Results */
+        .results {
+            display: none;
+        }
+        .results.show { display: block; }
+
+        .stat-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+        .stat-grid.three-col {
+            grid-template-columns: repeat(3, 1fr);
+        }
+        .stat {
+            background: var(--bg);
+            padding: 1rem;
+            border-radius: 8px;
+            text-align: center;
+        }
+        .stat .value { font-size: 1.5rem; font-weight: 700; }
+        .stat .label { color: var(--muted); font-size: 0.8rem; margin-top: 0.25rem; }
+        .stat.credit .value { color: var(--accent); }
+        .stat.debit .value { color: var(--danger); }
+        .stat.purple .value { color: var(--receipt); }
+
+        /* Preview table */
+        .preview-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.85rem;
+            margin-top: 1rem;
+        }
+        .preview-table th {
+            background: var(--primary);
+            color: white;
+            padding: 0.6rem 0.75rem;
+            text-align: left;
+            font-weight: 600;
+        }
+        .preview-table.receipt-table th {
+            background: var(--receipt);
+        }
+        .preview-table td {
+            padding: 0.5rem 0.75rem;
+            border-bottom: 1px solid var(--border);
+        }
+        .preview-table tr:hover td { background: #F0F7FC; }
+        .credit-amount { color: var(--accent); font-weight: 600; }
+        .debit-amount { color: var(--danger); font-weight: 600; }
+
+        .preview-note {
+            text-align: center;
+            color: var(--muted);
+            font-size: 0.85rem;
+            margin-top: 0.75rem;
+        }
+
+        /* Pagination */
+        .pagination {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            margin-top: 1rem;
+            flex-wrap: wrap;
+        }
+        .pagination button {
+            padding: 0.4rem 0.75rem;
+            border: 1px solid var(--border);
+            background: white;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            color: var(--text);
+            transition: all 0.2s;
+        }
+        .pagination button:hover:not(:disabled) {
+            border-color: var(--primary-light);
+            background: #EBF5FB;
+        }
+        .pagination button.active {
+            background: var(--primary);
+            color: white;
+            border-color: var(--primary);
+        }
+        .pagination button:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+        .pagination .page-info {
+            font-size: 0.85rem;
+            color: var(--muted);
+            margin: 0 0.5rem;
+        }
+
+        /* Features */
+        .features {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1.25rem;
+            margin-top: 1.5rem;
+        }
+        .feature {
+            text-align: center;
+            padding: 1rem;
+        }
+        .feature .icon { font-size: 1.5rem; margin-bottom: 0.5rem; }
+        .feature h4 { font-size: 0.9rem; margin-bottom: 0.25rem; }
+        .feature p { font-size: 0.8rem; color: var(--muted); }
+
+        /* Responsive */
+        @media (max-width: 600px) {
+            .features { grid-template-columns: 1fr; }
+            .stat-grid { grid-template-columns: 1fr; }
+            .stat-grid.three-col { grid-template-columns: 1fr; }
+        }
+
+        /* Spinner */
+        .spinner {
+            display: inline-block;
+            width: 18px; height: 18px;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .error-msg {
+            background: #FDEDEC;
+            color: var(--danger);
+            padding: 1rem;
+            border-radius: 8px;
+            margin-top: 1rem;
+            display: none;
+        }
+        .error-msg.show { display: block; }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <h1>BankParse</h1>
+    <p>Upload bank statements or store receipts. Get clean spreadsheets in seconds.</p>
+    <div class="badges">
+        <span class="badge">PDF &amp; CSV statements</span>
+        <span class="badge">PDF &amp; image receipts</span>
+    </div>
+</div>
+
+<div class="container">
+    <!-- Upload Card -->
+    <div class="card">
+        <!-- Mode Toggle -->
+        <div class="mode-toggle">
+            <button id="modeStatement" class="active" onclick="setMode('statement')">Bank Statement</button>
+            <button id="modeReceipt" onclick="setMode('receipt')">Store Receipt</button>
+        </div>
+
+        <form id="uploadForm" enctype="multipart/form-data">
+            <div class="upload-area" id="uploadArea">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+                </svg>
+                <h3 id="uploadTitle">Drop your bank statement here</h3>
+                <p id="uploadHint">or click to browse — PDF or CSV files accepted</p>
+                <input type="file" id="fileInput" name="file" accept=".pdf,.csv,.tsv,.txt">
+            </div>
+
+            <div class="file-info" id="fileInfo">
+                <span class="icon" id="fileIcon">📄</span>
+                <div class="details">
+                    <div class="name" id="fileName"></div>
+                    <div class="size" id="fileSize"></div>
+                </div>
+                <button type="button" class="remove" id="removeFile">&times;</button>
+            </div>
+
+            <div class="progress-section" id="progressSection">
+                <div class="progress-bar-track">
+                    <div class="progress-bar" id="progressBar"></div>
+                </div>
+                <div class="progress-text" id="progressText">Uploading...</div>
+            </div>
+
+            <div class="error-msg" id="errorMsg"></div>
+
+            <button type="submit" class="btn btn-primary" id="parseBtn" disabled>
+                Convert to Spreadsheet
+            </button>
+        </form>
+    </div>
+
+    <!-- Statement Results Card -->
+    <div class="results" id="statementResults">
+        <div class="card">
+            <h2 style="margin-bottom: 1rem;">Parsing Complete</h2>
+
+            <div class="stat-grid">
+                <div class="stat">
+                    <div class="value" id="statCount">0</div>
+                    <div class="label">Transactions</div>
+                </div>
+                <div class="stat credit">
+                    <div class="value" id="statCredits">£0.00</div>
+                    <div class="label">Money In</div>
+                </div>
+                <div class="stat debit">
+                    <div class="value" id="statDebits">£0.00</div>
+                    <div class="label">Money Out</div>
+                </div>
+                <div class="stat">
+                    <div class="value" id="statNet">£0.00</div>
+                    <div class="label">Net</div>
+                </div>
+            </div>
+
+            <!-- Preview -->
+            <h3 id="previewHeading">Transactions</h3>
+            <div style="overflow-x: auto;">
+                <table class="preview-table" id="previewTable">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Description</th>
+                            <th>Amount</th>
+                            <th>Balance</th>
+                        </tr>
+                    </thead>
+                    <tbody id="previewBody"></tbody>
+                </table>
+            </div>
+            <div class="pagination" id="pagination"></div>
+            <p class="preview-note" id="previewNote"></p>
+
+            <a id="downloadLink" href="#" class="btn btn-success" style="text-decoration: none;">
+                Download Spreadsheet (.xlsx)
+            </a>
+        </div>
+    </div>
+
+    <!-- Receipt Results Card -->
+    <div class="results" id="receiptResults">
+        <div class="card">
+            <h2 style="margin-bottom: 1rem;">Receipt Extracted</h2>
+
+            <div class="stat-grid three-col">
+                <div class="stat purple">
+                    <div class="value" id="receiptStore">—</div>
+                    <div class="label">Store</div>
+                </div>
+                <div class="stat">
+                    <div class="value" id="receiptItems">0</div>
+                    <div class="label">Items</div>
+                </div>
+                <div class="stat debit">
+                    <div class="value" id="receiptTotal">£0.00</div>
+                    <div class="label">Total</div>
+                </div>
+            </div>
+
+            <h3>Items found</h3>
+            <div style="overflow-x: auto;">
+                <table class="preview-table receipt-table" id="receiptTable">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Item</th>
+                            <th>Qty</th>
+                            <th>Unit Price</th>
+                            <th>Total</th>
+                        </tr>
+                    </thead>
+                    <tbody id="receiptBody"></tbody>
+                </table>
+            </div>
+            <p class="preview-note" id="receiptNote"></p>
+
+            <a id="receiptDownloadLink" href="#" class="btn btn-receipt" style="text-decoration: none;">
+                Download Spreadsheet (.xlsx)
+            </a>
+        </div>
+    </div>
+
+    <!-- Features -->
+    <div class="card">
+        <div class="features">
+            <div class="feature">
+                <div class="icon">📊</div>
+                <h4>Smart Parsing</h4>
+                <p>Auto-detects formats from major UK banks &amp; stores</p>
+            </div>
+            <div class="feature">
+                <div class="icon">🧾</div>
+                <h4>Receipt Extraction</h4>
+                <p>Pulls items, prices &amp; totals from store receipts</p>
+            </div>
+            <div class="feature">
+                <div class="icon">⚡</div>
+                <h4>Instant Results</h4>
+                <p>Get your spreadsheet in seconds</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let currentMode = 'statement';
+
+    const fileInput = document.getElementById('fileInput');
+    const fileInfo = document.getElementById('fileInfo');
+    const fileName = document.getElementById('fileName');
+    const fileSize = document.getElementById('fileSize');
+    const fileIcon = document.getElementById('fileIcon');
+    const removeFile = document.getElementById('removeFile');
+    const uploadArea = document.getElementById('uploadArea');
+    const parseBtn = document.getElementById('parseBtn');
+    const progressSection = document.getElementById('progressSection');
+    const progressBar = document.getElementById('progressBar');
+    const progressText = document.getElementById('progressText');
+    const errorMsg = document.getElementById('errorMsg');
+    const uploadForm = document.getElementById('uploadForm');
+
+    function setMode(mode) {
+        currentMode = mode;
+        const stmtBtn = document.getElementById('modeStatement');
+        const rcptBtn = document.getElementById('modeReceipt');
+        const title = document.getElementById('uploadTitle');
+        const hint = document.getElementById('uploadHint');
+
+        stmtBtn.classList.toggle('active', mode === 'statement');
+        rcptBtn.classList.toggle('active', mode === 'receipt');
+        rcptBtn.classList.toggle('receipt-mode', mode === 'receipt');
+
+        if (mode === 'receipt') {
+            title.textContent = 'Drop your store receipt here';
+            hint.textContent = 'or click to browse — PDF or image (PNG, JPG) accepted';
+            fileInput.accept = '.pdf,.png,.jpg,.jpeg,.tiff,.tif,.bmp,.webp';
+            parseBtn.textContent = 'Extract Receipt Items';
+        } else {
+            title.textContent = 'Drop your bank statement here';
+            hint.textContent = 'or click to browse — PDF or CSV files accepted';
+            fileInput.accept = '.pdf,.csv,.tsv,.txt';
+            parseBtn.textContent = 'Convert to Spreadsheet';
+        }
+
+        // Reset state
+        fileInput.value = '';
+        fileInfo.classList.remove('show');
+        parseBtn.disabled = true;
+        errorMsg.classList.remove('show');
+        document.getElementById('statementResults').classList.remove('show');
+        document.getElementById('receiptResults').classList.remove('show');
+    }
+
+    function formatBytes(bytes) {
+        if (bytes < 1024) return bytes + ' B';
+        if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+        return (bytes / 1048576).toFixed(1) + ' MB';
+    }
+
+    function formatCurrency(amount) {
+        return '£' + Math.abs(amount).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    fileInput.addEventListener('change', function() {
+        if (this.files.length > 0) {
+            const file = this.files[0];
+            fileName.textContent = file.name;
+            fileSize.textContent = formatBytes(file.size);
+            const ext = file.name.split('.').pop().toLowerCase();
+            if (ext === 'pdf') fileIcon.textContent = '📕';
+            else if (['png','jpg','jpeg','tiff','tif','bmp','webp'].includes(ext)) fileIcon.textContent = '🖼️';
+            else fileIcon.textContent = '📗';
+            fileInfo.classList.add('show');
+            parseBtn.disabled = false;
+            errorMsg.classList.remove('show');
+            document.getElementById('statementResults').classList.remove('show');
+            document.getElementById('receiptResults').classList.remove('show');
+        }
+    });
+
+    removeFile.addEventListener('click', function() {
+        fileInput.value = '';
+        fileInfo.classList.remove('show');
+        parseBtn.disabled = true;
+    });
+
+    // Drag and drop
+    uploadArea.addEventListener('dragover', (e) => { e.preventDefault(); uploadArea.classList.add('dragover'); });
+    uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('dragover'));
+    uploadArea.addEventListener('drop', (e) => {
+        e.preventDefault();
+        uploadArea.classList.remove('dragover');
+        if (e.dataTransfer.files.length) {
+            fileInput.files = e.dataTransfer.files;
+            fileInput.dispatchEvent(new Event('change'));
+        }
+    });
+
+    // Form submit
+    uploadForm.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        if (!fileInput.files.length) return;
+
+        errorMsg.classList.remove('show');
+        document.getElementById('statementResults').classList.remove('show');
+        document.getElementById('receiptResults').classList.remove('show');
+        progressSection.classList.add('show');
+        parseBtn.disabled = true;
+        parseBtn.innerHTML = '<span class="spinner"></span> Processing...';
+
+        const isReceipt = currentMode === 'receipt';
+        const apiUrl = isReceipt ? '/api/parse-receipt' : '/api/parse';
+
+        // Simulate progress
+        let progress = 0;
+        const steps = isReceipt
+            ? ['Uploading...', 'Reading receipt...', 'Extracting items...', 'Building spreadsheet...']
+            : ['Uploading...', 'Reading statement...', 'Extracting transactions...', 'Building spreadsheet...'];
+        let step = 0;
+
+        const progressInterval = setInterval(() => {
+            progress = Math.min(progress + Math.random() * 15, 90);
+            progressBar.style.width = progress + '%';
+            if (progress > step * 25 && step < steps.length) {
+                progressText.textContent = steps[step];
+                step++;
+            }
+        }, 300);
+
+        try {
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+
+            const response = await fetch(apiUrl, {
+                method: 'POST',
+                body: formData,
+            });
+
+            clearInterval(progressInterval);
+
+            if (!response.ok) {
+                const err = await response.json();
+                throw new Error(err.detail || 'Failed to parse file');
+            }
+
+            const data = await response.json();
+
+            // Complete progress
+            progressBar.style.width = '100%';
+            progressText.textContent = 'Done!';
+
+            setTimeout(() => {
+                progressSection.classList.remove('show');
+                if (isReceipt) {
+                    showReceiptResults(data);
+                } else {
+                    showStatementResults(data);
+                }
+            }, 500);
+
+        } catch (err) {
+            clearInterval(progressInterval);
+            progressSection.classList.remove('show');
+            errorMsg.textContent = 'Error: ' + err.message;
+            errorMsg.classList.add('show');
+        } finally {
+            parseBtn.disabled = false;
+            parseBtn.innerHTML = isReceipt ? 'Extract Receipt Items' : 'Convert to Spreadsheet';
+        }
+    });
+
+    // Pagination state
+    let allTransactions = [];
+    let currentPage = 1;
+    const perPage = 25;
+
+    function showStatementResults(data) {
+        const { summary, transactions, download_url } = data;
+
+        document.getElementById('statCount').textContent = summary.total_transactions;
+        document.getElementById('statCredits').textContent = formatCurrency(summary.total_credits);
+        document.getElementById('statDebits').textContent = formatCurrency(summary.total_debits);
+        document.getElementById('statNet').textContent = (summary.net >= 0 ? '' : '-') + formatCurrency(summary.net);
+
+        allTransactions = transactions;
+        currentPage = 1;
+        renderTransactionPage();
+
+        document.getElementById('downloadLink').href = download_url;
+        const results = document.getElementById('statementResults');
+        results.classList.add('show');
+        results.scrollIntoView({ behavior: 'smooth' });
+    }
+
+    function renderTransactionPage() {
+        const totalPages = Math.ceil(allTransactions.length / perPage);
+        const start = (currentPage - 1) * perPage;
+        const end = Math.min(start + perPage, allTransactions.length);
+        const pageTransactions = allTransactions.slice(start, end);
+
+        // Update heading
+        document.getElementById('previewHeading').textContent =
+            `Transactions (${start + 1}–${end} of ${allTransactions.length})`;
+
+        // Render table rows
+        const tbody = document.getElementById('previewBody');
+        tbody.innerHTML = '';
+        pageTransactions.forEach(tx => {
+            const tr = document.createElement('tr');
+            const amtClass = tx.amount >= 0 ? 'credit-amount' : 'debit-amount';
+            tr.innerHTML = `
+                <td>${tx.date}</td>
+                <td>${tx.description}</td>
+                <td class="${amtClass}">${tx.amount >= 0 ? '+' : ''}${formatCurrency(tx.amount)}</td>
+                <td>${tx.balance !== null ? formatCurrency(tx.balance) : '—'}</td>
+            `;
+            tbody.appendChild(tr);
+        });
+
+        // Render pagination controls
+        const pag = document.getElementById('pagination');
+        pag.innerHTML = '';
+
+        if (totalPages <= 1) {
+            document.getElementById('previewNote').textContent = '';
+            return;
+        }
+
+        // Previous button
+        const prevBtn = document.createElement('button');
+        prevBtn.textContent = '← Prev';
+        prevBtn.disabled = currentPage === 1;
+        prevBtn.onclick = () => { currentPage--; renderTransactionPage(); scrollToTable(); };
+        pag.appendChild(prevBtn);
+
+        // Page number buttons
+        const maxButtons = 7;
+        let startPage = Math.max(1, currentPage - Math.floor(maxButtons / 2));
+        let endPage = Math.min(totalPages, startPage + maxButtons - 1);
+        if (endPage - startPage + 1 < maxButtons) {
+            startPage = Math.max(1, endPage - maxButtons + 1);
+        }
+
+        if (startPage > 1) {
+            const first = document.createElement('button');
+            first.textContent = '1';
+            first.onclick = () => { currentPage = 1; renderTransactionPage(); scrollToTable(); };
+            pag.appendChild(first);
+            if (startPage > 2) {
+                const dots = document.createElement('span');
+                dots.className = 'page-info';
+                dots.textContent = '…';
+                pag.appendChild(dots);
+            }
+        }
+
+        for (let i = startPage; i <= endPage; i++) {
+            const btn = document.createElement('button');
+            btn.textContent = i;
+            if (i === currentPage) btn.className = 'active';
+            btn.onclick = () => { currentPage = i; renderTransactionPage(); scrollToTable(); };
+            pag.appendChild(btn);
+        }
+
+        if (endPage < totalPages) {
+            if (endPage < totalPages - 1) {
+                const dots = document.createElement('span');
+                dots.className = 'page-info';
+                dots.textContent = '…';
+                pag.appendChild(dots);
+            }
+            const last = document.createElement('button');
+            last.textContent = totalPages;
+            last.onclick = () => { currentPage = totalPages; renderTransactionPage(); scrollToTable(); };
+            pag.appendChild(last);
+        }
+
+        // Next button
+        const nextBtn = document.createElement('button');
+        nextBtn.textContent = 'Next →';
+        nextBtn.disabled = currentPage === totalPages;
+        nextBtn.onclick = () => { currentPage++; renderTransactionPage(); scrollToTable(); };
+        pag.appendChild(nextBtn);
+
+        document.getElementById('previewNote').textContent =
+            `Page ${currentPage} of ${totalPages}. Download the spreadsheet for all data with formatting.`;
+    }
+
+    function scrollToTable() {
+        document.getElementById('previewHeading').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    function showReceiptResults(data) {
+        const { items, totals, metadata, download_url } = data;
+
+        // Stats
+        document.getElementById('receiptStore').textContent = metadata.store_name || '—';
+        document.getElementById('receiptItems').textContent = metadata.item_count || items.length;
+        document.getElementById('receiptTotal').textContent = totals.total ? formatCurrency(totals.total) : '—';
+
+        // Items table
+        const tbody = document.getElementById('receiptBody');
+        tbody.innerHTML = '';
+        const preview = items.slice(0, 20);
+        preview.forEach((item, i) => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td style="text-align:center">${i + 1}</td>
+                <td>${item.description}</td>
+                <td style="text-align:center">${item.quantity}</td>
+                <td>${formatCurrency(item.unit_price)}</td>
+                <td>${formatCurrency(item.total_price)}</td>
+            `;
+            tbody.appendChild(tr);
+        });
+
+        const note = document.getElementById('receiptNote');
+        if (items.length > 20) {
+            note.textContent = `Showing 20 of ${items.length} items. Download the spreadsheet for the full list.`;
+        } else {
+            note.textContent = '';
+        }
+
+        document.getElementById('receiptDownloadLink').href = download_url;
+        const results = document.getElementById('receiptResults');
+        results.classList.add('show');
+        results.scrollIntoView({ behavior: 'smooth' });
+    }
+</script>
+</body>
+</html>
