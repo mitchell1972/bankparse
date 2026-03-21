@@ -687,7 +687,21 @@
         currentPage = 1;
         renderTransactionPage();
 
-        document.getElementById('downloadLink').href = download_url;
+        // Support both local (download_url) and Vercel (xlsx_base64) modes
+        const dlLink = document.getElementById('downloadLink');
+        if (data.download_url) {
+            dlLink.href = data.download_url;
+            dlLink.removeAttribute('download');
+            dlLink.onclick = null;
+        } else if (data.xlsx_base64) {
+            dlLink.href = '#';
+            dlLink.setAttribute('download', data.xlsx_filename || 'bankparse.xlsx');
+            dlLink.onclick = (e) => {
+                e.preventDefault();
+                downloadBase64(data.xlsx_base64, data.xlsx_filename || 'bankparse.xlsx');
+            };
+        }
+
         const results = document.getElementById('statementResults');
         results.classList.add('show');
         results.scrollIntoView({ behavior: 'smooth' });
@@ -791,6 +805,24 @@
         document.getElementById('previewHeading').scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 
+    function downloadBase64(b64Data, filename) {
+        const byteChars = atob(b64Data);
+        const byteNums = new Array(byteChars.length);
+        for (let i = 0; i < byteChars.length; i++) {
+            byteNums[i] = byteChars.charCodeAt(i);
+        }
+        const byteArray = new Uint8Array(byteNums);
+        const blob = new Blob([byteArray], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }
+
     function showReceiptResults(data) {
         const { items, totals, metadata, download_url } = data;
 
@@ -822,7 +854,17 @@
             note.textContent = '';
         }
 
-        document.getElementById('receiptDownloadLink').href = download_url;
+        const rcptLink = document.getElementById('receiptDownloadLink');
+        if (data.download_url) {
+            rcptLink.href = data.download_url;
+            rcptLink.onclick = null;
+        } else if (data.xlsx_base64) {
+            rcptLink.href = '#';
+            rcptLink.onclick = (e) => {
+                e.preventDefault();
+                downloadBase64(data.xlsx_base64, data.xlsx_filename || 'receipt.xlsx');
+            };
+        }
         const results = document.getElementById('receiptResults');
         results.classList.add('show');
         results.scrollIntoView({ behavior: 'smooth' });
