@@ -141,6 +141,11 @@ def init_db():
             filename TEXT PRIMARY KEY,
             created_at REAL DEFAULT (strftime('%s', 'now'))
         )""",
+        """CREATE TABLE IF NOT EXISTS rate_limits (
+            key TEXT PRIMARY KEY,
+            window_start REAL NOT NULL,
+            count INTEGER NOT NULL DEFAULT 0
+        )""",
         "CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)",
         "CREATE INDEX IF NOT EXISTS idx_users_stripe ON users(stripe_customer_id)",
         "CREATE INDEX IF NOT EXISTS idx_sessions_email ON sessions(email)",

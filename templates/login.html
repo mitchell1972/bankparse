@@ -239,6 +239,11 @@
     </div>
 
     <script>
+        function getCsrfToken() {
+            const match = document.cookie.match(/(?:^|;\s*)bp_csrf=([^;]*)/);
+            return match ? decodeURIComponent(match[1]) : '';
+        }
+
         let currentTab = 'signin';
 
         function switchTab(tab) {
@@ -315,7 +320,7 @@
             try {
                 const resp = await fetch(endpoint, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': getCsrfToken() },
                     body: JSON.stringify({ email, password }),
                 });
 

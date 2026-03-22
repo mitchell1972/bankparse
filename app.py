@@ -7,19 +7,15 @@ Storage: SQLite database. Email verification via OTP for subscription restore.
 
 import os
 import uuid
-import secrets
 import asyncio
 import logging
 import sqlite3
 import time
 from pathlib import Path
 
-import bcrypt
-from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
-
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, UploadFile, File, HTTPException, Request, Cookie
+from fastapi import FastAPI, UploadFile, File, HTTPException, Request
 from fastapi.responses import HTMLResponse, FileResponse, JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -37,21 +33,39 @@ from database import (
     get_usage, save_usage, increment_usage,
     store_otp, verify_otp, cleanup_expired_otps,
     track_output_file, get_stale_output_files, remove_output_file_record,
-    create_user, get_user_by_email, get_user_by_id, update_user, increment_user_usage,
+    create_user, get_user_by_email, update_user, increment_user_usage,
     get_user_by_stripe_customer,
 )
 from otp import generate_otp, send_otp_email
 
-logger = logging.getLogger("bankparse")
+from core import (
+    # Constants
+    SECRET_KEY, IS_PRODUCTION,
+    STRIPE_SECRET_KEY, STRIPE_PUBLISHABLE_KEY, STRIPE_WEBHOOK_SECRET,
+    STRIPE_PRO_PRICE_ID, STRIPE_BUSINESS_PRICE_ID,
+    STRIPE_AVAILABLE,
+    FREE_STATEMENT_LIMIT, FREE_RECEIPT_LIMIT,
+    AUTH_COOKIE, AUTH_COOKIE_MAX_AGE,
+    COOKIE_NAME, COOKIE_MAX_AGE,
+    SUBSCRIPTION_CACHE_TTL,
+    IMAGE_EXTENSIONS, RECEIPT_EXTENSIONS,
+    # Auth helpers
+    hash_password, verify_password,
+    make_auth_token, verify_auth_token,
+    get_current_user, set_auth_cookie, clear_auth_cookie,
+    # Session helpers
+    get_session_id, ensure_session, set_session_cookie,
+    # Subscription helpers
+    verify_subscription, check_can_use,
+)
 
-# Optional Stripe import
+# Re-import stripe if available (needed for direct Stripe API calls in routes)
 try:
     import stripe
-    STRIPE_AVAILABLE = True
 except ImportError:
-    STRIPE_AVAILABLE = False
+    pass
 
-IS_PRODUCTION = os.environ.get("ENVIRONMENT", "development") == "production"
+logger = logging.getLogger("bankparse")
 
 # --- Configuration ---
 BASE_DIR = Path(__file__).parent
@@ -60,98 +74,11 @@ OUTPUT_DIR = BASE_DIR / "outputs"
 UPLOAD_DIR.mkdir(exist_ok=True)
 OUTPUT_DIR.mkdir(exist_ok=True)
 
-# Secret key for auth token signing
-SECRET_KEY = os.environ.get("SECRET_KEY", "bankparse-dev-secret-change-me")
-
 if IS_PRODUCTION and SECRET_KEY == "bankparse-dev-secret-change-me":
     raise RuntimeError("FATAL: SECRET_KEY must be set to a secure random value in production. Generate one with: python -c \"import secrets; print(secrets.token_hex(32))\"")
 
-# Stripe keys
-STRIPE_SECRET_KEY = os.environ.get("STRIPE_SECRET_KEY", "")
-STRIPE_PUBLISHABLE_KEY = os.environ.get("STRIPE_PUBLISHABLE_KEY", "")
-STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
-STRIPE_PRO_PRICE_ID = os.environ.get("STRIPE_PRO_PRICE_ID", "")
-STRIPE_BUSINESS_PRICE_ID = os.environ.get("STRIPE_BUSINESS_PRICE_ID", "")
-
-if STRIPE_AVAILABLE and STRIPE_SECRET_KEY:
-    stripe.api_key = STRIPE_SECRET_KEY
-
-# Free tier limits
-FREE_STATEMENT_LIMIT = 1
-FREE_RECEIPT_LIMIT = 1
-
-# Auth cookie config
-AUTH_COOKIE = "bp_auth"
-AUTH_COOKIE_MAX_AGE = 60 * 60 * 24 * 30  # 30 days
-
-# Legacy session cookie (kept for backward compat)
-COOKIE_NAME = "bp_session"
-COOKIE_MAX_AGE = 60 * 60 * 24 * 365  # 1 year
-
 # Output file max age (1 hour)
 OUTPUT_MAX_AGE = 3600
-
-# ==========================================================================
-# Auth helpers
-# ==========================================================================
-
-def hash_password(password: str) -> str:
-    return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
-
-
-def verify_password(password: str, password_hash: str) -> bool:
-    try:
-        return bcrypt.checkpw(password.encode('utf-8'), password_hash.encode('utf-8'))
-    except Exception:
-        return False
-
-
-def get_serializer():
-    return URLSafeTimedSerializer(SECRET_KEY)
-
-
-def make_auth_token(user_id: int) -> str:
-    s = get_serializer()
-    return s.dumps({"uid": user_id})
-
-
-def verify_auth_token(token: str) -> int | None:
-    s = get_serializer()
-    try:
-        data = s.loads(token, max_age=60 * 60 * 24 * 30)  # 30 days
-        return data.get("uid")
-    except (BadSignature, SignatureExpired):
-        return None
-
-
-def get_current_user(request: Request) -> dict | None:
-    """Read bp_auth cookie, verify token, look up user in DB."""
-    token = request.cookies.get(AUTH_COOKIE, "")
-    if not token:
-        return None
-    user_id = verify_auth_token(token)
-    if user_id is None:
-        return None
-    return get_user_by_id(user_id)
-
-
-def set_auth_cookie(response, user_id: int):
-    token = make_auth_token(user_id)
-    response.set_cookie(
-        key=AUTH_COOKIE,
-        value=token,
-        max_age=60 * 60 * 24 * 30,
-        httponly=True,
-        samesite="lax",
-        secure=IS_PRODUCTION,
-    )
-    return response
-
-
-def clear_auth_cookie(response):
-    """Clear the bp_auth cookie."""
-    response.delete_cookie(key=AUTH_COOKIE, samesite="lax", secure=IS_PRODUCTION)
-    return response
 
 
 async def cleanup_output_files():
@@ -191,6 +118,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+from csrf import CSRFMiddleware
+app.add_middleware(CSRFMiddleware)
+
 limiter = Limiter(key_func=get_remote_address)
 app.state.limiter = limiter
 
@@ -202,77 +132,6 @@ async def rate_limit_handler(request, exc):
 
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 app.mount("/downloads", StaticFiles(directory=str(OUTPUT_DIR)), name="downloads")
-
-
-# ==========================================================================
-# Identity — legacy cookie-based sessions (kept for backward compat)
-# ==========================================================================
-
-def get_session_id(request: Request) -> str:
-    return request.cookies.get(COOKIE_NAME, "")
-
-
-def ensure_session(request: Request) -> str:
-    sid = get_session_id(request)
-    if sid:
-        return sid
-    return f"bp_{secrets.token_urlsafe(24)}"
-
-
-SUBSCRIPTION_CACHE_TTL = 3600  # 1 hour
-
-
-def verify_subscription(user: dict) -> bool:
-    """Check subscription using cached status first, falling back to Stripe API."""
-    status = user.get("subscription_status")
-    checked_at = user.get("subscription_checked_at") or 0
-
-    # Use cached status if fresh enough
-    if time.time() - checked_at < SUBSCRIPTION_CACHE_TTL:
-        return status in ("active", "trialing")
-
-    # Cache is stale — check Stripe
-    stripe_customer_id = user.get("stripe_customer_id")
-    if not stripe_customer_id or not STRIPE_AVAILABLE or not STRIPE_SECRET_KEY:
-        return status in ("active", "trialing")  # Fall back to cache if Stripe unavailable
-
-    try:
-        subs = stripe.Subscription.list(customer=stripe_customer_id, status="active", limit=1)
-        is_active = len(subs.data) > 0
-        new_status = "active" if is_active else "cancelled"
-        # Update cache
-        if user.get("id"):
-            update_user(user["id"], subscription_status=new_status, subscription_checked_at=time.time())
-        return is_active
-    except Exception:
-        # Stripe unreachable — fall back to cached status (don't lock out paying users)
-        return status in ("active", "trialing")
-
-
-def check_can_use(user: dict, mode: str) -> tuple[bool, bool]:
-    """Check if user can use the service. Returns (allowed, is_subscriber)."""
-    if user.get("stripe_customer_id"):
-        if verify_subscription(user):
-            return True, True
-
-    if mode == "statement" and user.get("statements_used", 0) >= FREE_STATEMENT_LIMIT:
-        return False, False
-    if mode == "receipt" and user.get("receipts_used", 0) >= FREE_RECEIPT_LIMIT:
-        return False, False
-
-    return True, False
-
-
-def set_session_cookie(response: JSONResponse, session_id: str) -> JSONResponse:
-    response.set_cookie(
-        key=COOKIE_NAME,
-        value=session_id,
-        max_age=COOKIE_MAX_AGE,
-        httponly=True,
-        samesite="lax",
-        secure=IS_PRODUCTION,
-    )
-    return response
 
 
 # ==========================================================================
@@ -568,10 +427,6 @@ async def parse_statement(request: Request, file: UploadFile = File(...)):
     finally:
         if upload_path.exists():
             upload_path.unlink()
-
-
-IMAGE_EXTENSIONS = [".png", ".jpg", ".jpeg", ".tiff", ".tif", ".bmp", ".webp"]
-RECEIPT_EXTENSIONS = [".pdf"] + IMAGE_EXTENSIONS
 
 
 @app.post("/api/parse-receipt")
