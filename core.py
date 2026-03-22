@@ -31,6 +31,9 @@ IS_PRODUCTION = os.environ.get("ENVIRONMENT", "development") == "production"
 # --- Secret key for auth token signing ---
 SECRET_KEY = os.environ.get("SECRET_KEY", "bankparse-dev-secret-change-me")
 
+# --- Anthropic API key (AI-powered parsing) ---
+ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+
 # --- Stripe keys ---
 STRIPE_SECRET_KEY = os.environ.get("STRIPE_SECRET_KEY", "")
 STRIPE_PUBLISHABLE_KEY = os.environ.get("STRIPE_PUBLISHABLE_KEY", "")

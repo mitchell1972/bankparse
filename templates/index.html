@@ -555,6 +555,17 @@
                 <button type="button" class="remove" id="removeFile">&times;</button>
             </div>
 
+            <!-- Bulk file list (shown when multiple files selected in receipt mode) -->
+            <div id="bulkFileList" style="display:none; margin-top:1rem;">
+                <div style="background:#F5EEF8; border-radius:8px; padding:1rem;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
+                        <strong style="color:var(--receipt);" id="bulkFileCount">0 files selected</strong>
+                        <span style="color:var(--muted); font-size:0.85rem;" id="bulkFileSize">0 KB total</span>
+                    </div>
+                    <div id="bulkFileItems" style="max-height:200px; overflow-y:auto; font-size:0.85rem;"></div>
+                </div>
+            </div>
+
             <div class="progress-section" id="progressSection">
                 <div class="progress-bar-track">
                     <div class="progress-bar" id="progressBar"></div>
@@ -657,6 +668,49 @@
 
             <a id="receiptDownloadLink" href="#" class="btn btn-receipt" style="text-decoration: none;">
                 Download Spreadsheet (.xlsx)
+            </a>
+        </div>
+    </div>
+
+    <!-- Bulk Receipt Results Card -->
+    <div class="results" id="bulkReceiptResults">
+        <div class="card">
+            <h2 style="margin-bottom: 1rem;">Bulk Receipts Processed</h2>
+
+            <div class="stat-grid three-col">
+                <div class="stat purple">
+                    <div class="value" id="bulkReceiptCount">0</div>
+                    <div class="label">Receipts</div>
+                </div>
+                <div class="stat">
+                    <div class="value" id="bulkItemCount">0</div>
+                    <div class="label">Items Found</div>
+                </div>
+                <div class="stat debit">
+                    <div class="value" id="bulkGrandTotal">£0.00</div>
+                    <div class="label">Grand Total</div>
+                </div>
+            </div>
+
+            <h3>All Items</h3>
+            <div style="overflow-x: auto;">
+                <table class="preview-table receipt-table" id="bulkReceiptTable">
+                    <thead>
+                        <tr>
+                            <th>Store</th>
+                            <th>Item</th>
+                            <th>Qty</th>
+                            <th>Unit Price</th>
+                            <th>Total</th>
+                        </tr>
+                    </thead>
+                    <tbody id="bulkReceiptBody"></tbody>
+                </table>
+            </div>
+            <p class="preview-note" id="bulkReceiptNote"></p>
+
+            <a id="bulkDownloadLink" href="#" class="btn btn-receipt" style="text-decoration: none;">
+                Download Combined Spreadsheet (.xlsx)
             </a>
         </div>
     </div>
@@ -963,24 +1017,28 @@
         rcptBtn.classList.toggle('receipt-mode', mode === 'receipt');
 
         if (mode === 'receipt') {
-            title.textContent = 'Drop your store receipt here';
-            hint.textContent = 'or click to browse — PDF, image (PNG, JPG) or HEIC accepted';
+            title.textContent = 'Drop your store receipts here';
+            hint.textContent = 'or click to browse — PDF, image (PNG, JPG) or HEIC accepted. Select multiple files for bulk upload.';
             fileInput.accept = '.pdf,.png,.jpg,.jpeg,.tiff,.tif,.bmp,.webp,.heic,.heif';
+            fileInput.multiple = true;
             parseBtn.textContent = 'Extract Receipt Items';
         } else {
             title.textContent = 'Drop your bank statement here';
             hint.textContent = 'or click to browse — PDF or CSV files accepted';
             fileInput.accept = '.pdf,.csv,.tsv,.txt';
+            fileInput.multiple = false;
             parseBtn.textContent = 'Convert to Spreadsheet';
         }
 
         // Reset state
         fileInput.value = '';
         fileInfo.classList.remove('show');
+        document.getElementById('bulkFileList').style.display = 'none';
         parseBtn.disabled = true;
         errorMsg.classList.remove('show');
         document.getElementById('statementResults').classList.remove('show');
         document.getElementById('receiptResults').classList.remove('show');
+        document.getElementById('bulkReceiptResults').classList.remove('show');
 
         // Re-check paywall for the new mode
         checkPaywall();
@@ -1008,23 +1066,53 @@
                 setMode('receipt');
             }
 
-            fileName.textContent = file.name;
-            fileSize.textContent = formatBytes(file.size);
-            if (ext === 'pdf') fileIcon.textContent = '📕';
-            else if (IMAGE_EXTS.includes(ext)) fileIcon.textContent = '🖼️';
-            else fileIcon.textContent = '📗';
-            fileInfo.classList.add('show');
+            // Multiple files in receipt mode = bulk upload
+            if (this.files.length > 1 && currentMode === 'receipt') {
+                fileInfo.classList.remove('show');
+                let totalSize = 0;
+                const listEl = document.getElementById('bulkFileItems');
+                listEl.innerHTML = '';
+                for (let i = 0; i < this.files.length; i++) {
+                    const f = this.files[i];
+                    totalSize += f.size;
+                    const div = document.createElement('div');
+                    div.style.cssText = 'padding:0.25rem 0; border-bottom:1px solid #E8DAEF;';
+                    div.textContent = f.name + ' (' + formatBytes(f.size) + ')';
+                    listEl.appendChild(div);
+                }
+                document.getElementById('bulkFileCount').textContent = this.files.length + ' files selected';
+                document.getElementById('bulkFileSize').textContent = formatBytes(totalSize) + ' total';
+                document.getElementById('bulkFileList').style.display = 'block';
+                parseBtn.textContent = 'Extract All Receipts';
+            } else {
+                document.getElementById('bulkFileList').style.display = 'none';
+                fileName.textContent = file.name;
+                fileSize.textContent = formatBytes(file.size);
+                if (ext === 'pdf') fileIcon.textContent = '📕';
+                else if (IMAGE_EXTS.includes(ext)) fileIcon.textContent = '🖼️';
+                else fileIcon.textContent = '📗';
+                fileInfo.classList.add('show');
+                if (currentMode === 'receipt') {
+                    parseBtn.textContent = 'Extract Receipt Items';
+                }
+            }
+
             parseBtn.disabled = false;
             errorMsg.classList.remove('show');
             document.getElementById('statementResults').classList.remove('show');
             document.getElementById('receiptResults').classList.remove('show');
+            document.getElementById('bulkReceiptResults').classList.remove('show');
         }
     });
 
     removeFile.addEventListener('click', function() {
         fileInput.value = '';
         fileInfo.classList.remove('show');
+        document.getElementById('bulkFileList').style.display = 'none';
         parseBtn.disabled = true;
+        if (currentMode === 'receipt') {
+            parseBtn.textContent = 'Extract Receipt Items';
+        }
     });
 
     // Drag and drop
@@ -1044,35 +1132,53 @@
         e.preventDefault();
         if (!fileInput.files.length) return;
 
+        const isReceipt = currentMode === 'receipt';
+        const isBulk = isReceipt && fileInput.files.length > 1;
+
         errorMsg.classList.remove('show');
         document.getElementById('statementResults').classList.remove('show');
         document.getElementById('receiptResults').classList.remove('show');
+        document.getElementById('bulkReceiptResults').classList.remove('show');
         progressSection.classList.add('show');
         parseBtn.disabled = true;
         parseBtn.innerHTML = '<span class="spinner"></span> Processing...';
 
-        const isReceipt = currentMode === 'receipt';
-        const apiUrl = isReceipt ? '/api/parse-receipt' : '/api/parse';
+        let apiUrl;
+        if (isBulk) {
+            apiUrl = '/api/parse-receipts-bulk';
+        } else if (isReceipt) {
+            apiUrl = '/api/parse-receipt';
+        } else {
+            apiUrl = '/api/parse';
+        }
 
         // Simulate progress
         let progress = 0;
-        const steps = isReceipt
-            ? ['Uploading...', 'Reading receipt...', 'Extracting items...', 'Building spreadsheet...']
-            : ['Uploading...', 'Reading statement...', 'Extracting transactions...', 'Building spreadsheet...'];
+        const steps = isBulk
+            ? ['Uploading files...', 'Reading receipts...', 'Extracting items...', 'Combining results...', 'Building spreadsheet...']
+            : isReceipt
+                ? ['Uploading...', 'Reading receipt...', 'Extracting items...', 'Building spreadsheet...']
+                : ['Uploading...', 'Reading statement...', 'Extracting transactions...', 'Building spreadsheet...'];
         let step = 0;
 
         const progressInterval = setInterval(() => {
-            progress = Math.min(progress + Math.random() * 15, 90);
+            progress = Math.min(progress + Math.random() * (isBulk ? 8 : 15), 90);
             progressBar.style.width = progress + '%';
-            if (progress > step * 25 && step < steps.length) {
+            if (progress > step * (100 / steps.length) && step < steps.length) {
                 progressText.textContent = steps[step];
                 step++;
             }
-        }, 300);
+        }, isBulk ? 500 : 300);
 
         try {
             const formData = new FormData();
-            formData.append('file', fileInput.files[0]);
+            if (isBulk) {
+                for (let i = 0; i < fileInput.files.length; i++) {
+                    formData.append('files', fileInput.files[i]);
+                }
+            } else {
+                formData.append('file', fileInput.files[0]);
+            }
 
             const response = await fetch(apiUrl, {
                 method: 'POST',
@@ -1095,7 +1201,9 @@
 
             setTimeout(() => {
                 progressSection.classList.remove('show');
-                if (isReceipt) {
+                if (isBulk) {
+                    showBulkReceiptResults(data);
+                } else if (isReceipt) {
                     showReceiptResults(data);
                 } else {
                     showStatementResults(data);
@@ -1107,7 +1215,6 @@
             progressSection.classList.remove('show');
 
             if (err.message === 'FREE_LIMIT_REACHED') {
-                // Reload usage and show paywall
                 await loadUsage();
                 showPaywall();
             } else {
@@ -1116,8 +1223,11 @@
             }
         } finally {
             parseBtn.disabled = false;
-            parseBtn.innerHTML = isReceipt ? 'Extract Receipt Items' : 'Convert to Spreadsheet';
-            // Refresh usage counters after each attempt
+            if (isBulk) {
+                parseBtn.innerHTML = 'Extract All Receipts';
+            } else {
+                parseBtn.innerHTML = isReceipt ? 'Extract Receipt Items' : 'Convert to Spreadsheet';
+            }
             loadUsage();
         }
     });
@@ -1318,6 +1428,48 @@
             };
         }
         const results = document.getElementById('receiptResults');
+        results.classList.add('show');
+        results.scrollIntoView({ behavior: 'smooth' });
+    }
+
+    function showBulkReceiptResults(data) {
+        const { combined_items, grand_total, receipt_count, total_items, download_url } = data;
+
+        // Stats
+        document.getElementById('bulkReceiptCount').textContent = receipt_count;
+        document.getElementById('bulkItemCount').textContent = total_items;
+        document.getElementById('bulkGrandTotal').textContent = formatCurrency(grand_total);
+
+        // Items table
+        const tbody = document.getElementById('bulkReceiptBody');
+        tbody.innerHTML = '';
+        const preview = combined_items.slice(0, 50);
+        preview.forEach((item) => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>${escapeHtml(item.store)}</td>
+                <td>${escapeHtml(item.description)}</td>
+                <td style="text-align:center">${escapeHtml(item.quantity)}</td>
+                <td>${formatCurrency(item.unit_price)}</td>
+                <td>${formatCurrency(item.total_price)}</td>
+            `;
+            tbody.appendChild(tr);
+        });
+
+        const note = document.getElementById('bulkReceiptNote');
+        if (combined_items.length > 50) {
+            note.textContent = `Showing 50 of ${combined_items.length} items. Download the spreadsheet for the full list.`;
+        } else {
+            note.textContent = `${receipt_count} receipts processed, ${total_items} items found. Grand total: ${formatCurrency(grand_total)}`;
+        }
+
+        const dlLink = document.getElementById('bulkDownloadLink');
+        if (download_url) {
+            dlLink.href = download_url;
+            dlLink.onclick = null;
+        }
+
+        const results = document.getElementById('bulkReceiptResults');
         results.classList.add('show');
         results.scrollIntoView({ behavior: 'smooth' });
     }

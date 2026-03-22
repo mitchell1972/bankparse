@@ -11,7 +11,7 @@ WORKDIR /app
 
 # Install Python deps
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt pytesseract pillow-heif libsql-experimental
+RUN pip install --no-cache-dir -r requirements.txt pytesseract pillow-heif libsql-experimental anthropic
 
 # Copy app
 COPY . .

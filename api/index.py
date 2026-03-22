@@ -21,16 +21,27 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from fastapi import FastAPI, UploadFile, File, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
+from typing import List
+
 from parsers.pdf_parser import parse_pdf
 from parsers.csv_parser import parse_csv
 from parsers.xlsx_exporter import export_to_xlsx, export_receipt_to_xlsx
 from parsers.receipt_parser import parse_receipt
+
+# AI-powered parsers (optional — require anthropic SDK)
+try:
+    from parsers.ai_parser import parse_receipt_ai, parse_receipts_bulk, parse_statement_ai
+    from parsers.xlsx_exporter import export_bulk_receipts_to_xlsx
+    AI_PARSERS_AVAILABLE = True
+except ImportError:
+    AI_PARSERS_AVAILABLE = False
 from database import (
     get_usage, save_usage, increment_usage, store_otp, verify_otp,
     create_user, get_user_by_email, update_user, increment_user_usage,
     get_user_by_stripe_customer,
 )
 from otp import generate_otp, send_otp_email
+from ratelimit import check_rate_limit
 
 from core import (
     # Constants
@@ -58,6 +69,8 @@ try:
     import stripe
 except ImportError:
     pass
+
+ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 
 logger = logging.getLogger("bankparse")
 
@@ -334,6 +347,15 @@ async def parse_statement(request: Request, file: UploadFile = File(...)):
             result = parse_pdf(str(upload_path))
         else:
             result = parse_csv(str(upload_path))
+
+        # AI fallback: if pdfplumber/csv found nothing, try AI-powered parsing
+        if not result["transactions"] and AI_PARSERS_AVAILABLE and ANTHROPIC_API_KEY:
+            try:
+                logger.info("No transactions from standard parser, trying AI fallback")
+                result = parse_statement_ai(str(upload_path))
+            except Exception as ai_err:
+                logger.warning("AI statement parsing fallback failed: %s", ai_err)
+
         if not result["transactions"]:
             raise HTTPException(status_code=422, detail="No transactions found.")
 
@@ -387,7 +409,19 @@ async def parse_receipt_endpoint(request: Request, file: UploadFile = File(...))
         f.write(contents)
 
     try:
-        result = parse_receipt(str(upload_path))
+        # Try AI-powered parsing first if available
+        result = None
+        if AI_PARSERS_AVAILABLE and ANTHROPIC_API_KEY:
+            try:
+                result = parse_receipt_ai(str(upload_path))
+            except Exception as ai_err:
+                logger.warning("AI receipt parsing failed, falling back to standard: %s", ai_err)
+                result = None
+
+        # Fall back to standard parser
+        if result is None or not result.get("items"):
+            result = parse_receipt(str(upload_path))
+
         if not result["items"]:
             raise HTTPException(status_code=422, detail="No items found.")
 
@@ -416,6 +450,109 @@ async def parse_receipt_endpoint(request: Request, file: UploadFile = File(...))
         for f in [upload_path, TMP_DIR / f"receipt_{job_id}.xlsx"]:
             if f.exists():
                 f.unlink()
+
+
+@app.post("/api/parse-receipts-bulk")
+async def parse_receipts_bulk_endpoint(request: Request, files: List[UploadFile] = File(...)):
+    """Parse multiple receipts in a single batch and return a combined XLSX."""
+    # Authentication
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required.")
+
+    # CSRF check is handled by CSRFMiddleware for all POST routes
+
+    # AI parsers required for bulk
+    if not AI_PARSERS_AVAILABLE or not ANTHROPIC_API_KEY:
+        raise HTTPException(
+            status_code=501,
+            detail="AI-powered parsing is not available. Please configure ANTHROPIC_API_KEY.",
+        )
+
+    # Rate limiting (database-backed, works across serverless instances)
+    client_ip = request.client.host if request.client else "unknown"
+    if not check_rate_limit(f"{client_ip}:/api/parse-receipts-bulk", limit=5, window_seconds=60):
+        raise HTTPException(status_code=429, detail="Rate limit exceeded. Please try again later.")
+
+    # Usage check (counts as 1 receipt use for the whole batch)
+    allowed, is_sub = check_can_use(user, "receipt")
+    if not allowed:
+        raise HTTPException(status_code=403, detail="FREE_LIMIT_REACHED")
+
+    if not files:
+        raise HTTPException(status_code=400, detail="No files provided.")
+
+    if len(files) > 50:
+        raise HTTPException(status_code=400, detail="Maximum 50 receipts per batch.")
+
+    # Validate and save all files to /tmp
+    upload_paths = []
+    job_id = str(uuid.uuid4())[:8]
+
+    try:
+        for i, upload_file in enumerate(files):
+            fname = upload_file.filename.lower()
+            if not any(fname.endswith(ext) for ext in RECEIPT_EXTENSIONS):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Unsupported file type for '{upload_file.filename}'. Accepted: PDF, PNG, JPG, TIFF.",
+                )
+
+            contents = await upload_file.read()
+            if len(contents) > 20 * 1024 * 1024:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"File '{upload_file.filename}' is too large. Max 20MB per file.",
+                )
+
+            safe_name = Path(upload_file.filename).name
+            upload_path = TMP_DIR / f"{job_id}_{i}_{safe_name}"
+            with open(upload_path, "wb") as f:
+                f.write(contents)
+            upload_paths.append(str(upload_path))
+
+        # Parse all receipts via AI
+        results = parse_receipts_bulk(upload_paths)
+
+        if not results:
+            raise HTTPException(status_code=422, detail="No items found in any of the uploaded receipts.")
+
+        # Generate combined XLSX
+        output_path = TMP_DIR / f"receipts_bulk_{job_id}.xlsx"
+        export_bulk_receipts_to_xlsx(results, str(output_path))
+        xlsx_b64 = base64.b64encode(output_path.read_bytes()).decode("utf-8")
+
+        # Increment usage once for the whole batch
+        if not is_sub:
+            increment_user_usage(user["id"], "receipt")
+
+        return JSONResponse({
+            "receipts": results,
+            "count": len(results),
+            "xlsx_base64": xlsx_b64,
+            "xlsx_filename": f"receipts_bulk_{job_id}.xlsx",
+        })
+
+    except HTTPException:
+        raise
+    except ImportError as e:
+        raise HTTPException(status_code=501, detail=str(e))
+    except Exception as e:
+        logger.exception("Bulk receipt parsing error: %s", e)
+        raise HTTPException(status_code=500, detail="An internal error occurred.")
+    finally:
+        # Clean up all temp files
+        for p in upload_paths:
+            try:
+                Path(p).unlink(missing_ok=True)
+            except OSError:
+                pass
+        output_file = TMP_DIR / f"receipts_bulk_{job_id}.xlsx"
+        if output_file.exists():
+            try:
+                output_file.unlink()
+            except OSError:
+                pass
 
 
 # ==========================================================================

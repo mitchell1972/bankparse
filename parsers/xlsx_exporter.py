@@ -331,3 +331,191 @@ def export_receipt_to_xlsx(data: dict, output_path: str) -> str:
 
     wb.save(output_path)
     return output_path
+
+
+def export_bulk_receipts_to_xlsx(bulk_result: dict, output_path: str) -> str:
+    """
+    Export combined bulk receipt data to a formatted XLSX file with two sheets.
+
+    Sheet 1 — "All Expenses": All items from all receipts grouped by store.
+    Sheet 2 — "Summary": One row per receipt with totals.
+
+    Args:
+        bulk_result: Dict from parse_receipts_bulk with 'receipts', 'combined_items',
+                     'grand_total', 'receipt_count', 'total_items'
+        output_path: Path for the output XLSX file
+
+    Returns:
+        Path to the created file
+    """
+    wb = Workbook()
+
+    # Styling
+    PURPLE_FILL = PatternFill(start_color="8E44AD", end_color="8E44AD", fill_type="solid")
+    PURPLE_FONT = Font(name="Calibri", bold=True, color="FFFFFF", size=11)
+    ALT_ROW_FILL = PatternFill(start_color="F5EEF8", end_color="F5EEF8", fill_type="solid")
+    GRAND_TOTAL_FILL = PatternFill(start_color="D7BDE2", end_color="D7BDE2", fill_type="solid")
+    GRAND_TOTAL_FONT = Font(name="Calibri", bold=True, size=12, color="4A235A")
+
+    # -- Sheet 1: All Expenses --
+    ws1 = wb.active
+    ws1.title = "All Expenses"
+
+    # Title
+    ws1.merge_cells("A1:F1")
+    ws1["A1"] = f"Combined Receipt Expenses — {bulk_result['receipt_count']} receipts"
+    ws1["A1"].font = Font(name="Calibri", bold=True, size=14, color="8E44AD")
+    ws1.row_dimensions[1].height = 30
+
+    # Headers
+    headers = ["Store", "Date", "Item", "Qty", "Unit Price", "Total"]
+    header_row = 3
+    for col, header in enumerate(headers, 1):
+        cell = ws1.cell(row=header_row, column=col, value=header)
+        cell.font = PURPLE_FONT
+        cell.fill = PURPLE_FILL
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+    ws1.row_dimensions[header_row].height = 25
+
+    # Data rows — items grouped by store then date
+    combined_items = bulk_result.get("combined_items", [])
+    sorted_items = sorted(combined_items, key=lambda x: (x.get("store", ""), x.get("date") or ""))
+
+    for i, item in enumerate(sorted_items):
+        row = header_row + 1 + i
+        use_alt = i % 2 == 1
+
+        store_cell = ws1.cell(row=row, column=1, value=item.get("store", ""))
+        store_cell.font = NORMAL_FONT
+        if use_alt:
+            store_cell.fill = ALT_ROW_FILL
+
+        date_cell = ws1.cell(row=row, column=2, value=item.get("date", ""))
+        date_cell.font = NORMAL_FONT
+        if use_alt:
+            date_cell.fill = ALT_ROW_FILL
+
+        desc_cell = ws1.cell(row=row, column=3, value=item.get("description", ""))
+        desc_cell.font = NORMAL_FONT
+        if use_alt:
+            desc_cell.fill = ALT_ROW_FILL
+
+        qty_cell = ws1.cell(row=row, column=4, value=item.get("quantity", 1))
+        qty_cell.font = NORMAL_FONT
+        qty_cell.alignment = Alignment(horizontal="center")
+        if use_alt:
+            qty_cell.fill = ALT_ROW_FILL
+
+        unit_cell = ws1.cell(row=row, column=5, value=item.get("unit_price", 0))
+        unit_cell.number_format = '£#,##0.00'
+        unit_cell.font = NORMAL_FONT
+        if use_alt:
+            unit_cell.fill = ALT_ROW_FILL
+
+        total_cell = ws1.cell(row=row, column=6, value=item.get("total_price", 0))
+        total_cell.number_format = '£#,##0.00'
+        total_cell.font = NORMAL_FONT
+        if use_alt:
+            total_cell.fill = ALT_ROW_FILL
+
+        for c in range(1, 7):
+            ws1.cell(row=row, column=c).border = THIN_BORDER
+
+    # Grand total row
+    if sorted_items:
+        grand_row = header_row + len(sorted_items) + 2
+        label_cell = ws1.cell(row=grand_row, column=5, value="GRAND TOTAL")
+        label_cell.font = GRAND_TOTAL_FONT
+        label_cell.fill = GRAND_TOTAL_FILL
+        label_cell.alignment = Alignment(horizontal="right")
+
+        total_val_cell = ws1.cell(row=grand_row, column=6, value=bulk_result.get("grand_total", 0))
+        total_val_cell.number_format = '£#,##0.00'
+        total_val_cell.font = GRAND_TOTAL_FONT
+        total_val_cell.fill = GRAND_TOTAL_FILL
+
+    # Column widths
+    ws1.column_dimensions["A"].width = 22
+    ws1.column_dimensions["B"].width = 14
+    ws1.column_dimensions["C"].width = 40
+    ws1.column_dimensions["D"].width = 8
+    ws1.column_dimensions["E"].width = 14
+    ws1.column_dimensions["F"].width = 14
+
+    # Freeze panes
+    ws1.freeze_panes = f"A{header_row + 1}"
+
+    # Auto-filter
+    if sorted_items:
+        last_row = header_row + len(sorted_items)
+        ws1.auto_filter.ref = f"A{header_row}:F{last_row}"
+
+    # -- Sheet 2: Summary --
+    ws2 = wb.create_sheet("Summary")
+
+    ws2.merge_cells("A1:D1")
+    ws2["A1"] = "Receipt Summary"
+    ws2["A1"].font = Font(name="Calibri", bold=True, size=14, color="8E44AD")
+    ws2.row_dimensions[1].height = 30
+
+    # Summary headers
+    summary_headers = ["Store", "Date", "Items Count", "Receipt Total"]
+    summary_header_row = 3
+    for col, header in enumerate(summary_headers, 1):
+        cell = ws2.cell(row=summary_header_row, column=col, value=header)
+        cell.font = PURPLE_FONT
+        cell.fill = PURPLE_FILL
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+    ws2.row_dimensions[summary_header_row].height = 25
+
+    # One row per receipt
+    receipts = bulk_result.get("receipts", [])
+    for i, receipt in enumerate(receipts):
+        row = summary_header_row + 1 + i
+        use_alt = i % 2 == 1
+
+        store_cell = ws2.cell(row=row, column=1, value=receipt.get("store_name", "Unknown"))
+        store_cell.font = NORMAL_FONT
+        if use_alt:
+            store_cell.fill = ALT_ROW_FILL
+
+        date_cell = ws2.cell(row=row, column=2, value=receipt.get("date", ""))
+        date_cell.font = NORMAL_FONT
+        if use_alt:
+            date_cell.fill = ALT_ROW_FILL
+
+        count_cell = ws2.cell(row=row, column=3, value=len(receipt.get("items", [])))
+        count_cell.font = NORMAL_FONT
+        count_cell.alignment = Alignment(horizontal="center")
+        if use_alt:
+            count_cell.fill = ALT_ROW_FILL
+
+        total_cell = ws2.cell(row=row, column=4, value=receipt.get("total", 0))
+        total_cell.number_format = '£#,##0.00'
+        total_cell.font = NORMAL_FONT
+        if use_alt:
+            total_cell.fill = ALT_ROW_FILL
+
+        for c in range(1, 5):
+            ws2.cell(row=row, column=c).border = THIN_BORDER
+
+    # Grand total at bottom of summary
+    if receipts:
+        grand_row = summary_header_row + len(receipts) + 2
+        label_cell = ws2.cell(row=grand_row, column=3, value="GRAND TOTAL")
+        label_cell.font = GRAND_TOTAL_FONT
+        label_cell.fill = GRAND_TOTAL_FILL
+        label_cell.alignment = Alignment(horizontal="right")
+
+        total_val_cell = ws2.cell(row=grand_row, column=4, value=bulk_result.get("grand_total", 0))
+        total_val_cell.number_format = '£#,##0.00'
+        total_val_cell.font = GRAND_TOTAL_FONT
+        total_val_cell.fill = GRAND_TOTAL_FILL
+
+    ws2.column_dimensions["A"].width = 25
+    ws2.column_dimensions["B"].width = 14
+    ws2.column_dimensions["C"].width = 14
+    ws2.column_dimensions["D"].width = 16
+
+    wb.save(output_path)
+    return output_path
