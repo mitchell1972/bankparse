@@ -46,6 +46,13 @@ if STRIPE_AVAILABLE and STRIPE_SECRET_KEY:
 FREE_STATEMENT_LIMIT = 1
 FREE_RECEIPT_LIMIT = 1
 
+# --- Test/admin accounts (bypass free tier limits) ---
+UNLIMITED_EMAILS = set(
+    e.strip().lower() for e in
+    os.environ.get("UNLIMITED_EMAILS", "mitchell_agoma@yahoo.co.uk").split(",")
+    if e.strip()
+)
+
 # --- Auth cookie config ---
 AUTH_COOKIE = "bp_auth"
 AUTH_COOKIE_MAX_AGE = 60 * 60 * 24 * 30  # 30 days
@@ -185,6 +192,11 @@ def verify_subscription(user: dict) -> bool:
 
 def check_can_use(user: dict, mode: str) -> tuple[bool, bool]:
     """Check if user can use the service. Returns (allowed, is_subscriber)."""
+    # Admin/test accounts bypass all limits
+    email = (user.get("email") or "").lower()
+    if email in UNLIMITED_EMAILS:
+        return True, True
+
     if user.get("stripe_customer_id"):
         if verify_subscription(user):
             return True, True
