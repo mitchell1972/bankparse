@@ -450,7 +450,8 @@
 </head>
 <body>
 
-<div class="header">
+<div class="header" style="position: relative;">
+    <button onclick="logout()" id="logoutBtn" style="position:absolute; top:1rem; right:1rem; background:rgba(255,255,255,0.2); border:1px solid rgba(255,255,255,0.4); color:white; padding:0.4rem 1rem; border-radius:6px; cursor:pointer; font-size:0.85rem; display:none;">Logout</button>
     <h1>BankParse</h1>
     <p>Upload bank statements or store receipts. Get clean spreadsheets in seconds.</p>
     <div class="badges">
@@ -699,10 +700,22 @@
     let usageData = null;
 
     // --- Usage & Paywall ---
+    async function logout() {
+        const csrf = getCsrfToken();
+        await fetch('/api/logout', {
+            method: 'POST',
+            headers: { 'X-CSRF-Token': csrf },
+        });
+        window.location.href = '/login';
+    }
+
     async function loadUsage() {
         try {
             const res = await fetch('/api/usage');
             usageData = await res.json();
+            // Show logout button if logged in
+            const logoutBtn = document.getElementById('logoutBtn');
+            if (usageData.email) logoutBtn.style.display = 'block';
             updateUsageBar();
             checkPaywall();
 
