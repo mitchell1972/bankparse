@@ -1,17 +1,22 @@
-FROM python:3.11-slim
+FROM python:3.12-slim
 
+# Install Tesseract OCR + HEIF support
 RUN apt-get update && apt-get install -y --no-install-recommends \
     tesseract-ocr \
+    tesseract-ocr-eng \
+    libheif-dev \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
+# Install Python deps
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt pytesseract pillow-heif
 
+# Copy app
 COPY . .
 
-RUN mkdir -p uploads outputs usage
+RUN mkdir -p uploads outputs
 
 EXPOSE 8000
 
