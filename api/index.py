@@ -1,7 +1,7 @@
 """
 BankParse — Vercel Serverless Entry Point
 Adapts the FastAPI app for Vercel's serverless Python runtime with Stripe billing.
-Identity: cookie-based, tied to Stripe customer email.
+Identity: email/password auth with cookie-based sessions.
 Storage: SQLite database. Email verification via OTP for subscription restore.
 """
 
@@ -9,8 +9,10 @@ import os
 import sys
 import uuid
 import secrets
+import hashlib
 import base64
 import logging
+import sqlite3
 import tempfile
 from pathlib import Path
 
@@ -18,13 +20,16 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from fastapi import FastAPI, UploadFile, File, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 from parsers.pdf_parser import parse_pdf
 from parsers.csv_parser import parse_csv
 from parsers.xlsx_exporter import export_to_xlsx, export_receipt_to_xlsx
 from parsers.receipt_parser import parse_receipt
-from database import get_usage, save_usage, increment_usage, store_otp, verify_otp
+from database import (
+    get_usage, save_usage, increment_usage, store_otp, verify_otp,
+    create_user, get_user_by_email, get_user_by_id, update_user, increment_user_usage,
+)
 from otp import generate_otp, send_otp_email
 
 logger = logging.getLogger("bankparse")
@@ -45,6 +50,11 @@ TEMPLATE_PATH = Path(__file__).parent.parent / "templates" / "index.html"
 TEMPLATE_HTML = TEMPLATE_PATH.read_text()
 LANDING_PATH = Path(__file__).parent.parent / "templates" / "landing.html"
 LANDING_HTML = LANDING_PATH.read_text() if LANDING_PATH.exists() else TEMPLATE_HTML
+LOGIN_PATH = Path(__file__).parent.parent / "templates" / "login.html"
+LOGIN_HTML = LOGIN_PATH.read_text() if LOGIN_PATH.exists() else ""
+
+# Secret key for auth token signing
+SECRET_KEY = os.environ.get("SECRET_KEY", "bankparse-dev-secret-change-me")
 
 # Stripe config
 STRIPE_SECRET_KEY = os.environ.get("STRIPE_SECRET_KEY", "")
@@ -59,17 +69,90 @@ if STRIPE_AVAILABLE and STRIPE_SECRET_KEY:
 FREE_STATEMENT_LIMIT = 1
 FREE_RECEIPT_LIMIT = 1
 
-# Cookie config
+# Auth cookie config
+AUTH_COOKIE = "bp_auth"
+AUTH_COOKIE_MAX_AGE = 60 * 60 * 24 * 30  # 30 days
+
+# Legacy session cookie (kept for backward compat)
 COOKIE_NAME = "bp_session"
 COOKIE_MAX_AGE = 60 * 60 * 24 * 365  # 1 year
 
 IS_PRODUCTION = os.environ.get("ENVIRONMENT", "production") == "production"
 
-app = FastAPI(title="BankParse", version="2.2.0")
+# Password salt prefix
+PASSWORD_SALT = "bankparse_salt_"
+
+app = FastAPI(title="BankParse", version="2.3.0")
 
 
 # ==========================================================================
-# Identity — cookie-based sessions
+# Auth helpers
+# ==========================================================================
+
+def hash_password(password: str) -> str:
+    """Hash a password using SHA-256 with a salt."""
+    salted = f"{PASSWORD_SALT}{password}{SECRET_KEY}"
+    return hashlib.sha256(salted.encode()).hexdigest()
+
+
+def verify_password(password: str, password_hash: str) -> bool:
+    """Verify a password against its hash."""
+    return hash_password(password) == password_hash
+
+
+def make_auth_token(user_id: int) -> str:
+    """Create an auth token: user_id:sha256(user_id + secret)."""
+    token = hashlib.sha256(f"{user_id}{SECRET_KEY}".encode()).hexdigest()
+    return f"{user_id}:{token}"
+
+
+def verify_auth_token(token_value: str) -> int | None:
+    """Verify auth token and return user_id, or None if invalid."""
+    if not token_value or ":" not in token_value:
+        return None
+    parts = token_value.split(":", 1)
+    try:
+        user_id = int(parts[0])
+    except (ValueError, IndexError):
+        return None
+    expected = hashlib.sha256(f"{user_id}{SECRET_KEY}".encode()).hexdigest()
+    if parts[1] != expected:
+        return None
+    return user_id
+
+
+def get_current_user(request: Request) -> dict | None:
+    """Read bp_auth cookie, verify token, look up user in DB."""
+    cookie_val = request.cookies.get(AUTH_COOKIE, "")
+    if not cookie_val:
+        return None
+    user_id = verify_auth_token(cookie_val)
+    if user_id is None:
+        return None
+    return get_user_by_id(user_id)
+
+
+def set_auth_cookie(response, user_id: int):
+    """Set the bp_auth cookie on a response."""
+    response.set_cookie(
+        key=AUTH_COOKIE,
+        value=make_auth_token(user_id),
+        max_age=AUTH_COOKIE_MAX_AGE,
+        httponly=True,
+        samesite="lax",
+        secure=IS_PRODUCTION,
+    )
+    return response
+
+
+def clear_auth_cookie(response):
+    """Clear the bp_auth cookie."""
+    response.delete_cookie(key=AUTH_COOKIE, samesite="lax", secure=IS_PRODUCTION)
+    return response
+
+
+# ==========================================================================
+# Identity — legacy cookie-based sessions (kept for backward compat)
 # ==========================================================================
 
 def get_session_id(request: Request) -> str:
@@ -93,19 +176,18 @@ def verify_subscription(stripe_customer_id: str) -> bool:
         return False
 
 
-def check_can_use(session_id: str, mode: str) -> tuple:
-    usage = get_usage(session_id)
+def check_can_use(user: dict, mode: str) -> tuple:
+    """Check if a user can use the service. Accepts a user dict from the users table."""
+    if user.get("stripe_customer_id"):
+        if verify_subscription(user["stripe_customer_id"]):
+            return True, True
 
-    if usage.get("stripe_customer_id"):
-        if verify_subscription(usage["stripe_customer_id"]):
-            return True, usage, True
+    if mode == "statement" and user.get("statements_used", 0) >= FREE_STATEMENT_LIMIT:
+        return False, False
+    if mode == "receipt" and user.get("receipts_used", 0) >= FREE_RECEIPT_LIMIT:
+        return False, False
 
-    if mode == "statement" and usage["statements"] >= FREE_STATEMENT_LIMIT:
-        return False, usage, False
-    if mode == "receipt" and usage["receipts"] >= FREE_RECEIPT_LIMIT:
-        return False, usage, False
-
-    return True, usage, False
+    return True, False
 
 
 def set_session_cookie(response: JSONResponse, session_id: str) -> JSONResponse:
@@ -124,8 +206,20 @@ def set_session_cookie(response: JSONResponse, session_id: str) -> JSONResponse:
 # Page Routes
 # ==========================================================================
 
+@app.get("/login", response_class=HTMLResponse)
+async def login_page(request: Request):
+    """Serve the login/register page."""
+    user = get_current_user(request)
+    if user:
+        return RedirectResponse(url="/", status_code=302)
+    return HTMLResponse(LOGIN_HTML)
+
+
 @app.get("/", response_class=HTMLResponse)
-async def home():
+async def home(request: Request):
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
     return HTMLResponse(TEMPLATE_HTML)
 
 
@@ -135,34 +229,92 @@ async def landing():
 
 
 # ==========================================================================
+# Auth API — register, login, logout
+# ==========================================================================
+
+@app.post("/api/register")
+async def register(request: Request):
+    """Create a new user account."""
+    body = await request.json()
+    email = body.get("email", "").strip().lower()
+    password = body.get("password", "")
+
+    if not email or "@" not in email:
+        raise HTTPException(status_code=400, detail="Please enter a valid email address.")
+    if not password or len(password) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters.")
+
+    pw_hash = hash_password(password)
+    try:
+        user_id = create_user(email, pw_hash)
+    except sqlite3.IntegrityError:
+        raise HTTPException(status_code=409, detail="An account with this email already exists.")
+
+    response = JSONResponse({"status": "ok", "email": email})
+    set_auth_cookie(response, user_id)
+    return response
+
+
+@app.post("/api/login")
+async def login(request: Request):
+    """Sign in with email and password."""
+    body = await request.json()
+    email = body.get("email", "").strip().lower()
+    password = body.get("password", "")
+
+    if not email or "@" not in email:
+        raise HTTPException(status_code=400, detail="Please enter a valid email address.")
+    if not password:
+        raise HTTPException(status_code=400, detail="Password is required.")
+
+    user = get_user_by_email(email)
+    if not user or not verify_password(password, user["password_hash"]):
+        raise HTTPException(status_code=401, detail="Invalid email or password.")
+
+    response = JSONResponse({"status": "ok", "email": user["email"]})
+    set_auth_cookie(response, user["id"])
+    return response
+
+
+@app.post("/api/logout")
+async def logout(request: Request):
+    """Clear the auth cookie."""
+    response = JSONResponse({"status": "ok"})
+    clear_auth_cookie(response)
+    return response
+
+
+# ==========================================================================
 # Usage / Auth API
 # ==========================================================================
 
 @app.get("/api/usage")
 async def get_usage_status(request: Request):
-    session_id = get_session_id(request)
-    usage = get_usage(session_id)
+    user = get_current_user(request)
+    if not user:
+        return JSONResponse({
+            "statements_used": 0,
+            "receipts_used": 0,
+            "statements_limit": FREE_STATEMENT_LIMIT,
+            "receipts_limit": FREE_RECEIPT_LIMIT,
+            "has_subscription": False,
+            "email": None,
+            "stripe_configured": bool(STRIPE_PUBLISHABLE_KEY),
+        })
 
     is_subscriber = False
-    email = usage.get("email")
-    if usage.get("stripe_customer_id"):
-        is_subscriber = verify_subscription(usage["stripe_customer_id"])
+    if user.get("stripe_customer_id"):
+        is_subscriber = verify_subscription(user["stripe_customer_id"])
 
-    response = JSONResponse({
-        "statements_used": usage["statements"],
-        "receipts_used": usage["receipts"],
+    return JSONResponse({
+        "statements_used": user.get("statements_used", 0),
+        "receipts_used": user.get("receipts_used", 0),
         "statements_limit": FREE_STATEMENT_LIMIT,
         "receipts_limit": FREE_RECEIPT_LIMIT,
         "has_subscription": is_subscriber,
-        "email": email,
+        "email": user["email"],
         "stripe_configured": bool(STRIPE_PUBLISHABLE_KEY),
     })
-
-    if not session_id:
-        session_id = ensure_session(request)
-        set_session_cookie(response, session_id)
-
-    return response
 
 
 @app.post("/api/restore/request")
@@ -242,6 +394,12 @@ async def restore_verify_otp(request: Request):
         if not active_customer:
             raise HTTPException(status_code=404, detail="No active subscription found.")
 
+        # Update user record if logged in
+        user = get_current_user(request)
+        if user:
+            update_user(user["id"], stripe_customer_id=active_customer.id)
+
+        # Also update legacy session
         session_id = ensure_session(request)
         usage = get_usage(session_id)
         usage["stripe_customer_id"] = active_customer.id
@@ -268,8 +426,11 @@ async def restore_verify_otp(request: Request):
 
 @app.post("/api/parse")
 async def parse_statement(request: Request, file: UploadFile = File(...)):
-    session_id = ensure_session(request)
-    allowed, usage, is_sub = check_can_use(session_id, "statement")
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required.")
+
+    allowed, is_sub = check_can_use(user, "statement")
     if not allowed:
         raise HTTPException(status_code=403, detail="FREE_LIMIT_REACHED")
 
@@ -299,7 +460,7 @@ async def parse_statement(request: Request, file: UploadFile = File(...)):
         xlsx_b64 = base64.b64encode(output_path.read_bytes()).decode("utf-8")
 
         if not is_sub:
-            increment_usage(session_id, "statement")
+            increment_user_usage(user["id"], "statement")
 
         response = JSONResponse({
             "transactions": result["transactions"],
@@ -308,7 +469,6 @@ async def parse_statement(request: Request, file: UploadFile = File(...)):
             "xlsx_base64": xlsx_b64,
             "xlsx_filename": f"bankparse_{job_id}.xlsx",
         })
-        set_session_cookie(response, session_id)
         return response
     except HTTPException:
         raise
@@ -326,8 +486,11 @@ RECEIPT_EXTENSIONS = [".pdf"] + IMAGE_EXTENSIONS
 
 @app.post("/api/parse-receipt")
 async def parse_receipt_endpoint(request: Request, file: UploadFile = File(...)):
-    session_id = ensure_session(request)
-    allowed, usage, is_sub = check_can_use(session_id, "receipt")
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required.")
+
+    allowed, is_sub = check_can_use(user, "receipt")
     if not allowed:
         raise HTTPException(status_code=403, detail="FREE_LIMIT_REACHED")
 
@@ -354,7 +517,7 @@ async def parse_receipt_endpoint(request: Request, file: UploadFile = File(...))
         xlsx_b64 = base64.b64encode(output_path.read_bytes()).decode("utf-8")
 
         if not is_sub:
-            increment_usage(session_id, "receipt")
+            increment_user_usage(user["id"], "receipt")
 
         response = JSONResponse({
             "items": result["items"],
@@ -363,7 +526,6 @@ async def parse_receipt_endpoint(request: Request, file: UploadFile = File(...))
             "xlsx_base64": xlsx_b64,
             "xlsx_filename": f"receipt_{job_id}.xlsx",
         })
-        set_session_cookie(response, session_id)
         return response
     except HTTPException:
         raise
@@ -386,18 +548,17 @@ async def create_checkout_session(request: Request):
     if not STRIPE_AVAILABLE or not STRIPE_SECRET_KEY:
         raise HTTPException(status_code=501, detail="Stripe is not configured.")
 
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required.")
+
     body = await request.json()
     plan = body.get("plan", "pro")
-    email = body.get("email", "").strip().lower()
-
-    if not email or "@" not in email:
-        raise HTTPException(status_code=400, detail="Email is required to create a subscription.")
+    email = user["email"]
 
     price_id = STRIPE_PRO_PRICE_ID if plan == "pro" else STRIPE_BUSINESS_PRICE_ID
     if not price_id:
         raise HTTPException(status_code=500, detail="Stripe price not configured for this plan.")
-
-    session_id = ensure_session(request)
 
     try:
         existing = stripe.Customer.search(query=f'email:"{email}"')
@@ -407,10 +568,8 @@ async def create_checkout_session(request: Request):
             customer = stripe.Customer.create(email=email, metadata={"source": "bankparse"})
             customer_id = customer.id
 
-        usage = get_usage(session_id)
-        usage["stripe_customer_id"] = customer_id
-        usage["email"] = email
-        save_usage(session_id, usage)
+        # Link stripe customer to user record
+        update_user(user["id"], stripe_customer_id=customer_id)
 
         origin = request.headers.get("origin", "https://bankparse-pi.vercel.app")
         session = stripe.checkout.Session.create(
@@ -420,11 +579,10 @@ async def create_checkout_session(request: Request):
             line_items=[{"price": price_id, "quantity": 1}],
             success_url=f"{origin}/?session_id={{CHECKOUT_SESSION_ID}}&status=success",
             cancel_url=f"{origin}/?status=cancelled",
-            metadata={"session_id": session_id},
+            metadata={"user_id": str(user["id"])},
         )
 
         response = JSONResponse({"checkout_url": session.url, "session_id": session.id})
-        set_session_cookie(response, session_id)
         return response
 
     except HTTPException:
@@ -442,18 +600,17 @@ async def verify_checkout_session(request: Request, session_id: str):
         checkout = stripe.checkout.Session.retrieve(session_id)
 
         if checkout.payment_status == "paid" and checkout.customer:
-            browser_session = checkout.metadata.get("session_id") or ensure_session(request)
-            usage = get_usage(browser_session)
-            usage["stripe_customer_id"] = checkout.customer
+            # Update logged-in user's stripe_customer_id
+            user = get_current_user(request)
+            if user:
+                update_user(user["id"], stripe_customer_id=checkout.customer)
+
             customer = stripe.Customer.retrieve(checkout.customer)
-            usage["email"] = customer.email
-            save_usage(browser_session, usage)
 
             response = JSONResponse({
                 "status": "active",
                 "email": customer.email,
             })
-            set_session_cookie(response, browser_session)
             return response
 
         return JSONResponse({"status": "pending"})
@@ -496,4 +653,4 @@ async def get_config():
 
 @app.get("/api/health")
 async def health():
-    return {"status": "ok", "version": "2.2.0", "runtime": "vercel", "stripe_configured": bool(STRIPE_SECRET_KEY)}
+    return {"status": "ok", "version": "2.3.0", "runtime": "vercel", "stripe_configured": bool(STRIPE_SECRET_KEY)}

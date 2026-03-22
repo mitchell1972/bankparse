@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BankParse — Sign In</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        :root {
+            --primary: #1B4F72;
+            --primary-light: #2E86C1;
+            --accent: #27AE60;
+            --danger: #E74C3C;
+            --bg: #F8F9FA;
+            --card: #FFFFFF;
+            --text: #2C3E50;
+            --muted: #7F8C8D;
+            --border: #E5E7EB;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .login-container {
+            width: 100%;
+            max-width: 420px;
+            padding: 1.5rem;
+        }
+
+        .branding {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+
+        .branding h1 {
+            font-size: 2.2rem;
+            background: linear-gradient(135deg, var(--primary), var(--primary-light));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 0.5rem;
+        }
+
+        .branding p {
+            color: var(--muted);
+            font-size: 0.95rem;
+        }
+
+        .card {
+            background: var(--card);
+            border-radius: 12px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+            overflow: hidden;
+        }
+
+        .tabs {
+            display: flex;
+            border-bottom: 2px solid var(--border);
+        }
+
+        .tab {
+            flex: 1;
+            padding: 0.9rem;
+            text-align: center;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 0.95rem;
+            color: var(--muted);
+            background: none;
+            border: none;
+            border-bottom: 3px solid transparent;
+            margin-bottom: -2px;
+            transition: color 0.2s, border-color 0.2s;
+        }
+
+        .tab.active {
+            color: var(--primary);
+            border-bottom-color: var(--primary-light);
+        }
+
+        .tab:hover:not(.active) {
+            color: var(--text);
+        }
+
+        .form-body {
+            padding: 1.75rem;
+        }
+
+        .field {
+            margin-bottom: 1.25rem;
+        }
+
+        .field label {
+            display: block;
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--text);
+            margin-bottom: 0.4rem;
+        }
+
+        .field input {
+            width: 100%;
+            padding: 0.7rem 0.9rem;
+            border: 1.5px solid var(--border);
+            border-radius: 8px;
+            font-size: 0.95rem;
+            color: var(--text);
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        .field input:focus {
+            border-color: var(--primary-light);
+            box-shadow: 0 0 0 3px rgba(46,134,193,0.12);
+        }
+
+        .field input.error {
+            border-color: var(--danger);
+        }
+
+        .error-msg {
+            color: var(--danger);
+            font-size: 0.82rem;
+            margin-top: 0.3rem;
+            min-height: 1.2em;
+        }
+
+        .global-error {
+            background: #FDF2F2;
+            color: var(--danger);
+            padding: 0.7rem 0.9rem;
+            border-radius: 8px;
+            font-size: 0.88rem;
+            margin-bottom: 1rem;
+            display: none;
+            border: 1px solid #FECACA;
+        }
+
+        .global-error.visible {
+            display: block;
+        }
+
+        .submit-btn {
+            width: 100%;
+            padding: 0.8rem;
+            background: linear-gradient(135deg, var(--primary), var(--primary-light));
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: opacity 0.2s, transform 0.1s;
+        }
+
+        .submit-btn:hover {
+            opacity: 0.92;
+        }
+
+        .submit-btn:active {
+            transform: scale(0.99);
+        }
+
+        .submit-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .footer-text {
+            text-align: center;
+            margin-top: 1.5rem;
+            color: var(--muted);
+            font-size: 0.85rem;
+        }
+
+        .footer-text strong {
+            color: var(--accent);
+        }
+
+        .password-hint {
+            font-size: 0.8rem;
+            color: var(--muted);
+            margin-top: 0.25rem;
+        }
+
+        @media (max-width: 480px) {
+            .login-container { padding: 1rem; }
+            .branding h1 { font-size: 1.8rem; }
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <div class="branding">
+            <h1>BankParse</h1>
+            <p>Statements & Receipts to Spreadsheet</p>
+        </div>
+
+        <div class="card">
+            <div class="tabs">
+                <button class="tab active" data-tab="signin" onclick="switchTab('signin')">Sign In</button>
+                <button class="tab" data-tab="register" onclick="switchTab('register')">Create Account</button>
+            </div>
+
+            <div class="form-body">
+                <div class="global-error" id="globalError"></div>
+
+                <form id="authForm" onsubmit="handleSubmit(event)">
+                    <div class="field">
+                        <label for="email">Email</label>
+                        <input type="email" id="email" name="email" required autocomplete="email" placeholder="you@example.com">
+                        <div class="error-msg" id="emailError"></div>
+                    </div>
+
+                    <div class="field">
+                        <label for="password">Password</label>
+                        <input type="password" id="password" name="password" required autocomplete="current-password" placeholder="Enter your password">
+                        <div class="error-msg" id="passwordError"></div>
+                        <div class="password-hint" id="passwordHint" style="display:none">Minimum 8 characters</div>
+                    </div>
+
+                    <button type="submit" class="submit-btn" id="submitBtn">Sign In</button>
+                </form>
+            </div>
+        </div>
+
+        <div class="footer-text">
+            1 free statement + 1 free receipt &bull; Then <strong>&pound;9.99/mo</strong>
+        </div>
+    </div>
+
+    <script>
+        let currentTab = 'signin';
+
+        function switchTab(tab) {
+            currentTab = tab;
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelector(`[data-tab="${tab}"]`).classList.add('active');
+
+            const btn = document.getElementById('submitBtn');
+            const hint = document.getElementById('passwordHint');
+            const pwInput = document.getElementById('password');
+
+            if (tab === 'register') {
+                btn.textContent = 'Create Account';
+                hint.style.display = 'block';
+                pwInput.autocomplete = 'new-password';
+            } else {
+                btn.textContent = 'Sign In';
+                hint.style.display = 'none';
+                pwInput.autocomplete = 'current-password';
+            }
+
+            clearErrors();
+        }
+
+        function clearErrors() {
+            document.getElementById('emailError').textContent = '';
+            document.getElementById('passwordError').textContent = '';
+            const ge = document.getElementById('globalError');
+            ge.textContent = '';
+            ge.classList.remove('visible');
+            document.getElementById('email').classList.remove('error');
+            document.getElementById('password').classList.remove('error');
+        }
+
+        function showError(field, msg) {
+            if (field === 'global') {
+                const ge = document.getElementById('globalError');
+                ge.textContent = msg;
+                ge.classList.add('visible');
+            } else {
+                document.getElementById(field + 'Error').textContent = msg;
+                document.getElementById(field).classList.add('error');
+            }
+        }
+
+        async function handleSubmit(e) {
+            e.preventDefault();
+            clearErrors();
+
+            const email = document.getElementById('email').value.trim();
+            const password = document.getElementById('password').value;
+
+            if (!email || !email.includes('@')) {
+                showError('email', 'Please enter a valid email address.');
+                return;
+            }
+
+            if (!password) {
+                showError('password', 'Password is required.');
+                return;
+            }
+
+            if (currentTab === 'register' && password.length < 8) {
+                showError('password', 'Password must be at least 8 characters.');
+                return;
+            }
+
+            const btn = document.getElementById('submitBtn');
+            btn.disabled = true;
+            btn.textContent = currentTab === 'signin' ? 'Signing in...' : 'Creating account...';
+
+            const endpoint = currentTab === 'signin' ? '/api/login' : '/api/register';
+
+            try {
+                const resp = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password }),
+                });
+
+                const data = await resp.json();
+
+                if (!resp.ok) {
+                    const detail = data.detail || 'Something went wrong. Please try again.';
+                    if (detail.toLowerCase().includes('email')) {
+                        showError('email', detail);
+                    } else if (detail.toLowerCase().includes('password')) {
+                        showError('password', detail);
+                    } else {
+                        showError('global', detail);
+                    }
+                    return;
+                }
+
+                window.location.href = '/';
+            } catch (err) {
+                showError('global', 'Network error. Please check your connection and try again.');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = currentTab === 'signin' ? 'Sign In' : 'Create Account';
+            }
+        }
+    </script>
+</body>
+</html>

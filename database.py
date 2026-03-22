@@ -68,6 +68,17 @@ def init_db():
                 created_at REAL DEFAULT (strftime('%s', 'now'))
             );
 
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                email TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL,
+                stripe_customer_id TEXT,
+                statements_used INTEGER DEFAULT 0,
+                receipts_used INTEGER DEFAULT 0,
+                created_at REAL DEFAULT (strftime('%s', 'now'))
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
             CREATE INDEX IF NOT EXISTS idx_sessions_email ON sessions(email);
             CREATE INDEX IF NOT EXISTS idx_sessions_stripe ON sessions(stripe_customer_id);
             CREATE INDEX IF NOT EXISTS idx_otp_email ON otp_codes(email);
@@ -120,6 +131,64 @@ def increment_usage(session_id: str, mode: str):
                 {column} = {column} + 1,
                 updated_at = strftime('%s', 'now')
         """, (session_id,))
+
+
+# --- User functions ---
+
+def create_user(email: str, password_hash: str) -> int:
+    """Insert a new user, return their id. Raises sqlite3.IntegrityError if email exists."""
+    with get_db() as conn:
+        cursor = conn.execute(
+            "INSERT INTO users (email, password_hash) VALUES (?, ?)",
+            (email, password_hash)
+        )
+        return cursor.lastrowid
+
+
+def get_user_by_email(email: str) -> dict | None:
+    """Return user row as dict, or None."""
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT id, email, password_hash, stripe_customer_id, statements_used, receipts_used, created_at FROM users WHERE email = ?",
+            (email,)
+        ).fetchone()
+    if row:
+        return dict(row)
+    return None
+
+
+def get_user_by_id(user_id: int) -> dict | None:
+    """Return user row as dict, or None."""
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT id, email, password_hash, stripe_customer_id, statements_used, receipts_used, created_at FROM users WHERE id = ?",
+            (user_id,)
+        ).fetchone()
+    if row:
+        return dict(row)
+    return None
+
+
+def update_user(user_id: int, **kwargs):
+    """Update user fields (stripe_customer_id, statements_used, etc.)."""
+    allowed = {"stripe_customer_id", "statements_used", "receipts_used", "email", "password_hash"}
+    fields = {k: v for k, v in kwargs.items() if k in allowed}
+    if not fields:
+        return
+    set_clause = ", ".join(f"{k} = ?" for k in fields)
+    values = list(fields.values()) + [user_id]
+    with get_db() as conn:
+        conn.execute(f"UPDATE users SET {set_clause} WHERE id = ?", values)
+
+
+def increment_user_usage(user_id: int, mode: str):
+    """Increment statements_used or receipts_used for a user."""
+    column = "statements_used" if mode == "statement" else "receipts_used"
+    with get_db() as conn:
+        conn.execute(
+            f"UPDATE users SET {column} = {column} + 1 WHERE id = ?",
+            (user_id,)
+        )
 
 
 # --- OTP functions ---
