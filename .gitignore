@@ -4,6 +4,7 @@ uploads/
 outputs/
 .claude/
 *.xlsx
+*.db
 .DS_Store
 .vercel
 .env

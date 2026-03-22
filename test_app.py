@@ -1,20 +1,48 @@
 """
-Test suite for BankParse — tests parsers and XLSX export with sample data.
+Test suite for BankParse — tests parsers, XLSX export, database, OTP, and API endpoints.
 """
 import os
 import csv
-import json
-import tempfile
+import time
+import pytest
 from pathlib import Path
+from unittest.mock import patch
 
-# Test CSV parser
+from fastapi.testclient import TestClient
+
+# Set test database path before importing app
+os.environ["BANKPARSE_DB_PATH"] = "/tmp/bankparse_test.db"
+
+from app import app
+from database import (
+    get_usage, save_usage, increment_usage,
+    store_otp, verify_otp, cleanup_expired_otps,
+    track_output_file, get_stale_output_files, remove_output_file_record,
+    init_db, get_connection,
+)
+from otp import generate_otp
 from parsers.csv_parser import parse_csv
 from parsers.xlsx_exporter import export_to_xlsx, export_receipt_to_xlsx
 from parsers.receipt_parser import parse_receipt_text
 
 
+@pytest.fixture(autouse=True)
+def clean_db():
+    """Reset the test database before each test."""
+    conn = get_connection()
+    conn.execute("DELETE FROM sessions")
+    conn.execute("DELETE FROM otp_codes")
+    conn.execute("DELETE FROM output_files")
+    conn.commit()
+    yield
+
+
+@pytest.fixture
+def client():
+    return TestClient(app)
+
+
 def create_sample_csv(path: str):
-    """Create a sample bank statement CSV (Barclays-style)."""
     with open(path, "w", newline="") as f:
         writer = csv.writer(f)
         writer.writerow(["Date", "Description", "Money Out", "Money In", "Balance"])
@@ -33,7 +61,6 @@ def create_sample_csv(path: str):
 
 
 def create_sample_csv_lloyds(path: str):
-    """Create a sample Lloyds-format CSV."""
     with open(path, "w", newline="") as f:
         writer = csv.writer(f)
         writer.writerow(["Transaction Date", "Transaction Type", "Transaction Description", "Debit Amount", "Credit Amount", "Balance"])
@@ -44,119 +71,60 @@ def create_sample_csv_lloyds(path: str):
         writer.writerow(["05/02/2025", "DD", "SCOTTISH POWER", "89.00", "", "6553.56"])
 
 
-def test_csv_parser():
-    """Test CSV parsing with sample Barclays-style statement."""
-    print("=" * 60)
-    print("TEST 1: CSV Parser (Barclays format)")
-    print("=" * 60)
+# --- Parser Tests ---
 
-    with tempfile.NamedTemporaryFile(suffix=".csv", delete=False, mode="w") as f:
-        path = f.name
+def test_csv_parser(tmp_path):
+    path = str(tmp_path / "barclays.csv")
     create_sample_csv(path)
-
     result = parse_csv(path)
-    os.unlink(path)
 
-    assert len(result["transactions"]) == 12, f"Expected 12 transactions, got {len(result['transactions'])}"
+    assert len(result["transactions"]) == 12
     assert result["summary"]["total_transactions"] == 12
 
-    print(f"  Transactions found: {result['summary']['total_transactions']}")
-    print(f"  Total credits: £{result['summary']['total_credits']:.2f}")
-    print(f"  Total debits: £{result['summary']['total_debits']:.2f}")
-    print(f"  Net: £{result['summary']['net']:.2f}")
-    print(f"  Columns detected: {result['metadata']['columns_detected']}")
-
-    # Check a specific transaction
     salary = [t for t in result["transactions"] if "ACME" in t["description"]]
-    assert len(salary) == 1, "Should find salary transaction"
-    assert salary[0]["amount"] == 2850.00, f"Salary should be 2850, got {salary[0]['amount']}"
-
-    print("  ✓ All assertions passed")
-    return result
+    assert len(salary) == 1
+    assert salary[0]["amount"] == 2850.00
 
 
-def test_csv_parser_lloyds():
-    """Test CSV parsing with Lloyds-style statement."""
-    print("\n" + "=" * 60)
-    print("TEST 2: CSV Parser (Lloyds format)")
-    print("=" * 60)
-
-    with tempfile.NamedTemporaryFile(suffix=".csv", delete=False, mode="w") as f:
-        path = f.name
+def test_csv_parser_lloyds(tmp_path):
+    path = str(tmp_path / "lloyds.csv")
     create_sample_csv_lloyds(path)
-
     result = parse_csv(path)
-    os.unlink(path)
 
-    assert len(result["transactions"]) == 5, f"Expected 5 transactions, got {len(result['transactions'])}"
-    print(f"  Transactions found: {result['summary']['total_transactions']}")
-    print(f"  Total credits: £{result['summary']['total_credits']:.2f}")
-    print(f"  Total debits: £{result['summary']['total_debits']:.2f}")
-    print("  ✓ All assertions passed")
-    return result
+    assert len(result["transactions"]) == 5
+    assert result["summary"]["total_transactions"] == 5
 
 
-def test_xlsx_export(data: dict):
-    """Test XLSX export."""
-    print("\n" + "=" * 60)
-    print("TEST 3: XLSX Export")
-    print("=" * 60)
+def test_xlsx_export(tmp_path):
+    csv_path = str(tmp_path / "barclays.csv")
+    create_sample_csv(csv_path)
+    data = parse_csv(csv_path)
 
-    with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as f:
-        path = f.name
+    xlsx_path = str(tmp_path / "output.xlsx")
+    export_to_xlsx(data, xlsx_path)
 
-    export_to_xlsx(data, path)
+    assert os.path.getsize(xlsx_path) > 0
 
-    file_size = os.path.getsize(path)
-    assert file_size > 0, "XLSX file should not be empty"
-    print(f"  File created: {path}")
-    print(f"  File size: {file_size:,} bytes")
-
-    # Verify it can be read back
     import openpyxl
-    wb = openpyxl.load_workbook(path)
+    wb = openpyxl.load_workbook(xlsx_path)
     assert "Transactions" in wb.sheetnames
     assert "Summary" in wb.sheetnames
-    print(f"  Sheets: {wb.sheetnames}")
-
-    ws = wb["Transactions"]
-    print(f"  Rows in Transactions sheet: {ws.max_row}")
-    print("  ✓ All assertions passed")
-
-    os.unlink(path)
 
 
-def test_full_pipeline():
-    """Test the full pipeline: CSV → parse → XLSX."""
-    print("\n" + "=" * 60)
-    print("TEST 4: Full Pipeline (CSV → Parse → XLSX)")
-    print("=" * 60)
-
-    # Create CSV
-    csv_path = "/tmp/test_statement.csv"
+def test_full_pipeline(tmp_path):
+    csv_path = str(tmp_path / "statement.csv")
     create_sample_csv(csv_path)
-
-    # Parse
     result = parse_csv(csv_path)
-    os.unlink(csv_path)
 
-    # Export
-    xlsx_path = "/tmp/test_output.xlsx"
+    xlsx_path = str(tmp_path / "output.xlsx")
     export_to_xlsx(result, xlsx_path)
 
     assert os.path.exists(xlsx_path)
-    print(f"  Pipeline complete: 12 transactions → {os.path.getsize(xlsx_path):,} byte XLSX")
-    print("  ✓ Full pipeline working")
-
-    os.unlink(xlsx_path)
+    assert os.path.getsize(xlsx_path) > 0
+    assert len(result["transactions"]) == 12
 
 
 def test_receipt_parser():
-    """Test receipt text parsing with a sample Tesco receipt."""
-    print("\n" + "=" * 60)
-    print("TEST 5: Receipt Parser (Tesco-style)")
-    print("=" * 60)
-
     sample_receipt = """
 TESCO STORES LTD
 Express Manchester
@@ -186,31 +154,15 @@ Visa Debit ****7742
 Clubcard Points: 20
 THANK YOU FOR SHOPPING AT TESCO
 """
-
     result = parse_receipt_text(sample_receipt)
 
-    assert len(result["items"]) == 10, f"Expected 10 items, got {len(result['items'])}"
+    assert len(result["items"]) == 10
     assert result["metadata"]["store_name"] == "TESCO STORES LTD"
     assert result["metadata"]["date"] == "2025-03-15"
     assert result["totals"].get("total") == 20.38
 
-    print(f"  Store: {result['metadata']['store_name']}")
-    print(f"  Date: {result['metadata']['date']}")
-    print(f"  Items found: {len(result['items'])}")
-    for item in result["items"]:
-        print(f"    - {item['description']}: £{item['total_price']:.2f} (qty: {item['quantity']})")
-    print(f"  Subtotal: £{result['totals'].get('subtotal', 0):.2f}")
-    print(f"  Total: £{result['totals'].get('total', 0):.2f}")
-    print("  ✓ All assertions passed")
-    return result
-
 
 def test_receipt_parser_sainsburys():
-    """Test receipt parsing with a Sainsbury's-style receipt."""
-    print("\n" + "=" * 60)
-    print("TEST 6: Receipt Parser (Sainsbury's-style)")
-    print("=" * 60)
-
     sample_receipt = """
 Sainsbury's
 Local Wandsworth
@@ -233,26 +185,14 @@ TOTAL                 18.55
 Paid by Card          18.55
 Nectar Points: 18
 """
-
     result = parse_receipt_text(sample_receipt)
 
-    assert len(result["items"]) == 9, f"Expected 9 items, got {len(result['items'])}"
+    assert len(result["items"]) == 9
     assert result["totals"].get("total") == 18.55
     assert result["metadata"]["date"] == "2025-03-22"
 
-    print(f"  Store: {result['metadata']['store_name']}")
-    print(f"  Items found: {len(result['items'])}")
-    print(f"  Total: £{result['totals'].get('total', 0):.2f}")
-    print("  ✓ All assertions passed")
-    return result
 
-
-def test_receipt_xlsx_export():
-    """Test XLSX export of receipt data."""
-    print("\n" + "=" * 60)
-    print("TEST 7: Receipt XLSX Export")
-    print("=" * 60)
-
+def test_receipt_xlsx_export(tmp_path):
     data = {
         "items": [
             {"description": "Milk", "quantity": 1, "unit_price": 1.55, "total_price": 1.55},
@@ -263,39 +203,125 @@ def test_receipt_xlsx_export():
         "metadata": {"store_name": "Test Store", "date": "2025-03-15", "item_count": 3, "currency": "GBP"},
     }
 
-    with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as f:
-        path = f.name
+    xlsx_path = str(tmp_path / "receipt.xlsx")
+    export_receipt_to_xlsx(data, xlsx_path)
 
-    export_receipt_to_xlsx(data, path)
-
-    file_size = os.path.getsize(path)
-    assert file_size > 0, "XLSX file should not be empty"
+    assert os.path.getsize(xlsx_path) > 0
 
     import openpyxl
-    wb = openpyxl.load_workbook(path)
+    wb = openpyxl.load_workbook(xlsx_path)
     assert "Receipt Items" in wb.sheetnames
     ws = wb["Receipt Items"]
-
-    # Check store name in title
     assert "Test Store" in str(ws["A1"].value)
 
-    print(f"  File size: {file_size:,} bytes")
-    print(f"  Sheets: {wb.sheetnames}")
-    print(f"  Rows: {ws.max_row}")
-    print("  ✓ All assertions passed")
 
-    os.unlink(path)
+# --- Database Tests ---
+
+def test_database_usage_crud():
+    usage = get_usage("test_session_1")
+    assert usage["statements"] == 0
+    assert usage["receipts"] == 0
+
+    usage["statements"] = 3
+    usage["email"] = "test@example.com"
+    save_usage("test_session_1", usage)
+
+    loaded = get_usage("test_session_1")
+    assert loaded["statements"] == 3
+    assert loaded["email"] == "test@example.com"
 
 
-if __name__ == "__main__":
-    result1 = test_csv_parser()
-    result2 = test_csv_parser_lloyds()
-    test_xlsx_export(result1)
-    test_full_pipeline()
-    test_receipt_parser()
-    test_receipt_parser_sainsburys()
-    test_receipt_xlsx_export()
+def test_database_increment_usage():
+    increment_usage("test_session_2", "statement")
+    increment_usage("test_session_2", "statement")
+    increment_usage("test_session_2", "receipt")
 
-    print("\n" + "=" * 60)
-    print("ALL 7 TESTS PASSED ✓")
-    print("=" * 60)
+    usage = get_usage("test_session_2")
+    assert usage["statements"] == 2
+    assert usage["receipts"] == 1
+
+
+def test_database_empty_session():
+    usage = get_usage("")
+    assert usage["statements"] == 0
+    assert usage["stripe_customer_id"] is None
+
+
+# --- OTP Tests ---
+
+def test_otp_generation():
+    code = generate_otp()
+    assert len(code) == 6
+    assert code.isdigit()
+
+
+def test_otp_store_and_verify():
+    store_otp("user@test.com", "123456", "session_abc")
+    result = verify_otp("user@test.com", "123456")
+    assert result == "session_abc"
+
+
+def test_otp_single_use():
+    store_otp("user2@test.com", "654321", "session_xyz")
+    assert verify_otp("user2@test.com", "654321") == "session_xyz"
+    assert verify_otp("user2@test.com", "654321") is None
+
+
+def test_otp_wrong_code():
+    store_otp("user3@test.com", "111111", "session_123")
+    assert verify_otp("user3@test.com", "999999") is None
+
+
+def test_otp_invalidates_previous():
+    store_otp("user4@test.com", "111111", "session_a")
+    store_otp("user4@test.com", "222222", "session_b")
+    assert verify_otp("user4@test.com", "111111") is None
+    assert verify_otp("user4@test.com", "222222") == "session_b"
+
+
+# --- Output File Tracking Tests ---
+
+def test_output_file_tracking():
+    track_output_file("test_file.xlsx")
+    stale = get_stale_output_files(max_age_seconds=0)
+    assert "test_file.xlsx" in stale
+
+    remove_output_file_record("test_file.xlsx")
+    stale = get_stale_output_files(max_age_seconds=0)
+    assert "test_file.xlsx" not in stale
+
+
+# --- API Tests ---
+
+def test_health_endpoint(client):
+    response = client.get("/api/health")
+    assert response.status_code == 200
+    assert response.json()["status"] == "ok"
+    assert response.json()["version"] == "2.2.0"
+
+
+def test_home_page(client):
+    response = client.get("/")
+    assert response.status_code == 200
+
+
+def test_parse_invalid_file(client):
+    response = client.post("/api/parse", files={"file": ("test.exe", b"data", "application/octet-stream")})
+    assert response.status_code == 400
+
+
+def test_usage_endpoint(client):
+    response = client.get("/api/usage")
+    assert response.status_code == 200
+    data = response.json()
+    assert "statements_used" in data
+    assert "receipts_used" in data
+    assert "has_subscription" in data
+
+
+def test_config_endpoint(client):
+    response = client.get("/api/config")
+    assert response.status_code == 200
+    data = response.json()
+    assert "free_statement_limit" in data
+    assert "plans" in data
