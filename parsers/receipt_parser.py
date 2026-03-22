@@ -12,11 +12,18 @@ import pdfplumber
 
 # Try importing image/OCR libraries (optional)
 try:
-    from PIL import Image
-    import pytesseract
-    HAS_OCR = True
+    from PIL import Image, ImageFilter, ImageEnhance
+    HAS_PIL = True
 except ImportError:
-    HAS_OCR = False
+    HAS_PIL = False
+
+try:
+    import pytesseract
+    HAS_TESSERACT = True
+except ImportError:
+    HAS_TESSERACT = False
+
+HAS_OCR = HAS_PIL and HAS_TESSERACT
 
 
 # Common date formats on receipts
@@ -210,7 +217,7 @@ def parse_receipt_text(text: str) -> dict:
         "totals": totals,
         "metadata": {
             "store_name": store_name,
-            "date": receipt_date or datetime.now().strftime("%Y-%m-%d"),
+            "date": receipt_date,  # None if no date found; callers should handle gracefully
             "item_count": len(items),
             "currency": "GBP",
         },
@@ -242,22 +249,91 @@ def parse_receipt_pdf(file_path: str) -> dict:
     return result
 
 
+def _preprocess_image(image: "Image.Image") -> "Image.Image":
+    """
+    Preprocess a receipt image for better OCR accuracy.
+    Applies grayscale conversion, resizing, sharpening, contrast
+    enhancement, and adaptive thresholding using only Pillow (no OpenCV).
+    """
+    # Convert to grayscale
+    if image.mode != "L":
+        image = image.convert("L")
+
+    # Resize if too small — ensure minimum width of 1000px for OCR accuracy
+    MIN_WIDTH = 1000
+    w, h = image.size
+    if w < MIN_WIDTH:
+        scale = MIN_WIDTH / w
+        image = image.resize((MIN_WIDTH, int(h * scale)), Image.LANCZOS)
+
+    # Sharpen
+    image = image.filter(ImageFilter.SHARPEN)
+
+    # Increase contrast
+    enhancer = ImageEnhance.Contrast(image)
+    image = enhancer.enhance(2.0)
+
+    # Convert to black and white with threshold
+    image = image.point(lambda x: 255 if x > 140 else 0, "1")
+
+    return image
+
+
 def parse_receipt_image(file_path: str) -> dict:
     """Parse a receipt image using OCR (pytesseract)."""
-    if not HAS_OCR:
+    if not HAS_PIL:
         raise ImportError(
-            "OCR support requires Pillow and pytesseract. "
-            "Install with: pip install Pillow pytesseract\n"
-            "Also install Tesseract OCR: https://github.com/tesseract-ocr/tesseract"
+            "Receipt image parsing requires Pillow. "
+            "Install with: pip install Pillow"
+        )
+    if not HAS_TESSERACT:
+        raise ImportError(
+            "Receipt image parsing requires pytesseract. "
+            "Install with: pip install pytesseract. "
+            "Also requires Tesseract OCR engine."
         )
 
     image = Image.open(file_path)
 
-    # Convert to grayscale for better OCR
-    if image.mode != "L":
-        image = image.convert("L")
+    # Apply preprocessing pipeline for better OCR results
+    image = _preprocess_image(image)
 
-    text = pytesseract.image_to_string(image)
+    # PSM 6: assume a single uniform block of text (works well for receipts)
+    text = pytesseract.image_to_string(image, config="--psm 6")
+
+    # Confidence check — reject garbage OCR output
+    if len(text.strip()) < 20:
+        return {
+            "items": [],
+            "totals": {},
+            "metadata": {
+                "store_name": "Unknown Store",
+                "date": None,
+                "item_count": 0,
+                "currency": "GBP",
+                "source": "image",
+                "method": "tesseract_ocr",
+                "error": "OCR produced too little text (< 20 chars). Image may be unreadable.",
+            },
+        }
+
+    # Check for mostly non-ASCII garbage
+    ascii_chars = sum(1 for c in text if c.isascii())
+    if len(text) > 0 and ascii_chars / len(text) < 0.5:
+        return {
+            "items": [],
+            "totals": {},
+            "metadata": {
+                "store_name": "Unknown Store",
+                "date": None,
+                "item_count": 0,
+                "currency": "GBP",
+                "source": "image",
+                "method": "tesseract_ocr",
+                "error": "OCR output contains mostly non-ASCII characters. Image may be unreadable.",
+            },
+        }
+
     result = parse_receipt_text(text)
     result["metadata"]["source"] = "image"
     result["metadata"]["method"] = "tesseract_ocr"

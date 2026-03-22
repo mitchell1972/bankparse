@@ -18,8 +18,8 @@ COLUMN_ALIASES = {
     "date": ["date", "transaction date", "trans date", "posting date", "value date", "posted", "booked"],
     "description": ["description", "details", "narrative", "reference", "particulars", "memo", "payee", "name", "transaction description"],
     "amount": ["amount", "value", "transaction amount"],
-    "debit": ["debit", "money out", "withdrawal", "paid out", "dr", "debits", "out"],
-    "credit": ["credit", "money in", "deposit", "paid in", "cr", "credits", "in"],
+    "debit": ["debit", "money out", "withdrawal", "paid out", "dr", "debits"],
+    "credit": ["credit", "money in", "deposit", "paid in", "cr", "credits"],
     "balance": ["balance", "running balance", "closing balance", "available balance"],
     "type": ["type", "transaction type", "trans type", "category"],
 }
@@ -66,7 +66,7 @@ def parse_date_flexible(date_str: str) -> Optional[str]:
         try:
             dt = datetime.strptime(date_str, fmt)
             # Sanity check: year should be reasonable
-            if 2000 <= dt.year <= 2030:
+            if 2000 <= dt.year <= 2040:
                 return dt.strftime("%Y-%m-%d")
         except ValueError:
             continue
@@ -93,7 +93,7 @@ def parse_csv(file_path: str) -> dict:
     Auto-detects delimiter, encoding, and column mappings.
     """
     # Try to read the file and detect format
-    encodings = ["utf-8", "latin-1", "cp1252"]
+    encodings = ["utf-8-sig", "utf-8", "latin-1", "cp1252"]
     df = None
 
     for encoding in encodings:

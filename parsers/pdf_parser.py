@@ -88,6 +88,9 @@ def parse_date(text: str) -> Optional[str]:
         if match:
             try:
                 dt = datetime.strptime(match.group(), fmt)
+                # Sanity check: bank statements should be recent
+                if dt.year < 2000 or dt.year > 2040:
+                    continue
                 return dt.strftime("%Y-%m-%d")
             except ValueError:
                 continue
@@ -95,8 +98,11 @@ def parse_date(text: str) -> Optional[str]:
 
 
 def clean_amount(text: str) -> Optional[float]:
-    """Convert a money string to a float."""
+    """Convert a money string to a float. Handles parenthetical negatives."""
     text = text.strip().replace("£", "").replace(",", "").replace(" ", "")
+    # Handle parenthetical negatives: (100.00) → -100.00
+    if text.startswith("(") and text.endswith(")"):
+        text = "-" + text[1:-1]
     try:
         return float(text)
     except ValueError:
