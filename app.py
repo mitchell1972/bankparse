@@ -1,17 +1,17 @@
 """
 BankParse — FastAPI Application
 Bank statement and receipt to spreadsheet converter with Stripe billing.
+Identity: cookie-based, tied to Stripe customer email. No login needed.
 """
 
 import os
 import uuid
-import hmac
 import hashlib
 import json
+import secrets
 from pathlib import Path
-from datetime import datetime
 
-from fastapi import FastAPI, UploadFile, File, HTTPException, Request, Header
+from fastapi import FastAPI, UploadFile, File, HTTPException, Request, Cookie
 from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -38,7 +38,7 @@ UPLOAD_DIR.mkdir(exist_ok=True)
 OUTPUT_DIR.mkdir(exist_ok=True)
 USAGE_DIR.mkdir(exist_ok=True)
 
-# Stripe keys (set via environment variables)
+# Stripe keys
 STRIPE_SECRET_KEY = os.environ.get("STRIPE_SECRET_KEY", "")
 STRIPE_PUBLISHABLE_KEY = os.environ.get("STRIPE_PUBLISHABLE_KEY", "")
 STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
@@ -52,71 +52,106 @@ if STRIPE_AVAILABLE and STRIPE_SECRET_KEY:
 FREE_STATEMENT_LIMIT = 1
 FREE_RECEIPT_LIMIT = 1
 
-# App
-app = FastAPI(title="BankParse", version="2.0.0")
-templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
+# Cookie config
+COOKIE_NAME = "bp_session"
+COOKIE_MAX_AGE = 60 * 60 * 24 * 365  # 1 year
 
-# Serve static output files
+# App
+app = FastAPI(title="BankParse", version="2.1.0")
+templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 app.mount("/downloads", StaticFiles(directory=str(OUTPUT_DIR)), name="downloads")
 
 
-# --- Usage Tracking (file-based, simple) ---
+# ==========================================================================
+# Identity & Usage — cookie-based, tied to Stripe customer
+# ==========================================================================
 
-def get_usage_key(request: Request) -> str:
-    """Generate a usage fingerprint from IP + User-Agent."""
-    ip = request.client.host or "unknown"
-    ua = request.headers.get("user-agent", "unknown")
-    raw = f"{ip}:{ua}"
-    return hashlib.sha256(raw.encode()).hexdigest()[:16]
+def get_session_id(request: Request) -> str:
+    """Get or generate a session ID from cookie. Returns the session ID."""
+    return request.cookies.get(COOKIE_NAME, "")
 
 
-def get_usage(usage_key: str) -> dict:
-    """Get usage data for a fingerprint."""
-    usage_file = USAGE_DIR / f"{usage_key}.json"
+def ensure_session(request: Request) -> str:
+    """Return existing session ID or generate a new one."""
+    sid = get_session_id(request)
+    if sid:
+        return sid
+    return f"bp_{secrets.token_urlsafe(24)}"
+
+
+def get_usage(session_id: str) -> dict:
+    """Get usage data for a session."""
+    if not session_id:
+        return {"statements": 0, "receipts": 0, "stripe_customer_id": None, "email": None}
+    safe_id = hashlib.sha256(session_id.encode()).hexdigest()[:20]
+    usage_file = USAGE_DIR / f"{safe_id}.json"
     if usage_file.exists():
         return json.loads(usage_file.read_text())
-    return {"statements": 0, "receipts": 0, "subscription_id": None, "customer_id": None}
+    return {"statements": 0, "receipts": 0, "stripe_customer_id": None, "email": None}
 
 
-def save_usage(usage_key: str, usage: dict):
-    """Save usage data."""
-    usage_file = USAGE_DIR / f"{usage_key}.json"
+def save_usage(session_id: str, usage: dict):
+    """Save usage data for a session."""
+    safe_id = hashlib.sha256(session_id.encode()).hexdigest()[:20]
+    usage_file = USAGE_DIR / f"{safe_id}.json"
     usage_file.write_text(json.dumps(usage))
 
 
-def check_can_use(usage_key: str, mode: str) -> tuple[bool, dict]:
-    """Check if user can use the service. Returns (allowed, usage_data)."""
-    usage = get_usage(usage_key)
+def verify_subscription(stripe_customer_id: str) -> bool:
+    """Check if a Stripe customer has an active subscription."""
+    if not stripe_customer_id or not STRIPE_AVAILABLE or not STRIPE_SECRET_KEY:
+        return False
+    try:
+        subs = stripe.Subscription.list(customer=stripe_customer_id, status="active", limit=1)
+        return len(subs.data) > 0
+    except Exception:
+        return False
 
-    # Check for active Stripe subscription
-    if usage.get("subscription_id") and STRIPE_AVAILABLE and STRIPE_SECRET_KEY:
-        try:
-            sub = stripe.Subscription.retrieve(usage["subscription_id"])
-            if sub.status in ("active", "trialing"):
-                return True, usage
-        except Exception:
-            pass
+
+def check_can_use(session_id: str, mode: str) -> tuple:
+    """Check if user can use the service. Returns (allowed, usage, is_subscriber)."""
+    usage = get_usage(session_id)
+
+    # Check Stripe subscription
+    if usage.get("stripe_customer_id"):
+        if verify_subscription(usage["stripe_customer_id"]):
+            return True, usage, True
 
     # Free tier check
     if mode == "statement" and usage["statements"] >= FREE_STATEMENT_LIMIT:
-        return False, usage
+        return False, usage, False
     if mode == "receipt" and usage["receipts"] >= FREE_RECEIPT_LIMIT:
-        return False, usage
+        return False, usage, False
 
-    return True, usage
+    return True, usage, False
 
 
-def increment_usage(usage_key: str, mode: str):
+def increment_usage(session_id: str, mode: str):
     """Increment usage counter after successful parse."""
-    usage = get_usage(usage_key)
+    usage = get_usage(session_id)
     if mode == "statement":
         usage["statements"] += 1
     elif mode == "receipt":
         usage["receipts"] += 1
-    save_usage(usage_key, usage)
+    save_usage(session_id, usage)
 
 
-# --- Routes ---
+def set_session_cookie(response: JSONResponse, session_id: str) -> JSONResponse:
+    """Set the session cookie on a response."""
+    response.set_cookie(
+        key=COOKIE_NAME,
+        value=session_id,
+        max_age=COOKIE_MAX_AGE,
+        httponly=True,
+        samesite="lax",
+        secure=False,  # Set to True in production with HTTPS
+    )
+    return response
+
+
+# ==========================================================================
+# Page Routes
+# ==========================================================================
 
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request):
@@ -128,42 +163,109 @@ async def landing(request: Request):
     return templates.TemplateResponse("landing.html", {"request": request})
 
 
+# ==========================================================================
+# Usage / Auth API
+# ==========================================================================
+
 @app.get("/api/usage")
 async def get_usage_status(request: Request):
-    """Get current usage status and limits."""
-    usage_key = get_usage_key(request)
-    usage = get_usage(usage_key)
+    """Get current usage status and subscription state."""
+    session_id = get_session_id(request)
+    usage = get_usage(session_id)
 
-    has_subscription = False
-    if usage.get("subscription_id") and STRIPE_AVAILABLE and STRIPE_SECRET_KEY:
-        try:
-            sub = stripe.Subscription.retrieve(usage["subscription_id"])
-            has_subscription = sub.status in ("active", "trialing")
-        except Exception:
-            has_subscription = False
+    is_subscriber = False
+    email = usage.get("email")
+    if usage.get("stripe_customer_id"):
+        is_subscriber = verify_subscription(usage["stripe_customer_id"])
 
-    return JSONResponse({
+    response = JSONResponse({
         "statements_used": usage["statements"],
         "receipts_used": usage["receipts"],
         "statements_limit": FREE_STATEMENT_LIMIT,
         "receipts_limit": FREE_RECEIPT_LIMIT,
-        "has_subscription": has_subscription,
+        "has_subscription": is_subscriber,
+        "email": email,
         "stripe_configured": bool(STRIPE_PUBLISHABLE_KEY),
     })
 
+    # Ensure session cookie exists
+    if not session_id:
+        session_id = ensure_session(request)
+        set_session_cookie(response, session_id)
+
+    return response
+
+
+@app.post("/api/restore")
+async def restore_subscription(request: Request):
+    """
+    Restore a subscription by email lookup.
+    User enters their email → we look up their Stripe customer → verify subscription
+    → link their session to the customer. No password needed.
+    """
+    if not STRIPE_AVAILABLE or not STRIPE_SECRET_KEY:
+        raise HTTPException(status_code=501, detail="Stripe is not configured.")
+
+    body = await request.json()
+    email = body.get("email", "").strip().lower()
+    if not email or "@" not in email:
+        raise HTTPException(status_code=400, detail="Please enter a valid email address.")
+
+    try:
+        # Search Stripe for customer by email
+        customers = stripe.Customer.search(query=f'email:"{email}"')
+        if not customers.data:
+            raise HTTPException(
+                status_code=404,
+                detail="No subscription found for this email. Please check the email you used to subscribe."
+            )
+
+        # Find the customer with an active subscription
+        active_customer = None
+        for customer in customers.data:
+            subs = stripe.Subscription.list(customer=customer.id, status="active", limit=1)
+            if subs.data:
+                active_customer = customer
+                break
+
+        if not active_customer:
+            raise HTTPException(
+                status_code=404,
+                detail="No active subscription found. Your subscription may have expired or been cancelled."
+            )
+
+        # Link session to this customer
+        session_id = ensure_session(request)
+        usage = get_usage(session_id)
+        usage["stripe_customer_id"] = active_customer.id
+        usage["email"] = email
+        save_usage(session_id, usage)
+
+        response = JSONResponse({
+            "status": "restored",
+            "email": email,
+            "has_subscription": True,
+        })
+        set_session_cookie(response, session_id)
+        return response
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Lookup error: {str(e)}")
+
+
+# ==========================================================================
+# Parse API (with usage gating)
+# ==========================================================================
 
 @app.post("/api/parse")
 async def parse_statement(request: Request, file: UploadFile = File(...)):
     """Upload and parse a bank statement."""
-
-    # Check usage limits
-    usage_key = get_usage_key(request)
-    allowed, usage = check_can_use(usage_key, "statement")
+    session_id = ensure_session(request)
+    allowed, usage, is_sub = check_can_use(session_id, "statement")
     if not allowed:
-        raise HTTPException(
-            status_code=403,
-            detail="FREE_LIMIT_REACHED"
-        )
+        raise HTTPException(status_code=403, detail="FREE_LIMIT_REACHED")
 
     filename = file.filename.lower()
     if not any(filename.endswith(ext) for ext in [".pdf", ".csv", ".tsv", ".txt"]):
@@ -195,15 +297,18 @@ async def parse_statement(request: Request, file: UploadFile = File(...)):
         output_path = OUTPUT_DIR / output_filename
         export_to_xlsx(result, str(output_path))
 
-        # Increment usage on success
-        increment_usage(usage_key, "statement")
+        # Only count against free tier, not subscribers
+        if not is_sub:
+            increment_usage(session_id, "statement")
 
-        return JSONResponse({
+        response = JSONResponse({
             "transactions": result["transactions"],
             "summary": result["summary"],
             "metadata": result["metadata"],
             "download_url": f"/downloads/{output_filename}",
         })
+        set_session_cookie(response, session_id)
+        return response
 
     except HTTPException:
         raise
@@ -221,15 +326,10 @@ RECEIPT_EXTENSIONS = [".pdf"] + IMAGE_EXTENSIONS
 @app.post("/api/parse-receipt")
 async def parse_receipt_endpoint(request: Request, file: UploadFile = File(...)):
     """Upload and parse a store receipt."""
-
-    # Check usage limits
-    usage_key = get_usage_key(request)
-    allowed, usage = check_can_use(usage_key, "receipt")
+    session_id = ensure_session(request)
+    allowed, usage, is_sub = check_can_use(session_id, "receipt")
     if not allowed:
-        raise HTTPException(
-            status_code=403,
-            detail="FREE_LIMIT_REACHED"
-        )
+        raise HTTPException(status_code=403, detail="FREE_LIMIT_REACHED")
 
     filename = file.filename.lower()
     if not any(filename.endswith(ext) for ext in RECEIPT_EXTENSIONS):
@@ -261,15 +361,17 @@ async def parse_receipt_endpoint(request: Request, file: UploadFile = File(...))
         output_path = OUTPUT_DIR / output_filename
         export_receipt_to_xlsx(result, str(output_path))
 
-        # Increment usage on success
-        increment_usage(usage_key, "receipt")
+        if not is_sub:
+            increment_usage(session_id, "receipt")
 
-        return JSONResponse({
+        response = JSONResponse({
             "items": result["items"],
             "totals": result["totals"],
             "metadata": result["metadata"],
             "download_url": f"/downloads/{output_filename}",
         })
+        set_session_cookie(response, session_id)
+        return response
 
     except HTTPException:
         raise
@@ -282,73 +384,94 @@ async def parse_receipt_endpoint(request: Request, file: UploadFile = File(...))
             upload_path.unlink()
 
 
-# --- Stripe Billing Routes ---
+# ==========================================================================
+# Stripe Billing Routes
+# ==========================================================================
 
 @app.post("/api/create-checkout")
 async def create_checkout_session(request: Request):
-    """Create a Stripe Checkout session for subscription."""
+    """Create a Stripe Checkout session. Requires email for identity."""
     if not STRIPE_AVAILABLE or not STRIPE_SECRET_KEY:
         raise HTTPException(status_code=501, detail="Stripe is not configured.")
 
     body = await request.json()
     plan = body.get("plan", "pro")
+    email = body.get("email", "").strip().lower()
+
+    if not email or "@" not in email:
+        raise HTTPException(status_code=400, detail="Email is required to create a subscription.")
 
     price_id = STRIPE_PRO_PRICE_ID if plan == "pro" else STRIPE_BUSINESS_PRICE_ID
     if not price_id:
         raise HTTPException(status_code=500, detail="Stripe price not configured for this plan.")
 
-    # Get or create customer
-    usage_key = get_usage_key(request)
-    usage = get_usage(usage_key)
+    session_id = ensure_session(request)
 
     try:
-        origin = request.headers.get("origin", "http://localhost:8000")
-        checkout_params = {
-            "mode": "subscription",
-            "payment_method_types": ["card"],
-            "line_items": [{"price": price_id, "quantity": 1}],
-            "success_url": f"{origin}/?session_id={{CHECKOUT_SESSION_ID}}&status=success",
-            "cancel_url": f"{origin}/?status=cancelled",
-            "metadata": {"usage_key": usage_key},
-        }
-
-        if usage.get("customer_id"):
-            checkout_params["customer"] = usage["customer_id"]
+        # Check if customer already exists in Stripe
+        existing = stripe.Customer.search(query=f'email:"{email}"')
+        if existing.data:
+            customer_id = existing.data[0].id
         else:
-            checkout_params["customer_creation"] = "always"
+            customer = stripe.Customer.create(email=email, metadata={"source": "bankparse"})
+            customer_id = customer.id
 
-        session = stripe.checkout.Session.create(**checkout_params)
+        # Save customer link to session
+        usage = get_usage(session_id)
+        usage["stripe_customer_id"] = customer_id
+        usage["email"] = email
+        save_usage(session_id, usage)
 
-        return JSONResponse({"checkout_url": session.url, "session_id": session.id})
+        origin = request.headers.get("origin", "http://localhost:8000")
+        session = stripe.checkout.Session.create(
+            mode="subscription",
+            customer=customer_id,
+            payment_method_types=["card"],
+            line_items=[{"price": price_id, "quantity": 1}],
+            success_url=f"{origin}/?session_id={{CHECKOUT_SESSION_ID}}&status=success",
+            cancel_url=f"{origin}/?status=cancelled",
+            metadata={"session_id": session_id},
+        )
 
-    except stripe.error.StripeError as e:
+        response = JSONResponse({"checkout_url": session.url, "session_id": session.id})
+        set_session_cookie(response, session_id)
+        return response
+
+    except HTTPException:
+        raise
+    except Exception as e:
         raise HTTPException(status_code=500, detail=f"Stripe error: {str(e)}")
 
 
 @app.get("/api/verify-session")
 async def verify_checkout_session(request: Request, session_id: str):
-    """Verify a completed Stripe Checkout session and activate subscription."""
+    """Verify a completed Stripe Checkout and link subscription to browser session."""
     if not STRIPE_AVAILABLE or not STRIPE_SECRET_KEY:
         raise HTTPException(status_code=501, detail="Stripe is not configured.")
 
     try:
-        session = stripe.checkout.Session.retrieve(session_id)
+        checkout = stripe.checkout.Session.retrieve(session_id)
 
-        if session.payment_status == "paid" and session.subscription:
-            usage_key = session.metadata.get("usage_key") or get_usage_key(request)
-            usage = get_usage(usage_key)
-            usage["subscription_id"] = session.subscription
-            usage["customer_id"] = session.customer
-            save_usage(usage_key, usage)
+        if checkout.payment_status == "paid" and checkout.customer:
+            # Link this browser session to the Stripe customer
+            browser_session = checkout.metadata.get("session_id") or ensure_session(request)
+            usage = get_usage(browser_session)
+            usage["stripe_customer_id"] = checkout.customer
+            # Get customer email from Stripe
+            customer = stripe.Customer.retrieve(checkout.customer)
+            usage["email"] = customer.email
+            save_usage(browser_session, usage)
 
-            return JSONResponse({
+            response = JSONResponse({
                 "status": "active",
-                "subscription_id": session.subscription,
+                "email": customer.email,
             })
+            set_session_cookie(response, browser_session)
+            return response
 
         return JSONResponse({"status": "pending"})
 
-    except stripe.error.StripeError as e:
+    except Exception as e:
         raise HTTPException(status_code=500, detail=f"Stripe error: {str(e)}")
 
 
@@ -369,21 +492,9 @@ async def stripe_webhook(request: Request):
     except (ValueError, stripe.error.SignatureVerificationError) as e:
         raise HTTPException(status_code=400, detail=f"Webhook error: {str(e)}")
 
-    # Handle subscription cancellation
-    if event.get("type") in ("customer.subscription.deleted", "customer.subscription.updated"):
-        sub_data = event["data"]["object"]
-        sub_id = sub_data["id"]
-
-        # Find and update usage files with this subscription
-        for usage_file in USAGE_DIR.glob("*.json"):
-            try:
-                usage = json.loads(usage_file.read_text())
-                if usage.get("subscription_id") == sub_id:
-                    if sub_data.get("status") not in ("active", "trialing"):
-                        usage["subscription_id"] = None
-                    save_usage(usage_file.stem, usage)
-            except Exception:
-                continue
+    # Handle subscription cancellation — no action needed since we verify
+    # subscription status live via Stripe API on each request.
+    # The webhook is here for future use (sending emails, analytics, etc.)
 
     return JSONResponse({"status": "ok"})
 
@@ -406,7 +517,7 @@ async def get_config():
 async def health():
     return {
         "status": "ok",
-        "version": "2.0.0",
+        "version": "2.1.0",
         "stripe_configured": bool(STRIPE_SECRET_KEY),
     }
 

@@ -471,6 +471,15 @@
         <div class="paywall-card">
             <h2>Free Limit Reached</h2>
             <p>You've used your free conversion. Upgrade to continue converting unlimited bank statements and receipts.</p>
+
+            <!-- Email input -->
+            <div style="margin-bottom: 1.5rem;">
+                <input type="email" id="paywallEmail" placeholder="Enter your email to subscribe"
+                    style="width: 100%; padding: 0.75rem 1rem; border: 2px solid var(--border); border-radius: 8px; font-size: 1rem; outline: none; transition: border 0.2s;"
+                    onfocus="this.style.borderColor='var(--primary-light)'" onblur="this.style.borderColor='var(--border)'" />
+                <p id="paywallEmailError" style="color: var(--danger); font-size: 0.8rem; margin-top: 0.25rem; display: none;"></p>
+            </div>
+
             <div class="paywall-plans">
                 <div class="plan-card popular">
                     <div class="plan-name">Pro</div>
@@ -495,7 +504,16 @@
                     <button class="btn-subscribe biz-btn" onclick="subscribe('business')">Get Business</button>
                 </div>
             </div>
-            <p style="font-size: 0.8rem; color: var(--muted);">Cancel anytime. Powered by Stripe.</p>
+
+            <p style="font-size: 0.8rem; color: var(--muted); margin-top: 0.75rem;">Cancel anytime. Powered by Stripe.</p>
+
+            <!-- Restore subscription -->
+            <div style="margin-top: 1.25rem; padding-top: 1.25rem; border-top: 1px solid var(--border);">
+                <p style="font-size: 0.85rem; color: var(--muted); margin-bottom: 0.5rem;">Already subscribed? Switched browser or device?</p>
+                <button onclick="restoreSubscription()" style="background: none; border: none; color: var(--primary-light); font-weight: 600; cursor: pointer; font-size: 0.9rem; text-decoration: underline;">
+                    Restore my subscription
+                </button>
+            </div>
         </div>
     </div>
 
@@ -687,7 +705,8 @@
 
         if (usageData.has_subscription) {
             bar.className = 'usage-bar subscribed';
-            text.textContent = 'Unlimited conversions active';
+            const email = usageData.email ? ` (${usageData.email})` : '';
+            text.textContent = `Unlimited conversions active${email}`;
             badge.textContent = 'PRO';
             badge.className = 'usage-badge pro';
             return;
@@ -740,16 +759,32 @@
     }
 
     async function subscribe(plan) {
+        const emailInput = document.getElementById('paywallEmail');
+        const emailError = document.getElementById('paywallEmailError');
+        const email = emailInput.value.trim().toLowerCase();
+
+        // Validate email
+        if (!email || !email.includes('@') || !email.includes('.')) {
+            emailError.textContent = 'Please enter a valid email address to continue.';
+            emailError.style.display = 'block';
+            emailInput.style.borderColor = 'var(--danger)';
+            emailInput.focus();
+            return;
+        }
+        emailError.style.display = 'none';
+        emailInput.style.borderColor = 'var(--border)';
+
         try {
             const res = await fetch('/api/create-checkout', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ plan }),
+                body: JSON.stringify({ plan, email }),
             });
 
             if (!res.ok) {
                 const err = await res.json();
-                alert(err.detail || 'Failed to start checkout');
+                emailError.textContent = err.detail || 'Failed to start checkout';
+                emailError.style.display = 'block';
                 return;
             }
 
@@ -759,6 +794,45 @@
             }
         } catch (e) {
             alert('Could not connect to payment service. Please try again.');
+        }
+    }
+
+    async function restoreSubscription() {
+        const emailInput = document.getElementById('paywallEmail');
+        const emailError = document.getElementById('paywallEmailError');
+        const email = emailInput.value.trim().toLowerCase();
+
+        if (!email || !email.includes('@') || !email.includes('.')) {
+            emailError.textContent = 'Enter the email you subscribed with.';
+            emailError.style.display = 'block';
+            emailInput.style.borderColor = 'var(--danger)';
+            emailInput.focus();
+            return;
+        }
+        emailError.style.display = 'none';
+
+        try {
+            const res = await fetch('/api/restore', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email }),
+            });
+
+            const data = await res.json();
+            if (!res.ok) {
+                emailError.textContent = data.detail || 'Could not find subscription.';
+                emailError.style.display = 'block';
+                return;
+            }
+
+            if (data.has_subscription) {
+                await loadUsage();
+                hidePaywall();
+                alert('Subscription restored! You have unlimited conversions.');
+            }
+        } catch (e) {
+            emailError.textContent = 'Could not connect. Please try again.';
+            emailError.style.display = 'block';
         }
     }
 
