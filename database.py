@@ -28,14 +28,22 @@ def get_connection():
 
     if TURSO_URL and TURSO_TOKEN:
         # Turso (libSQL) — persistent cloud database
-        import libsql_experimental as libsql
-        _connection = libsql.connect(
-            "bankparse.db",
-            sync_url=TURSO_URL,
-            auth_token=TURSO_TOKEN,
-        )
-        _connection.sync()
-        logger.info("Connected to Turso: %s", TURSO_URL.split("//")[1] if "//" in TURSO_URL else TURSO_URL)
+        try:
+            import libsql_experimental as libsql
+            _connection = libsql.connect(
+                "bankparse.db",
+                sync_url=TURSO_URL,
+                auth_token=TURSO_TOKEN,
+            )
+            _connection.sync()
+            logger.info("Connected to Turso (libsql_experimental): %s", TURSO_URL.split("//")[1] if "//" in TURSO_URL else TURSO_URL)
+        except ImportError:
+            # Fallback: use HTTP URL directly with sqlite3 if libsql not available
+            import sqlite3
+            db_path = "/tmp/bankparse.db" if os.environ.get("VERCEL") else str(Path(__file__).parent / "bankparse.db")
+            _connection = sqlite3.connect(db_path, timeout=10)
+            _connection.execute("PRAGMA journal_mode=WAL")
+            logger.warning("libsql_experimental not available, using local SQLite: %s", db_path)
     else:
         # Local SQLite fallback for development
         import sqlite3
