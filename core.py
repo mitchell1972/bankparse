@@ -58,7 +58,7 @@ COOKIE_MAX_AGE = 60 * 60 * 24 * 365  # 1 year
 SUBSCRIPTION_CACHE_TTL = 3600  # 1 hour
 
 # --- File type constants ---
-IMAGE_EXTENSIONS = [".png", ".jpg", ".jpeg", ".tiff", ".tif", ".bmp", ".webp"]
+IMAGE_EXTENSIONS = [".png", ".jpg", ".jpeg", ".tiff", ".tif", ".bmp", ".webp", ".heic", ".heif"]
 RECEIPT_EXTENSIONS = [".pdf"] + IMAGE_EXTENSIONS
 
 

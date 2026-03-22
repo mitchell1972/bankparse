@@ -293,7 +293,23 @@ def parse_receipt_image(file_path: str) -> dict:
             "Also requires Tesseract OCR engine."
         )
 
+    # Handle HEIC/HEIF format — convert to JPEG via pillow-heif if available
+    file_lower = file_path.lower()
+    if file_lower.endswith((".heic", ".heif")):
+        try:
+            import pillow_heif
+            pillow_heif.register_heif_opener()
+        except ImportError:
+            raise ImportError(
+                "HEIC/HEIF image support requires pillow-heif. "
+                "Install with: pip install pillow-heif"
+            )
+
     image = Image.open(file_path)
+
+    # Convert HEIC (which may be RGBA/P mode) to RGB
+    if image.mode in ("RGBA", "P"):
+        image = image.convert("RGB")
 
     # Apply preprocessing pipeline for better OCR results
     image = _preprocess_image(image)
