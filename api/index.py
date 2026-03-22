@@ -430,7 +430,7 @@ async def create_checkout_session(request: Request):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Debug: {type(e).__name__}")
+        raise HTTPException(status_code=500, detail=f"Debug: {e}")
 
 
 @app.get("/api/verify-session")
