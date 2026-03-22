@@ -195,7 +195,7 @@ class TursoHTTPClient:
         if isinstance(value, int):
             return {"type": "integer", "value": str(value)}
         if isinstance(value, float):
-            return {"type": "float", "value": str(value)}
+            return {"type": "float", "value": value}
         if isinstance(value, bytes):
             import base64
             return {"type": "blob", "base64": base64.b64encode(value).decode()}
