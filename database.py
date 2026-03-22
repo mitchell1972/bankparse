@@ -10,7 +10,12 @@ import threading
 from pathlib import Path
 from contextlib import contextmanager
 
-DB_PATH = os.environ.get("BANKPARSE_DB_PATH", str(Path(__file__).parent / "bankparse.db"))
+def _default_db_path() -> str:
+    if os.environ.get("VERCEL") or os.environ.get("AWS_LAMBDA_FUNCTION_NAME"):
+        return "/tmp/bankparse.db"
+    return str(Path(__file__).parent / "bankparse.db")
+
+DB_PATH = os.environ.get("BANKPARSE_DB_PATH", _default_db_path())
 
 _local = threading.local()
 
