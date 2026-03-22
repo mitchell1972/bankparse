@@ -123,6 +123,11 @@ async def home(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
 
+@app.get("/landing", response_class=HTMLResponse)
+async def landing(request: Request):
+    return templates.TemplateResponse("landing.html", {"request": request})
+
+
 @app.get("/api/usage")
 async def get_usage_status(request: Request):
     """Get current usage status and limits."""

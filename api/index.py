@@ -34,9 +34,11 @@ except ImportError:
 TMP_DIR = Path(tempfile.gettempdir()) / "bankparse"
 TMP_DIR.mkdir(exist_ok=True)
 
-# Read the template once at cold start
+# Read templates once at cold start
 TEMPLATE_PATH = Path(__file__).parent.parent / "templates" / "index.html"
 TEMPLATE_HTML = TEMPLATE_PATH.read_text()
+LANDING_PATH = Path(__file__).parent.parent / "templates" / "landing.html"
+LANDING_HTML = LANDING_PATH.read_text() if LANDING_PATH.exists() else TEMPLATE_HTML
 
 # Stripe config
 STRIPE_SECRET_KEY = os.environ.get("STRIPE_SECRET_KEY", "")
@@ -105,6 +107,11 @@ def increment_usage(usage_key: str, mode: str):
 @app.get("/", response_class=HTMLResponse)
 async def home():
     return HTMLResponse(TEMPLATE_HTML)
+
+
+@app.get("/landing", response_class=HTMLResponse)
+async def landing():
+    return HTMLResponse(LANDING_HTML)
 
 
 @app.get("/api/usage")
