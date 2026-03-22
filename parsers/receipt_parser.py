@@ -365,7 +365,7 @@ def parse_receipt(file_path: str) -> dict:
 
     if lower.endswith(".pdf"):
         return parse_receipt_pdf(file_path)
-    elif lower.endswith((".png", ".jpg", ".jpeg", ".tiff", ".tif", ".bmp", ".webp")):
+    elif lower.endswith((".png", ".jpg", ".jpeg", ".tiff", ".tif", ".bmp", ".webp", ".heic", ".heif")):
         return parse_receipt_image(file_path)
     else:
         raise ValueError(f"Unsupported receipt format: {file_path}")
