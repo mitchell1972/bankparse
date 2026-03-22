@@ -487,8 +487,9 @@ async def parse_receipt_endpoint(request: Request, file: UploadFile = File(...))
         raise
     except ImportError as e:
         raise HTTPException(status_code=501, detail=str(e))
-    except Exception:
-        raise HTTPException(status_code=500, detail="An internal error occurred. Please try again.")
+    except Exception as e:
+        logger.exception("Receipt parsing error: %s", e)
+        raise HTTPException(status_code=500, detail=f"Receipt parsing error: {str(e)}")
     finally:
         if upload_path.exists():
             upload_path.unlink()
