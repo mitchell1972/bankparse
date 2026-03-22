@@ -683,6 +683,13 @@
 </div>
 
 <script>
+    function escapeHtml(text) {
+        if (text == null) return '';
+        const div = document.createElement('div');
+        div.textContent = String(text);
+        return div.innerHTML;
+    }
+
     let currentMode = 'statement';
     let usageData = null;
 
@@ -1138,8 +1145,8 @@
             const tr = document.createElement('tr');
             const amtClass = tx.amount >= 0 ? 'credit-amount' : 'debit-amount';
             tr.innerHTML = `
-                <td>${tx.date}</td>
-                <td>${tx.description}</td>
+                <td>${escapeHtml(tx.date)}</td>
+                <td>${escapeHtml(tx.description)}</td>
                 <td class="${amtClass}">${tx.amount >= 0 ? '+' : ''}${formatCurrency(tx.amount)}</td>
                 <td>${tx.balance !== null ? formatCurrency(tx.balance) : '—'}</td>
             `;
@@ -1253,8 +1260,8 @@
             const tr = document.createElement('tr');
             tr.innerHTML = `
                 <td style="text-align:center">${i + 1}</td>
-                <td>${item.description}</td>
-                <td style="text-align:center">${item.quantity}</td>
+                <td>${escapeHtml(item.description)}</td>
+                <td style="text-align:center">${escapeHtml(item.quantity)}</td>
                 <td>${formatCurrency(item.unit_price)}</td>
                 <td>${formatCurrency(item.total_price)}</td>
             `;

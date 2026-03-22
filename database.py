@@ -75,6 +75,8 @@ def init_db():
                 stripe_customer_id TEXT,
                 statements_used INTEGER DEFAULT 0,
                 receipts_used INTEGER DEFAULT 0,
+                subscription_status TEXT DEFAULT NULL,
+                subscription_checked_at REAL DEFAULT NULL,
                 created_at REAL DEFAULT (strftime('%s', 'now'))
             );
 
@@ -149,7 +151,7 @@ def get_user_by_email(email: str) -> dict | None:
     """Return user row as dict, or None."""
     with get_db() as conn:
         row = conn.execute(
-            "SELECT id, email, password_hash, stripe_customer_id, statements_used, receipts_used, created_at FROM users WHERE email = ?",
+            "SELECT id, email, password_hash, stripe_customer_id, statements_used, receipts_used, subscription_status, subscription_checked_at, created_at FROM users WHERE email = ?",
             (email,)
         ).fetchone()
     if row:
@@ -161,7 +163,7 @@ def get_user_by_id(user_id: int) -> dict | None:
     """Return user row as dict, or None."""
     with get_db() as conn:
         row = conn.execute(
-            "SELECT id, email, password_hash, stripe_customer_id, statements_used, receipts_used, created_at FROM users WHERE id = ?",
+            "SELECT id, email, password_hash, stripe_customer_id, statements_used, receipts_used, subscription_status, subscription_checked_at, created_at FROM users WHERE id = ?",
             (user_id,)
         ).fetchone()
     if row:
@@ -171,7 +173,7 @@ def get_user_by_id(user_id: int) -> dict | None:
 
 def update_user(user_id: int, **kwargs):
     """Update user fields (stripe_customer_id, statements_used, etc.)."""
-    allowed = {"stripe_customer_id", "statements_used", "receipts_used", "email", "password_hash"}
+    allowed = {"stripe_customer_id", "statements_used", "receipts_used", "email", "password_hash", "subscription_status", "subscription_checked_at"}
     fields = {k: v for k, v in kwargs.items() if k in allowed}
     if not fields:
         return
@@ -179,6 +181,16 @@ def update_user(user_id: int, **kwargs):
     values = list(fields.values()) + [user_id]
     with get_db() as conn:
         conn.execute(f"UPDATE users SET {set_clause} WHERE id = ?", values)
+
+
+def get_user_by_stripe_customer(stripe_customer_id: str) -> dict | None:
+    if not stripe_customer_id:
+        return None
+    with get_db() as conn:
+        row = conn.execute("SELECT * FROM users WHERE stripe_customer_id = ?", (stripe_customer_id,)).fetchone()
+    if row:
+        return dict(row)
+    return None
 
 
 def increment_user_usage(user_id: int, mode: str):

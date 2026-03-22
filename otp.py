@@ -5,7 +5,7 @@ Uses SMTP for email delivery.
 """
 
 import os
-import random
+import secrets
 import string
 import smtplib
 import logging
@@ -23,7 +23,7 @@ SMTP_FROM = os.environ.get("SMTP_FROM", "noreply@bankparse.com")
 
 def generate_otp(length: int = 6) -> str:
     """Generate a numeric OTP code."""
-    return "".join(random.choices(string.digits, k=length))
+    return "".join(secrets.choice(string.digits) for _ in range(length))
 
 
 def send_otp_email(to_email: str, code: str) -> bool:

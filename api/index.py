@@ -9,12 +9,15 @@ import os
 import sys
 import uuid
 import secrets
-import hashlib
 import base64
 import logging
 import sqlite3
 import tempfile
+import time
 from pathlib import Path
+
+import bcrypt
+from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 
 # Add parent directory to path so parsers can be imported
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -29,6 +32,7 @@ from parsers.receipt_parser import parse_receipt
 from database import (
     get_usage, save_usage, increment_usage, store_otp, verify_otp,
     create_user, get_user_by_email, get_user_by_id, update_user, increment_user_usage,
+    get_user_by_stripe_customer,
 )
 from otp import generate_otp, send_otp_email
 
@@ -79,8 +83,8 @@ COOKIE_MAX_AGE = 60 * 60 * 24 * 365  # 1 year
 
 IS_PRODUCTION = os.environ.get("ENVIRONMENT", "production") == "production"
 
-# Password salt prefix
-PASSWORD_SALT = "bankparse_salt_"
+if IS_PRODUCTION and SECRET_KEY == "bankparse-dev-secret-change-me":
+    raise RuntimeError("FATAL: SECRET_KEY must be set to a secure random value in production. Generate one with: python -c \"import secrets; print(secrets.token_hex(32))\"")
 
 app = FastAPI(title="BankParse", version="2.3.0")
 
@@ -90,54 +94,51 @@ app = FastAPI(title="BankParse", version="2.3.0")
 # ==========================================================================
 
 def hash_password(password: str) -> str:
-    """Hash a password using SHA-256 with a salt."""
-    salted = f"{PASSWORD_SALT}{password}{SECRET_KEY}"
-    return hashlib.sha256(salted.encode()).hexdigest()
+    return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
 
 
 def verify_password(password: str, password_hash: str) -> bool:
-    """Verify a password against its hash."""
-    return hash_password(password) == password_hash
+    try:
+        return bcrypt.checkpw(password.encode('utf-8'), password_hash.encode('utf-8'))
+    except Exception:
+        return False
+
+
+def get_serializer():
+    return URLSafeTimedSerializer(SECRET_KEY)
 
 
 def make_auth_token(user_id: int) -> str:
-    """Create an auth token: user_id:sha256(user_id + secret)."""
-    token = hashlib.sha256(f"{user_id}{SECRET_KEY}".encode()).hexdigest()
-    return f"{user_id}:{token}"
+    s = get_serializer()
+    return s.dumps({"uid": user_id})
 
 
-def verify_auth_token(token_value: str) -> int | None:
-    """Verify auth token and return user_id, or None if invalid."""
-    if not token_value or ":" not in token_value:
-        return None
-    parts = token_value.split(":", 1)
+def verify_auth_token(token: str) -> int | None:
+    s = get_serializer()
     try:
-        user_id = int(parts[0])
-    except (ValueError, IndexError):
+        data = s.loads(token, max_age=60 * 60 * 24 * 30)  # 30 days
+        return data.get("uid")
+    except (BadSignature, SignatureExpired):
         return None
-    expected = hashlib.sha256(f"{user_id}{SECRET_KEY}".encode()).hexdigest()
-    if parts[1] != expected:
-        return None
-    return user_id
 
 
 def get_current_user(request: Request) -> dict | None:
     """Read bp_auth cookie, verify token, look up user in DB."""
-    cookie_val = request.cookies.get(AUTH_COOKIE, "")
-    if not cookie_val:
+    token = request.cookies.get(AUTH_COOKIE, "")
+    if not token:
         return None
-    user_id = verify_auth_token(cookie_val)
+    user_id = verify_auth_token(token)
     if user_id is None:
         return None
     return get_user_by_id(user_id)
 
 
 def set_auth_cookie(response, user_id: int):
-    """Set the bp_auth cookie on a response."""
+    token = make_auth_token(user_id)
     response.set_cookie(
         key=AUTH_COOKIE,
-        value=make_auth_token(user_id),
-        max_age=AUTH_COOKIE_MAX_AGE,
+        value=token,
+        max_age=60 * 60 * 24 * 30,
         httponly=True,
         samesite="lax",
         secure=IS_PRODUCTION,
@@ -166,20 +167,40 @@ def ensure_session(request: Request) -> str:
     return f"bp_{secrets.token_urlsafe(24)}"
 
 
-def verify_subscription(stripe_customer_id: str) -> bool:
+SUBSCRIPTION_CACHE_TTL = 3600  # 1 hour
+
+
+def verify_subscription(user: dict) -> bool:
+    """Check subscription using cached status first, falling back to Stripe API."""
+    status = user.get("subscription_status")
+    checked_at = user.get("subscription_checked_at") or 0
+
+    # Use cached status if fresh enough
+    if time.time() - checked_at < SUBSCRIPTION_CACHE_TTL:
+        return status in ("active", "trialing")
+
+    # Cache is stale — check Stripe
+    stripe_customer_id = user.get("stripe_customer_id")
     if not stripe_customer_id or not STRIPE_AVAILABLE or not STRIPE_SECRET_KEY:
-        return False
+        return status in ("active", "trialing")  # Fall back to cache if Stripe unavailable
+
     try:
         subs = stripe.Subscription.list(customer=stripe_customer_id, status="active", limit=1)
-        return len(subs.data) > 0
+        is_active = len(subs.data) > 0
+        new_status = "active" if is_active else "cancelled"
+        # Update cache
+        if user.get("id"):
+            update_user(user["id"], subscription_status=new_status, subscription_checked_at=time.time())
+        return is_active
     except Exception:
-        return False
+        # Stripe unreachable — fall back to cached status (don't lock out paying users)
+        return status in ("active", "trialing")
 
 
-def check_can_use(user: dict, mode: str) -> tuple:
-    """Check if a user can use the service. Accepts a user dict from the users table."""
+def check_can_use(user: dict, mode: str) -> tuple[bool, bool]:
+    """Check if user can use the service. Returns (allowed, is_subscriber)."""
     if user.get("stripe_customer_id"):
-        if verify_subscription(user["stripe_customer_id"]):
+        if verify_subscription(user):
             return True, True
 
     if mode == "statement" and user.get("statements_used", 0) >= FREE_STATEMENT_LIMIT:
@@ -304,7 +325,7 @@ async def get_usage_status(request: Request):
 
     is_subscriber = False
     if user.get("stripe_customer_id"):
-        is_subscriber = verify_subscription(user["stripe_customer_id"])
+        is_subscriber = verify_subscription(user)
 
     return JSONResponse({
         "statements_used": user.get("statements_used", 0),
@@ -442,8 +463,9 @@ async def parse_statement(request: Request, file: UploadFile = File(...)):
     if len(contents) > 20 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="File too large. Max 20MB.")
 
+    safe_filename = Path(file.filename).name  # Strip path components
     job_id = str(uuid.uuid4())[:8]
-    upload_path = TMP_DIR / f"{job_id}_{file.filename}"
+    upload_path = TMP_DIR / f"{job_id}_{safe_filename}"
     with open(upload_path, "wb") as f:
         f.write(contents)
 
@@ -502,8 +524,9 @@ async def parse_receipt_endpoint(request: Request, file: UploadFile = File(...))
     if len(contents) > 20 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="File too large. Max 20MB.")
 
+    safe_filename = Path(file.filename).name  # Strip path components
     job_id = str(uuid.uuid4())[:8]
-    upload_path = TMP_DIR / f"{job_id}_{file.filename}"
+    upload_path = TMP_DIR / f"{job_id}_{safe_filename}"
     with open(upload_path, "wb") as f:
         f.write(contents)
 
@@ -634,6 +657,41 @@ async def stripe_webhook(request: Request):
         event = stripe.Webhook.construct_event(payload, sig_header, STRIPE_WEBHOOK_SECRET)
     except (ValueError, stripe.error.SignatureVerificationError):
         raise HTTPException(status_code=400, detail="Webhook signature verification failed.")
+
+    event_type = event.get("type", "")
+    event_data = event.get("data", {}).get("object", {})
+
+    if event_type == "checkout.session.completed":
+        # Link subscription to user
+        customer_id = event_data.get("customer")
+        user_email = None
+        if customer_id:
+            try:
+                customer = stripe.Customer.retrieve(customer_id)
+                user_email = customer.email
+            except Exception:
+                pass
+        if user_email:
+            user = get_user_by_email(user_email)
+            if user:
+                update_user(user["id"], stripe_customer_id=customer_id, subscription_status="active", subscription_checked_at=time.time())
+
+    elif event_type in ("customer.subscription.updated", "customer.subscription.deleted"):
+        sub_status = event_data.get("status", "")
+        customer_id = event_data.get("customer")
+        if customer_id:
+            # Find user by stripe_customer_id
+            user = get_user_by_stripe_customer(customer_id)
+            if user:
+                is_active = sub_status in ("active", "trialing")
+                update_user(user["id"], subscription_status="active" if is_active else "cancelled", subscription_checked_at=time.time())
+
+    elif event_type == "invoice.payment_failed":
+        customer_id = event_data.get("customer")
+        if customer_id:
+            user = get_user_by_stripe_customer(customer_id)
+            if user:
+                update_user(user["id"], subscription_status="past_due", subscription_checked_at=time.time())
 
     return JSONResponse({"status": "ok"})
 
