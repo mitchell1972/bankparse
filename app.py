@@ -574,7 +574,7 @@ async def get_config():
         "free_receipt_limit": FREE_RECEIPT_LIMIT,
         "plans": {
             "pro": {"price": "\u00a39.99/mo", "name": "BankParse Pro"},
-            "business": {"price": "\u00a329.99/mo", "name": "BankParse Business"},
+            "business": {"price": "\u00a319.99/mo", "name": "BankParse Business"},
         },
     })
 
