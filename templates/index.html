@@ -508,11 +508,21 @@
             <p style="font-size: 0.8rem; color: var(--muted); margin-top: 0.75rem;">Cancel anytime. Powered by Stripe.</p>
 
             <!-- Restore subscription -->
-            <div style="margin-top: 1.25rem; padding-top: 1.25rem; border-top: 1px solid var(--border);">
+            <div id="restoreSection" style="margin-top: 1.25rem; padding-top: 1.25rem; border-top: 1px solid var(--border);">
                 <p style="font-size: 0.85rem; color: var(--muted); margin-bottom: 0.5rem;">Already subscribed? Switched browser or device?</p>
-                <button onclick="restoreSubscription()" style="background: none; border: none; color: var(--primary-light); font-weight: 600; cursor: pointer; font-size: 0.9rem; text-decoration: underline;">
+                <button id="restoreBtn" onclick="restoreRequestOtp()" style="background: none; border: none; color: var(--primary-light); font-weight: 600; cursor: pointer; font-size: 0.9rem; text-decoration: underline;">
                     Restore my subscription
                 </button>
+                <div id="otpSection" style="display: none; margin-top: 1rem;">
+                    <p style="font-size: 0.85rem; color: var(--text); margin-bottom: 0.5rem;">Enter the 6-digit code sent to your email:</p>
+                    <div style="display: flex; gap: 0.5rem; align-items: center;">
+                        <input type="text" id="otpInput" maxlength="6" placeholder="000000"
+                            style="width: 140px; padding: 0.6rem 1rem; border: 2px solid var(--border); border-radius: 8px; font-size: 1.2rem; text-align: center; letter-spacing: 0.3em; outline: none;"
+                            onfocus="this.style.borderColor='var(--primary-light)'" onblur="this.style.borderColor='var(--border)'" />
+                        <button onclick="restoreVerifyOtp()" style="padding: 0.6rem 1.2rem; background: var(--primary); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">Verify</button>
+                    </div>
+                    <p id="otpError" style="color: var(--danger); font-size: 0.8rem; margin-top: 0.25rem; display: none;"></p>
+                </div>
             </div>
         </div>
     </div>
@@ -797,7 +807,9 @@
         }
     }
 
-    async function restoreSubscription() {
+    let restoreEmail = '';
+
+    async function restoreRequestOtp() {
         const emailInput = document.getElementById('paywallEmail');
         const emailError = document.getElementById('paywallEmailError');
         const email = emailInput.value.trim().toLowerCase();
@@ -810,9 +822,14 @@
             return;
         }
         emailError.style.display = 'none';
+        restoreEmail = email;
+
+        const btn = document.getElementById('restoreBtn');
+        btn.textContent = 'Sending code...';
+        btn.disabled = true;
 
         try {
-            const res = await fetch('/api/restore', {
+            const res = await fetch('/api/restore/request', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ email }),
@@ -822,6 +839,45 @@
             if (!res.ok) {
                 emailError.textContent = data.detail || 'Could not find subscription.';
                 emailError.style.display = 'block';
+                btn.textContent = 'Restore my subscription';
+                btn.disabled = false;
+                return;
+            }
+
+            document.getElementById('otpSection').style.display = 'block';
+            btn.style.display = 'none';
+            document.getElementById('otpInput').focus();
+        } catch (e) {
+            emailError.textContent = 'Could not connect. Please try again.';
+            emailError.style.display = 'block';
+            btn.textContent = 'Restore my subscription';
+            btn.disabled = false;
+        }
+    }
+
+    async function restoreVerifyOtp() {
+        const otpInput = document.getElementById('otpInput');
+        const otpError = document.getElementById('otpError');
+        const code = otpInput.value.trim();
+
+        if (!code || code.length !== 6) {
+            otpError.textContent = 'Please enter the 6-digit code.';
+            otpError.style.display = 'block';
+            return;
+        }
+        otpError.style.display = 'none';
+
+        try {
+            const res = await fetch('/api/restore/verify', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email: restoreEmail, code }),
+            });
+
+            const data = await res.json();
+            if (!res.ok) {
+                otpError.textContent = data.detail || 'Invalid code.';
+                otpError.style.display = 'block';
                 return;
             }
 
@@ -831,8 +887,8 @@
                 alert('Subscription restored! You have unlimited conversions.');
             }
         } catch (e) {
-            emailError.textContent = 'Could not connect. Please try again.';
-            emailError.style.display = 'block';
+            otpError.textContent = 'Could not connect. Please try again.';
+            otpError.style.display = 'block';
         }
     }
 

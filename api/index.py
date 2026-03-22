@@ -429,9 +429,8 @@ async def create_checkout_session(request: Request):
 
     except HTTPException:
         raise
-    except Exception as e:
-        logger.exception("Checkout error")
-        raise HTTPException(status_code=500, detail=f"Checkout error: {type(e).__name__}: {e}")
+    except Exception:
+        raise HTTPException(status_code=500, detail="An internal error occurred.")
 
 
 @app.get("/api/verify-session")
