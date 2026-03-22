@@ -983,14 +983,22 @@
         return '£' + Math.abs(amount).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     }
 
+    const IMAGE_EXTS = ['png','jpg','jpeg','tiff','tif','bmp','webp','heic','heif'];
+
     fileInput.addEventListener('change', function() {
         if (this.files.length > 0) {
             const file = this.files[0];
+            const ext = file.name.split('.').pop().toLowerCase();
+
+            // Auto-switch to receipt mode if user drops an image while on statement tab
+            if (IMAGE_EXTS.includes(ext) && currentMode === 'statement') {
+                setMode('receipt');
+            }
+
             fileName.textContent = file.name;
             fileSize.textContent = formatBytes(file.size);
-            const ext = file.name.split('.').pop().toLowerCase();
             if (ext === 'pdf') fileIcon.textContent = '📕';
-            else if (['png','jpg','jpeg','tiff','tif','bmp','webp'].includes(ext)) fileIcon.textContent = '🖼️';
+            else if (IMAGE_EXTS.includes(ext)) fileIcon.textContent = '🖼️';
             else fileIcon.textContent = '📗';
             fileInfo.classList.add('show');
             parseBtn.disabled = false;
