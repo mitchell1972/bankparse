@@ -252,8 +252,10 @@ def parse_receipt_pdf(file_path: str) -> dict:
 def _preprocess_image(image: "Image.Image") -> "Image.Image":
     """
     Preprocess a receipt image for better OCR accuracy.
-    Applies grayscale conversion, resizing, sharpening, contrast
-    enhancement, and adaptive thresholding using only Pillow (no OpenCV).
+    Applies grayscale conversion, resizing, sharpening, and contrast
+    enhancement using only Pillow (no OpenCV).
+    Note: Binary thresholding is intentionally NOT applied — it destroys
+    detail on photos of receipts (vs scanned receipts).
     """
     # Convert to grayscale
     if image.mode != "L":
@@ -266,15 +268,19 @@ def _preprocess_image(image: "Image.Image") -> "Image.Image":
         scale = MIN_WIDTH / w
         image = image.resize((MIN_WIDTH, int(h * scale)), Image.LANCZOS)
 
+    # Resize down if very large (phone cameras: 3000-4000px wide) to speed up OCR
+    MAX_WIDTH = 2000
+    w, h = image.size
+    if w > MAX_WIDTH:
+        scale = MAX_WIDTH / w
+        image = image.resize((MAX_WIDTH, int(h * scale)), Image.LANCZOS)
+
     # Sharpen
     image = image.filter(ImageFilter.SHARPEN)
 
-    # Increase contrast
+    # Moderate contrast boost (1.5x, not 2x — preserves more detail)
     enhancer = ImageEnhance.Contrast(image)
-    image = enhancer.enhance(2.0)
-
-    # Convert to black and white with threshold
-    image = image.point(lambda x: 255 if x > 140 else 0, "1")
+    image = enhancer.enhance(1.5)
 
     return image
 
@@ -314,8 +320,8 @@ def parse_receipt_image(file_path: str) -> dict:
     # Apply preprocessing pipeline for better OCR results
     image = _preprocess_image(image)
 
-    # PSM 6: assume a single uniform block of text (works well for receipts)
-    text = pytesseract.image_to_string(image, config="--psm 6")
+    # PSM 3: fully automatic page segmentation (works best for phone photos of receipts)
+    text = pytesseract.image_to_string(image, config="--psm 3")
 
     # Confidence check — reject garbage OCR output
     if len(text.strip()) < 20:
