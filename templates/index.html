@@ -292,6 +292,118 @@
             margin: 0 0.5rem;
         }
 
+        /* Usage bar */
+        .usage-bar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.6rem 1rem;
+            background: #FEF9E7;
+            border: 1px solid #F9E79F;
+            border-radius: 8px;
+            margin-bottom: 1rem;
+            font-size: 0.85rem;
+        }
+        .usage-bar.exhausted {
+            background: #FDEDEC;
+            border-color: #F5B7B1;
+        }
+        .usage-bar.subscribed {
+            background: #EAFAF1;
+            border-color: #A9DFBF;
+        }
+        .usage-bar .usage-text { color: var(--text); }
+        .usage-bar .usage-badge {
+            display: inline-block;
+            padding: 0.2rem 0.6rem;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: 700;
+        }
+        .usage-badge.free { background: #F9E79F; color: #7D6608; }
+        .usage-badge.pro { background: #AED6F1; color: #1B4F72; }
+        .usage-badge.exhausted { background: #F5B7B1; color: #922B21; }
+
+        /* Paywall overlay */
+        .paywall {
+            display: none;
+            position: relative;
+        }
+        .paywall.show { display: block; }
+        .paywall-card {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 24px rgba(0,0,0,0.12);
+            padding: 2rem;
+            text-align: center;
+            margin-bottom: 1.5rem;
+        }
+        .paywall-card h2 { margin-bottom: 0.5rem; color: var(--primary); }
+        .paywall-card p { color: var(--muted); margin-bottom: 1.5rem; }
+        .paywall-plans {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+        .plan-card {
+            border: 2px solid var(--border);
+            border-radius: 10px;
+            padding: 1.25rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            position: relative;
+        }
+        .plan-card:hover { border-color: var(--primary-light); background: #F0F7FC; }
+        .plan-card.popular {
+            border-color: var(--primary);
+        }
+        .plan-card.popular::before {
+            content: 'MOST POPULAR';
+            position: absolute;
+            top: -10px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--primary);
+            color: white;
+            font-size: 0.65rem;
+            font-weight: 700;
+            padding: 0.15rem 0.6rem;
+            border-radius: 8px;
+        }
+        .plan-card .plan-name { font-weight: 700; font-size: 1.05rem; }
+        .plan-card .plan-price { color: var(--primary); font-size: 1.4rem; font-weight: 800; margin: 0.5rem 0; }
+        .plan-card .plan-price span { font-size: 0.8rem; font-weight: 400; color: var(--muted); }
+        .plan-card ul {
+            list-style: none;
+            text-align: left;
+            font-size: 0.8rem;
+            color: var(--muted);
+            margin-top: 0.75rem;
+        }
+        .plan-card ul li { padding: 0.2rem 0; }
+        .plan-card ul li::before { content: '✓ '; color: var(--accent); font-weight: 700; }
+        .btn-subscribe {
+            display: block;
+            width: 100%;
+            margin-top: 0.75rem;
+            padding: 0.6rem;
+            border: none;
+            border-radius: 6px;
+            font-weight: 700;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .btn-subscribe.pro-btn { background: var(--primary); color: white; }
+        .btn-subscribe.pro-btn:hover { background: var(--primary-light); }
+        .btn-subscribe.biz-btn { background: var(--accent); color: white; }
+        .btn-subscribe.biz-btn:hover { background: #219A52; }
+
+        @media (max-width: 600px) {
+            .paywall-plans { grid-template-columns: 1fr; }
+        }
+
         /* Features */
         .features {
             display: grid;
@@ -348,8 +460,47 @@
 </div>
 
 <div class="container">
+    <!-- Usage Bar -->
+    <div class="usage-bar" id="usageBar" style="display:none;">
+        <span class="usage-text" id="usageText"></span>
+        <span class="usage-badge free" id="usageBadge">FREE</span>
+    </div>
+
+    <!-- Paywall -->
+    <div class="paywall" id="paywall">
+        <div class="paywall-card">
+            <h2>Free Limit Reached</h2>
+            <p>You've used your free conversion. Upgrade to continue converting unlimited bank statements and receipts.</p>
+            <div class="paywall-plans">
+                <div class="plan-card popular">
+                    <div class="plan-name">Pro</div>
+                    <div class="plan-price">£9.99 <span>/month</span></div>
+                    <ul>
+                        <li>Unlimited statements</li>
+                        <li>Unlimited receipts</li>
+                        <li>All UK bank formats</li>
+                        <li>Priority support</li>
+                    </ul>
+                    <button class="btn-subscribe pro-btn" onclick="subscribe('pro')">Get Pro</button>
+                </div>
+                <div class="plan-card">
+                    <div class="plan-name">Business</div>
+                    <div class="plan-price">£29.99 <span>/month</span></div>
+                    <ul>
+                        <li>Everything in Pro</li>
+                        <li>API access</li>
+                        <li>Batch upload</li>
+                        <li>Dedicated support</li>
+                    </ul>
+                    <button class="btn-subscribe biz-btn" onclick="subscribe('business')">Get Business</button>
+                </div>
+            </div>
+            <p style="font-size: 0.8rem; color: var(--muted);">Cancel anytime. Powered by Stripe.</p>
+        </div>
+    </div>
+
     <!-- Upload Card -->
-    <div class="card">
+    <div class="card" id="uploadCard">
         <!-- Mode Toggle -->
         <div class="mode-toggle">
             <button id="modeStatement" class="active" onclick="setMode('statement')">Bank Statement</button>
@@ -505,6 +656,127 @@
 
 <script>
     let currentMode = 'statement';
+    let usageData = null;
+
+    // --- Usage & Paywall ---
+    async function loadUsage() {
+        try {
+            const res = await fetch('/api/usage');
+            usageData = await res.json();
+            updateUsageBar();
+            checkPaywall();
+
+            // Check for returning from Stripe Checkout
+            const params = new URLSearchParams(window.location.search);
+            if (params.get('status') === 'success' && params.get('session_id')) {
+                await verifySession(params.get('session_id'));
+                window.history.replaceState({}, '', '/');
+            }
+        } catch (e) {
+            console.log('Usage check skipped (offline or not configured)');
+        }
+    }
+
+    function updateUsageBar() {
+        if (!usageData) return;
+        const bar = document.getElementById('usageBar');
+        const text = document.getElementById('usageText');
+        const badge = document.getElementById('usageBadge');
+
+        bar.style.display = 'flex';
+
+        if (usageData.has_subscription) {
+            bar.className = 'usage-bar subscribed';
+            text.textContent = 'Unlimited conversions active';
+            badge.textContent = 'PRO';
+            badge.className = 'usage-badge pro';
+            return;
+        }
+
+        const stmtLeft = Math.max(0, usageData.statements_limit - usageData.statements_used);
+        const rcptLeft = Math.max(0, usageData.receipts_limit - usageData.receipts_used);
+        const totalLeft = stmtLeft + rcptLeft;
+
+        if (totalLeft === 0) {
+            bar.className = 'usage-bar exhausted';
+            text.textContent = 'Free conversions used up';
+            badge.textContent = 'UPGRADE';
+            badge.className = 'usage-badge exhausted';
+        } else {
+            bar.className = 'usage-bar';
+            text.textContent = `Free: ${stmtLeft} statement, ${rcptLeft} receipt remaining`;
+            badge.textContent = 'FREE';
+            badge.className = 'usage-badge free';
+        }
+    }
+
+    function checkPaywall() {
+        if (!usageData) return;
+        if (usageData.has_subscription) {
+            hidePaywall();
+            return;
+        }
+
+        const stmtLeft = Math.max(0, usageData.statements_limit - usageData.statements_used);
+        const rcptLeft = Math.max(0, usageData.receipts_limit - usageData.receipts_used);
+
+        if (currentMode === 'statement' && stmtLeft <= 0) {
+            showPaywall();
+        } else if (currentMode === 'receipt' && rcptLeft <= 0) {
+            showPaywall();
+        } else {
+            hidePaywall();
+        }
+    }
+
+    function showPaywall() {
+        document.getElementById('paywall').classList.add('show');
+        document.getElementById('uploadCard').style.display = 'none';
+    }
+
+    function hidePaywall() {
+        document.getElementById('paywall').classList.remove('show');
+        document.getElementById('uploadCard').style.display = 'block';
+    }
+
+    async function subscribe(plan) {
+        try {
+            const res = await fetch('/api/create-checkout', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ plan }),
+            });
+
+            if (!res.ok) {
+                const err = await res.json();
+                alert(err.detail || 'Failed to start checkout');
+                return;
+            }
+
+            const data = await res.json();
+            if (data.checkout_url) {
+                window.location.href = data.checkout_url;
+            }
+        } catch (e) {
+            alert('Could not connect to payment service. Please try again.');
+        }
+    }
+
+    async function verifySession(sessionId) {
+        try {
+            const res = await fetch(`/api/verify-session?session_id=${sessionId}`);
+            const data = await res.json();
+            if (data.status === 'active') {
+                await loadUsage();
+                alert('Subscription activated! You now have unlimited conversions.');
+            }
+        } catch (e) {
+            console.error('Session verification failed:', e);
+        }
+    }
+
+    // Load usage on page load
+    loadUsage();
 
     const fileInput = document.getElementById('fileInput');
     const fileInfo = document.getElementById('fileInfo');
@@ -550,6 +822,9 @@
         errorMsg.classList.remove('show');
         document.getElementById('statementResults').classList.remove('show');
         document.getElementById('receiptResults').classList.remove('show');
+
+        // Re-check paywall for the new mode
+        checkPaywall();
     }
 
     function formatBytes(bytes) {
@@ -662,11 +937,20 @@
         } catch (err) {
             clearInterval(progressInterval);
             progressSection.classList.remove('show');
-            errorMsg.textContent = 'Error: ' + err.message;
-            errorMsg.classList.add('show');
+
+            if (err.message === 'FREE_LIMIT_REACHED') {
+                // Reload usage and show paywall
+                await loadUsage();
+                showPaywall();
+            } else {
+                errorMsg.textContent = 'Error: ' + err.message;
+                errorMsg.classList.add('show');
+            }
         } finally {
             parseBtn.disabled = false;
             parseBtn.innerHTML = isReceipt ? 'Extract Receipt Items' : 'Convert to Spreadsheet';
+            // Refresh usage counters after each attempt
+            loadUsage();
         }
     });
 

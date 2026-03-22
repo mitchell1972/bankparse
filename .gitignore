@@ -5,3 +5,4 @@ outputs/
 .claude/
 *.xlsx
 .DS_Store
+.vercel
