@@ -39,6 +39,8 @@ from database import (
     get_user_by_stripe_customer,
     get_chat_usage, increment_chat_usage,
     get_monthly_scans, increment_monthly_scans,
+    get_monthly_statements, increment_monthly_statements,
+    get_monthly_receipts, increment_monthly_receipts,
 )
 from otp import generate_otp, send_otp_email
 
@@ -232,12 +234,15 @@ async def logout(request: Request):
 async def get_usage_status(request: Request):
     user = get_current_user(request)
     if not user:
+        free_limits = TIER_LIMITS["free"]
         return JSONResponse({
             "has_subscription": False,
             "tier": "free",
-            "tier_limits": TIER_LIMITS["free"],
-            "monthly_scans_used": 0,
-            "monthly_scans_limit": TIER_LIMITS["free"]["monthly_scans"],
+            "tier_limits": free_limits,
+            "statements_used": 0,
+            "statements_limit": free_limits["monthly_statements"],
+            "receipts_used": 0,
+            "receipts_limit": free_limits["monthly_receipts"],
             "chat_used_today": 0,
             "chat_limit": 0,
             "email": None,
@@ -247,15 +252,18 @@ async def get_usage_status(request: Request):
     tier = get_user_tier(user)
     is_subscriber = tier != "free"
     limits = TIER_LIMITS[tier]
-    scans_used = get_monthly_scans(user["id"])
+    statements_used = get_monthly_statements(user["id"])
+    receipts_used = get_monthly_receipts(user["id"])
     chat_used = get_chat_usage(user["id"]) if limits["chat_per_day"] else 0
 
     return JSONResponse({
         "has_subscription": is_subscriber,
         "tier": tier,
         "tier_limits": limits,
-        "monthly_scans_used": scans_used,
-        "monthly_scans_limit": limits["monthly_scans"],
+        "statements_used": statements_used,
+        "statements_limit": limits["monthly_statements"],
+        "receipts_used": receipts_used,
+        "receipts_limit": limits["monthly_receipts"],
         "chat_used_today": chat_used,
         "chat_limit": limits["chat_per_day"],
         "email": user["email"],
@@ -430,8 +438,8 @@ async def parse_statement(request: Request, file: UploadFile = File(...)):
         export_to_xlsx(result, str(output_path))
         track_output_file(output_filename)
 
-        # Increment monthly scan count for all tiers
-        increment_monthly_scans(user["id"], 1)
+        # Increment monthly statement count for all tiers
+        increment_monthly_statements(user["id"], 1)
 
         response = JSONResponse({
             "transactions": result["transactions"],
@@ -500,8 +508,8 @@ async def parse_receipt_endpoint(request: Request, file: UploadFile = File(...))
         export_receipt_to_xlsx(result, str(output_path))
         track_output_file(output_filename)
 
-        # Increment monthly scan count for all tiers
-        increment_monthly_scans(user["id"], 1)
+        # Increment monthly receipt count for all tiers
+        increment_monthly_receipts(user["id"], 1)
 
         response = JSONResponse({
             "items": result["items"],
@@ -553,13 +561,13 @@ async def parse_receipts_bulk_endpoint(request: Request, files: list[UploadFile]
     if len(files) > limits["bulk_max_files"]:
         raise HTTPException(status_code=400, detail=f"Maximum {limits['bulk_max_files']} receipts per batch on your plan.")
 
-    # Check monthly scan limit for the batch
-    monthly_limit = limits["monthly_scans"]
+    # Check monthly receipt limit for the batch
+    monthly_limit = limits["monthly_receipts"]
     if monthly_limit is not None:
-        scans_used = get_monthly_scans(user["id"])
-        if scans_used + len(files) > monthly_limit:
-            remaining = max(0, monthly_limit - scans_used)
-            raise HTTPException(status_code=403, detail=f"Monthly scan limit reached. You have {remaining} scans remaining this month.")
+        receipts_used = get_monthly_receipts(user["id"])
+        if receipts_used + len(files) > monthly_limit:
+            remaining = max(0, monthly_limit - receipts_used)
+            raise HTTPException(status_code=403, detail=f"Monthly receipt limit reached. You have {remaining} receipts remaining this month.")
 
     # Validate all files before processing
     for f in files:
@@ -602,8 +610,8 @@ async def parse_receipts_bulk_endpoint(request: Request, files: list[UploadFile]
         export_bulk_receipts_to_xlsx(bulk_result, str(output_path))
         track_output_file(output_filename)
 
-        # Increment monthly scan count for all files in batch
-        increment_monthly_scans(user["id"], len(upload_paths))
+        # Increment monthly receipt count for all files in batch
+        increment_monthly_receipts(user["id"], len(upload_paths))
 
         return JSONResponse({
             "receipts": bulk_result["receipts"],
@@ -647,13 +655,13 @@ async def parse_statements_bulk_endpoint(request: Request, files: list[UploadFil
     if len(files) > limits["bulk_max_files"]:
         raise HTTPException(status_code=400, detail=f"Maximum {limits['bulk_max_files']} statements per batch on your plan.")
 
-    # Check monthly scan limit for the batch
-    monthly_limit = limits["monthly_scans"]
+    # Check monthly statement limit for the batch
+    monthly_limit = limits["monthly_statements"]
     if monthly_limit is not None:
-        scans_used = get_monthly_scans(user["id"])
-        if scans_used + len(files) > monthly_limit:
-            remaining = max(0, monthly_limit - scans_used)
-            raise HTTPException(status_code=403, detail=f"Monthly scan limit reached. You have {remaining} scans remaining this month.")
+        statements_used = get_monthly_statements(user["id"])
+        if statements_used + len(files) > monthly_limit:
+            remaining = max(0, monthly_limit - statements_used)
+            raise HTTPException(status_code=403, detail=f"Monthly statement limit reached. You have {remaining} statements remaining this month.")
 
     STATEMENT_EXTENSIONS = [".pdf", ".csv", ".tsv", ".txt"]
     for f in files:
@@ -685,8 +693,8 @@ async def parse_statements_bulk_endpoint(request: Request, files: list[UploadFil
         export_bulk_statements_to_xlsx(bulk_result, str(output_path))
         track_output_file(output_filename)
 
-        # Increment monthly scan count for all files in batch
-        increment_monthly_scans(user["id"], len(upload_paths))
+        # Increment monthly statement count for all files in batch
+        increment_monthly_statements(user["id"], len(upload_paths))
 
         return JSONResponse({
             "statements": bulk_result["statements"],
@@ -797,7 +805,7 @@ async def chat_endpoint(request: Request):
     if limits["chat_per_day"] == 0:
         raise HTTPException(
             status_code=403,
-            detail="AI Chat is available on Business (\u00a379.99/mo) and Enterprise (\u00a3199/mo) plans."
+            detail="AI Chat is available on Business (\u00a359.99/mo) and Enterprise (\u00a3149/mo) plans."
         )
 
     # Business tier: enforce daily limit

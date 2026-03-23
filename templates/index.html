@@ -1193,8 +1193,10 @@
         const text = document.getElementById('usageText');
         const badge = document.getElementById('usageBadge');
         const tier = usageData.tier || 'free';
-        const scansUsed = usageData.monthly_scans_used || 0;
-        const scansLimit = usageData.monthly_scans_limit;
+        const statementsUsed = usageData.statements_used || 0;
+        const statementsLimit = usageData.statements_limit;
+        const receiptsUsed = usageData.receipts_used || 0;
+        const receiptsLimit = usageData.receipts_limit;
         const chatUsed = usageData.chat_used_today || 0;
         const chatLimit = usageData.chat_limit;
 
@@ -1202,7 +1204,7 @@
 
         if (tier === 'enterprise') {
             bar.className = 'usage-bar subscribed';
-            text.textContent = 'Enterprise \u2014 unlimited scans & chat';
+            text.textContent = 'Enterprise \u2014 unlimited';
             badge.textContent = 'ENTERPRISE';
             badge.className = 'usage-badge enterprise';
             return;
@@ -1210,8 +1212,9 @@
 
         if (tier === 'business') {
             bar.className = 'usage-bar subscribed';
-            const chatStr = chatLimit ? ` | Chat: ${chatUsed}/${chatLimit} today` : '';
-            text.textContent = `Business: ${scansUsed.toLocaleString()}/${scansLimit ? scansLimit.toLocaleString() : '\u221E'} scans this month${chatStr}`;
+            const sStr = `${statementsUsed.toLocaleString()}/${statementsLimit ? statementsLimit.toLocaleString() : '\u221E'} statements`;
+            const rStr = `${receiptsUsed.toLocaleString()}/${receiptsLimit ? receiptsLimit.toLocaleString() : '\u221E'} receipts`;
+            text.textContent = `Business: ${sStr} \u00B7 ${rStr}`;
             badge.textContent = 'BUSINESS';
             badge.className = 'usage-badge business';
             return;
@@ -1219,7 +1222,9 @@
 
         if (tier === 'pro') {
             bar.className = 'usage-bar subscribed';
-            text.textContent = `Pro: ${scansUsed.toLocaleString()}/${scansLimit ? scansLimit.toLocaleString() : '\u221E'} scans this month`;
+            const sStr = `${statementsUsed.toLocaleString()}/${statementsLimit ? statementsLimit.toLocaleString() : '\u221E'} statements`;
+            const rStr = `${receiptsUsed.toLocaleString()}/${receiptsLimit ? receiptsLimit.toLocaleString() : '\u221E'} receipts`;
+            text.textContent = `Pro: ${sStr} \u00B7 ${rStr}`;
             badge.textContent = 'PRO';
             badge.className = 'usage-badge pro';
             return;
@@ -1227,22 +1232,25 @@
 
         if (tier === 'starter') {
             bar.className = 'usage-bar subscribed';
-            text.textContent = `Starter: ${scansUsed.toLocaleString()}/${scansLimit ? scansLimit.toLocaleString() : '\u221E'} scans this month`;
+            const sStr = `${statementsUsed.toLocaleString()}/${statementsLimit ? statementsLimit.toLocaleString() : '\u221E'} statements`;
+            const rStr = `${receiptsUsed.toLocaleString()}/${receiptsLimit ? receiptsLimit.toLocaleString() : '\u221E'} receipts`;
+            text.textContent = `Starter: ${sStr} \u00B7 ${rStr}`;
             badge.textContent = 'STARTER';
             badge.className = 'usage-badge starter';
             return;
         }
 
         // Free tier
-        const remaining = Math.max(0, (scansLimit || 2) - scansUsed);
-        if (remaining === 0) {
+        const statementsRemaining = Math.max(0, (statementsLimit || 1) - statementsUsed);
+        const receiptsRemaining = Math.max(0, (receiptsLimit || 1) - receiptsUsed);
+        if (statementsRemaining === 0 && receiptsRemaining === 0) {
             bar.className = 'usage-bar exhausted';
             text.textContent = 'Free scans used up';
             badge.textContent = 'UPGRADE';
             badge.className = 'usage-badge exhausted';
         } else {
             bar.className = 'usage-bar';
-            text.textContent = `Free: ${scansUsed}/${scansLimit || 2} scans this month`;
+            text.textContent = `Free: ${statementsRemaining} statement, ${receiptsRemaining} receipt remaining`;
             badge.textContent = 'FREE';
             badge.className = 'usage-badge free';
         }
@@ -1251,16 +1259,24 @@
     function checkPaywall() {
         if (!usageData) return;
         const tier = usageData.tier || 'free';
-        const scansUsed = usageData.monthly_scans_used || 0;
-        const scansLimit = usageData.monthly_scans_limit;
+
+        // Determine which limit to check based on active mode
+        let used, limit;
+        if (currentMode === 'receipt') {
+            used = usageData.receipts_used || 0;
+            limit = usageData.receipts_limit;
+        } else {
+            used = usageData.statements_used || 0;
+            limit = usageData.statements_limit;
+        }
 
         // Unlimited tiers never see paywall
-        if (scansLimit === null) {
+        if (limit === null) {
             hidePaywall();
             return;
         }
 
-        if (scansUsed >= scansLimit) {
+        if (used >= limit) {
             showPaywall();
         } else {
             hidePaywall();
@@ -1519,6 +1535,28 @@
                     parseBtn.disabled = true;
                     this.value = '';
                     return;
+                }
+
+                // Enforce monthly usage limits per type
+                if (usageData) {
+                    let used, limit, typeLabel;
+                    if (currentMode === 'receipt') {
+                        used = usageData.receipts_used || 0;
+                        limit = usageData.receipts_limit;
+                        typeLabel = 'receipts';
+                    } else {
+                        used = usageData.statements_used || 0;
+                        limit = usageData.statements_limit;
+                        typeLabel = 'statements';
+                    }
+                    if (limit !== null && used + this.files.length > limit) {
+                        const remaining = Math.max(0, limit - used);
+                        errorMsg.innerHTML = `You have ${remaining} ${typeLabel} remaining this month but selected ${this.files.length} files. <a href="#paywall" onclick="showPaywall(); return false;" style="color:var(--primary-light); font-weight:600;">Upgrade</a> for more.`;
+                        errorMsg.classList.add('show');
+                        parseBtn.disabled = true;
+                        this.value = '';
+                        return;
+                    }
                 }
 
                 fileInfo.classList.remove('show');

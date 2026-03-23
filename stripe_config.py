@@ -2,6 +2,12 @@
 BankParse — Stripe Configuration
 Run this once to create products and prices in your Stripe account:
     python stripe_config.py
+
+Current Stripe Price IDs (already created):
+    Starter:    price_1TECfoLniIk7TL9BGPes3d0Q
+    Pro:        price_1TECfoLniIk7TL9BA79kuFas
+    Business:   price_1TECfoLniIk7TL9BYNENKkva
+    Enterprise: price_1TECfpLniIk7TL9Bvd78vTgy
 """
 
 import os
@@ -12,26 +18,30 @@ stripe.api_key = os.environ.get("STRIPE_SECRET_KEY")
 PLANS = {
     "starter": {
         "name": "BankScan AI Starter",
-        "description": "100 scans/month, bulk upload (5 files), AI parsing, auto-insights, pre-built reports.",
-        "price_gbp": 999,  # £9.99 in pence
+        "description": "120 statements/mo, 500 receipts/mo, bulk upload (5 files), AI parsing, auto-insights, pre-built reports.",
+        "price_gbp": 799,  # £7.99 in pence
+        "stripe_price_id": "price_1TECfoLniIk7TL9BGPes3d0Q",
         "lookup_key": "bankscan_starter_monthly",
     },
     "pro": {
         "name": "BankScan AI Pro",
-        "description": "500 scans/month, bulk upload (20 files), AI parsing, auto-insights, pre-built reports.",
-        "price_gbp": 2999,  # £29.99 in pence
+        "description": "300 statements/mo, 1,500 receipts/mo, bulk upload (20 files), AI parsing, auto-insights, pre-built reports.",
+        "price_gbp": 2499,  # £24.99 in pence
+        "stripe_price_id": "price_1TECfoLniIk7TL9BA79kuFas",
         "lookup_key": "bankscan_pro_monthly",
     },
     "business": {
         "name": "BankScan AI Business",
-        "description": "2,000 scans/month, bulk upload (50 files), AI parsing, auto-insights, reports, AI Chat (50/day).",
-        "price_gbp": 7999,  # £79.99 in pence
+        "description": "840 statements/mo, 5,000 receipts/mo, bulk upload (50 files), AI parsing, auto-insights, reports, AI Chat (50/day).",
+        "price_gbp": 5999,  # £59.99 in pence
+        "stripe_price_id": "price_1TECfoLniIk7TL9BYNENKkva",
         "lookup_key": "bankscan_business_monthly",
     },
     "enterprise": {
         "name": "BankScan AI Enterprise",
-        "description": "Unlimited scans, bulk upload (100 files), AI parsing, auto-insights, reports, unlimited AI Chat.",
-        "price_gbp": 19900,  # £199 in pence
+        "description": "Unlimited statements & receipts, bulk upload (100 files), AI parsing, auto-insights, reports, unlimited AI Chat.",
+        "price_gbp": 14900,  # £149 in pence
+        "stripe_price_id": "price_1TECfpLniIk7TL9Bvd78vTgy",
         "lookup_key": "bankscan_enterprise_monthly",
     },
 }
@@ -65,7 +75,7 @@ def create_products_and_prices():
         )
         if existing_prices.data:
             price = existing_prices.data[0]
-            print(f"  Price already exists: {price.id} (£{price.unit_amount / 100:.2f}/mo)")
+            print(f"  Price already exists: {price.id} ({price.unit_amount / 100:.2f}/mo)")
         else:
             price = stripe.Price.create(
                 product=product.id,
@@ -74,13 +84,13 @@ def create_products_and_prices():
                 recurring={"interval": "month"},
                 lookup_key=plan["lookup_key"],
             )
-            print(f"  Created price: {price.id} (£{price.unit_amount / 100:.2f}/mo)")
+            print(f"  Created price: {price.id} ({price.unit_amount / 100:.2f}/mo)")
 
-    print("\nDone! Copy the price IDs into your environment variables:")
-    print("  STRIPE_STARTER_PRICE_ID=price_xxx")
-    print("  STRIPE_PRO_PRICE_ID=price_xxx")
-    print("  STRIPE_BUSINESS_PRICE_ID=price_xxx")
-    print("  STRIPE_ENTERPRISE_PRICE_ID=price_xxx")
+    print("\nDone! Stripe Price IDs:")
+    print("  STRIPE_STARTER_PRICE_ID=price_1TECfoLniIk7TL9BGPes3d0Q")
+    print("  STRIPE_PRO_PRICE_ID=price_1TECfoLniIk7TL9BA79kuFas")
+    print("  STRIPE_BUSINESS_PRICE_ID=price_1TECfoLniIk7TL9BYNENKkva")
+    print("  STRIPE_ENTERPRISE_PRICE_ID=price_1TECfpLniIk7TL9Bvd78vTgy")
 
 
 if __name__ == "__main__":
