@@ -1018,6 +1018,31 @@ async def stripe_webhook(request: Request):
     return JSONResponse({"status": "ok"})
 
 
+@app.post("/api/manage-billing")
+async def manage_billing(request: Request):
+    """Create a Stripe Billing Portal session for subscription management."""
+    if not STRIPE_AVAILABLE or not STRIPE_SECRET_KEY:
+        raise HTTPException(status_code=501, detail="Stripe is not configured.")
+
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required.")
+
+    stripe_customer_id = user.get("stripe_customer_id")
+    if not stripe_customer_id:
+        raise HTTPException(status_code=400, detail="No subscription found. You need to subscribe first.")
+
+    try:
+        origin = request.headers.get("origin", "https://bankscanai.com")
+        portal_session = stripe.billing_portal.Session.create(
+            customer=stripe_customer_id,
+            return_url=f"{origin}/",
+        )
+        return JSONResponse({"portal_url": portal_session.url})
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Billing error: {str(e)}")
+
+
 @app.get("/api/config")
 async def get_config():
     return JSONResponse({

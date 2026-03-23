@@ -704,7 +704,10 @@
 <body>
 
 <div class="header" style="position: relative;">
-    <button onclick="logout()" id="logoutBtn" style="position:absolute; top:1rem; right:1rem; background:rgba(255,255,255,0.2); border:1px solid rgba(255,255,255,0.4); color:white; padding:0.4rem 1rem; border-radius:6px; cursor:pointer; font-size:0.85rem; display:none;">Logout</button>
+    <div id="accountMenu" style="position:absolute; top:1rem; right:1rem; display:none; align-items:center; gap:0.5rem;">
+        <a href="#" id="headerManageLink" onclick="manageBilling(); return false;" style="display:none; color:rgba(255,255,255,0.8); font-size:0.8rem; text-decoration:underline; cursor:pointer;">Manage Subscription</a>
+        <button onclick="logout()" id="logoutBtn" style="background:rgba(255,255,255,0.2); border:1px solid rgba(255,255,255,0.4); color:white; padding:0.4rem 1rem; border-radius:6px; cursor:pointer; font-size:0.85rem;">Logout</button>
+    </div>
     <h1>BankScan AI</h1>
     <p>Upload bank statements or store receipts. Get clean spreadsheets in seconds.</p>
     <div class="badges">
@@ -717,7 +720,10 @@
     <!-- Usage Bar -->
     <div class="usage-bar" id="usageBar" style="display:none;">
         <span class="usage-text" id="usageText"></span>
-        <span class="usage-badge free" id="usageBadge">FREE</span>
+        <span style="display:flex; align-items:center; gap:0.5rem;">
+            <span class="usage-badge free" id="usageBadge">FREE</span>
+            <a href="#" id="manageLink" onclick="manageBilling(); return false;" style="display:none; font-size:0.75rem; color:#5B6A7A; text-decoration:underline; cursor:pointer;">Manage</a>
+        </span>
     </div>
 
     <!-- Paywall -->
@@ -1166,13 +1172,34 @@
         window.location.href = '/login';
     }
 
+    async function manageBilling() {
+        try {
+            const csrf = getCsrfToken();
+            const res = await fetch('/api/manage-billing', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
+            });
+            const data = await res.json();
+            if (data.portal_url) {
+                window.location.href = data.portal_url;
+            } else {
+                alert(data.detail || 'Could not open billing portal');
+            }
+        } catch (e) {
+            alert('Could not connect to billing service.');
+        }
+    }
+
     async function loadUsage() {
         try {
             const res = await fetch('/api/usage');
             usageData = await res.json();
-            // Show logout button if logged in
-            const logoutBtn = document.getElementById('logoutBtn');
-            if (usageData.email) logoutBtn.style.display = 'block';
+            // Show account menu if logged in
+            const accountMenu = document.getElementById('accountMenu');
+            if (usageData.email) accountMenu.style.display = 'flex';
+            // Show header manage link for paid tiers
+            const headerManageLink = document.getElementById('headerManageLink');
+            if (usageData.tier && usageData.tier !== 'free') headerManageLink.style.display = 'inline';
             updateUsageBar();
             checkPaywall();
 
@@ -1192,6 +1219,7 @@
         const bar = document.getElementById('usageBar');
         const text = document.getElementById('usageText');
         const badge = document.getElementById('usageBadge');
+        const manageLink = document.getElementById('manageLink');
         const tier = usageData.tier || 'free';
         const statementsUsed = usageData.statements_used || 0;
         const statementsLimit = usageData.statements_limit;
@@ -1201,6 +1229,10 @@
         const chatLimit = usageData.chat_limit;
 
         bar.style.display = 'flex';
+
+        // Show manage link for paid tiers only
+        const isPaid = tier !== 'free';
+        manageLink.style.display = isPaid ? 'inline' : 'none';
 
         if (tier === 'enterprise') {
             bar.className = 'usage-bar subscribed';
