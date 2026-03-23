@@ -553,3 +553,87 @@ def parse_receipts_bulk(file_paths: list[str]) -> dict:
         "receipt_count": len(receipts),
         "total_items": len(combined_items),
     }
+
+
+def parse_statements_bulk(file_paths: list[str]) -> dict:
+    """Parse multiple bank statement files and combine all transactions.
+
+    Each file is processed independently. Returns a combined result with
+    all transactions merged, sorted by date, and a summary across all
+    statements.
+
+    Returns::
+
+        {
+            "statements": [<individual statement results>],
+            "all_transactions": [<merged transaction list>],
+            "summary": {"total_transactions", "total_credits", "total_debits", "net"},
+            "statement_count": N,
+        }
+    """
+    from parsers.pdf_parser import parse_pdf
+    from parsers.csv_parser import parse_csv
+
+    statements: list[dict] = []
+    all_transactions: list[dict] = []
+
+    for fp in file_paths:
+        logger.info("Bulk parsing statement: %s", fp)
+        lower = fp.lower()
+
+        result = None
+
+        # Try standard parsers first
+        try:
+            if lower.endswith(".pdf"):
+                result = parse_pdf(fp)
+            elif lower.endswith((".csv", ".tsv", ".txt")):
+                result = parse_csv(fp)
+        except Exception as exc:
+            logger.warning("Standard parse failed for %s: %s", fp, exc)
+
+        # If no transactions found, try AI fallback
+        if (result is None or not result.get("transactions")) and ANTHROPIC_API_KEY and lower.endswith(".pdf"):
+            try:
+                result = parse_statement_ai(fp)
+            except Exception as exc:
+                logger.warning("AI parse also failed for %s: %s", fp, exc)
+
+        if result is None:
+            result = {"transactions": [], "summary": {}, "metadata": {"source": fp, "error": "Could not parse"}}
+
+        # Tag each transaction with the source file
+        source_name = Path(fp).name
+        bank_name = result.get("metadata", {}).get("bank_name", "Unknown Bank")
+        for tx in result.get("transactions", []):
+            tx["source"] = source_name
+            tx["bank"] = bank_name
+
+        statements.append({
+            "source": source_name,
+            "bank_name": bank_name,
+            "transaction_count": len(result.get("transactions", [])),
+            "summary": result.get("summary", {}),
+            "metadata": result.get("metadata", {}),
+        })
+
+        all_transactions.extend(result.get("transactions", []))
+
+    # Sort all transactions by date
+    all_transactions.sort(key=lambda t: t.get("date", ""))
+
+    # Build combined summary
+    total_credits = sum(t.get("amount", 0) for t in all_transactions if t.get("amount", 0) > 0)
+    total_debits = sum(t.get("amount", 0) for t in all_transactions if t.get("amount", 0) < 0)
+
+    return {
+        "statements": statements,
+        "all_transactions": all_transactions,
+        "summary": {
+            "total_transactions": len(all_transactions),
+            "total_credits": round(total_credits, 2),
+            "total_debits": round(total_debits, 2),
+            "net": round(total_credits + total_debits, 2),
+        },
+        "statement_count": len(statements),
+    }

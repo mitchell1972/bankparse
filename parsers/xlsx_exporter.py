@@ -519,3 +519,132 @@ def export_bulk_receipts_to_xlsx(bulk_result: dict, output_path: str) -> str:
 
     wb.save(output_path)
     return output_path
+
+
+def export_bulk_statements_to_xlsx(bulk_result: dict, output_path: str) -> str:
+    """
+    Export combined bulk statement data to a formatted XLSX file.
+
+    Sheet 1 — "All Transactions": All transactions from all statements.
+    Sheet 2 — "Summary": One row per statement with totals.
+    """
+    wb = Workbook()
+
+    PRIMARY_FILL = PatternFill(start_color="1B4F72", end_color="1B4F72", fill_type="solid")
+    PRIMARY_FONT = Font(name="Calibri", bold=True, color="FFFFFF", size=11)
+    CREDIT_FONT = Font(name="Calibri", color="27AE60", size=11)
+    DEBIT_FONT = Font(name="Calibri", color="E74C3C", size=11)
+    ALT_FILL = PatternFill(start_color="EBF5FB", end_color="EBF5FB", fill_type="solid")
+    TOTAL_FILL = PatternFill(start_color="D4E6F1", end_color="D4E6F1", fill_type="solid")
+    TOTAL_FONT_STYLE = Font(name="Calibri", bold=True, size=12, color="1B4F72")
+
+    ws1 = wb.active
+    ws1.title = "All Transactions"
+
+    count = bulk_result.get("summary", {}).get("total_transactions", 0)
+    ws1.merge_cells("A1:G1")
+    ws1["A1"] = f"Combined Bank Statements — {bulk_result.get('statement_count', 0)} statements, {count} transactions"
+    ws1["A1"].font = Font(name="Calibri", bold=True, size=14, color="1B4F72")
+    ws1.row_dimensions[1].height = 30
+
+    headers = ["Source", "Date", "Description", "Type", "Amount", "Balance", "Bank"]
+    header_row = 3
+    for col, header in enumerate(headers, 1):
+        cell = ws1.cell(row=header_row, column=col, value=header)
+        cell.font = PRIMARY_FONT
+        cell.fill = PRIMARY_FILL
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+    ws1.row_dimensions[header_row].height = 25
+
+    txs = bulk_result.get("all_transactions", [])
+    for i, tx in enumerate(txs):
+        row = header_row + 1 + i
+        use_alt = i % 2 == 1
+
+        ws1.cell(row=row, column=1, value=tx.get("source", "")).font = NORMAL_FONT
+        ws1.cell(row=row, column=2, value=tx.get("date", "")).font = NORMAL_FONT
+        ws1.cell(row=row, column=3, value=tx.get("description", "")).font = NORMAL_FONT
+        ws1.cell(row=row, column=4, value=tx.get("type", "")).font = NORMAL_FONT
+
+        amt = tx.get("amount", 0)
+        amt_cell = ws1.cell(row=row, column=5, value=amt)
+        amt_cell.number_format = '£#,##0.00'
+        amt_cell.font = CREDIT_FONT if amt >= 0 else DEBIT_FONT
+
+        bal = tx.get("balance")
+        bal_cell = ws1.cell(row=row, column=6, value=bal if bal is not None else "")
+        if bal is not None:
+            bal_cell.number_format = '£#,##0.00'
+        bal_cell.font = NORMAL_FONT
+
+        ws1.cell(row=row, column=7, value=tx.get("bank", "")).font = NORMAL_FONT
+
+        if use_alt:
+            for c in range(1, 8):
+                ws1.cell(row=row, column=c).fill = ALT_FILL
+        for c in range(1, 8):
+            ws1.cell(row=row, column=c).border = THIN_BORDER
+
+    if txs:
+        summary = bulk_result.get("summary", {})
+        sr = header_row + len(txs) + 2
+        for label, key, color in [("CREDITS", "total_credits", "27AE60"), ("DEBITS", "total_debits", "E74C3C"), ("NET", "net", "1B4F72")]:
+            ws1.cell(row=sr, column=3, value=label).font = TOTAL_FONT_STYLE
+            ws1.cell(row=sr, column=3).fill = TOTAL_FILL
+            v_cell = ws1.cell(row=sr, column=5, value=summary.get(key, 0))
+            v_cell.number_format = '£#,##0.00'
+            v_cell.font = Font(name="Calibri", bold=True, size=12, color=color)
+            v_cell.fill = TOTAL_FILL
+            sr += 1
+
+    ws1.column_dimensions["A"].width = 25
+    ws1.column_dimensions["B"].width = 14
+    ws1.column_dimensions["C"].width = 45
+    ws1.column_dimensions["D"].width = 10
+    ws1.column_dimensions["E"].width = 14
+    ws1.column_dimensions["F"].width = 14
+    ws1.column_dimensions["G"].width = 18
+    ws1.freeze_panes = f"A{header_row + 1}"
+    if txs:
+        ws1.auto_filter.ref = f"A{header_row}:G{header_row + len(txs)}"
+
+    ws2 = wb.create_sheet("Summary")
+    ws2.merge_cells("A1:E1")
+    ws2["A1"] = "Statement Summary"
+    ws2["A1"].font = Font(name="Calibri", bold=True, size=14, color="1B4F72")
+    ws2.row_dimensions[1].height = 30
+
+    s_headers = ["File", "Bank", "Transactions", "Credits", "Debits"]
+    s_row = 3
+    for col, h in enumerate(s_headers, 1):
+        cell = ws2.cell(row=s_row, column=col, value=h)
+        cell.font = PRIMARY_FONT
+        cell.fill = PRIMARY_FILL
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+
+    for i, stmt in enumerate(bulk_result.get("statements", [])):
+        row = s_row + 1 + i
+        s = stmt.get("summary", {})
+        ws2.cell(row=row, column=1, value=stmt.get("source", "")).font = NORMAL_FONT
+        ws2.cell(row=row, column=2, value=stmt.get("bank_name", "")).font = NORMAL_FONT
+        ws2.cell(row=row, column=3, value=stmt.get("transaction_count", 0)).font = NORMAL_FONT
+        cr = ws2.cell(row=row, column=4, value=s.get("total_credits", 0))
+        cr.number_format = '£#,##0.00'
+        cr.font = CREDIT_FONT
+        dr = ws2.cell(row=row, column=5, value=s.get("total_debits", 0))
+        dr.number_format = '£#,##0.00'
+        dr.font = DEBIT_FONT
+        if i % 2 == 1:
+            for c in range(1, 6):
+                ws2.cell(row=row, column=c).fill = ALT_FILL
+        for c in range(1, 6):
+            ws2.cell(row=row, column=c).border = THIN_BORDER
+
+    ws2.column_dimensions["A"].width = 30
+    ws2.column_dimensions["B"].width = 20
+    ws2.column_dimensions["C"].width = 14
+    ws2.column_dimensions["D"].width = 16
+    ws2.column_dimensions["E"].width = 16
+
+    wb.save(output_path)
+    return output_path

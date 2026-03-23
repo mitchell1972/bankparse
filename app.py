@@ -27,9 +27,9 @@ from slowapi.errors import RateLimitExceeded
 
 from parsers.pdf_parser import parse_pdf
 from parsers.csv_parser import parse_csv
-from parsers.xlsx_exporter import export_to_xlsx, export_receipt_to_xlsx, export_bulk_receipts_to_xlsx
+from parsers.xlsx_exporter import export_to_xlsx, export_receipt_to_xlsx, export_bulk_receipts_to_xlsx, export_bulk_statements_to_xlsx
 from parsers.receipt_parser import parse_receipt
-from parsers.ai_parser import parse_receipt_ai, parse_receipts_bulk, parse_statement_ai
+from parsers.ai_parser import parse_receipt_ai, parse_receipts_bulk, parse_statement_ai, parse_statements_bulk
 from database import (
     get_usage, save_usage, increment_usage,
     store_otp, verify_otp, cleanup_expired_otps,
@@ -595,6 +595,77 @@ async def parse_receipts_bulk_endpoint(request: Request, files: list[UploadFile]
     except Exception as e:
         logger.exception("Bulk receipt parsing error: %s", e)
         raise HTTPException(status_code=500, detail=f"Bulk receipt parsing error: {str(e)}")
+    finally:
+        for path in upload_paths:
+            p = Path(path)
+            if p.exists():
+                p.unlink()
+
+
+@app.post("/api/parse-statements-bulk")
+@limiter.limit("5/minute")
+async def parse_statements_bulk_endpoint(request: Request, files: list[UploadFile] = File(...)):
+    """Parse multiple bank statement files in a single batch."""
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required.")
+
+    allowed, is_sub = check_can_use(user, "statement")
+    if not allowed:
+        raise HTTPException(status_code=403, detail="FREE_LIMIT_REACHED")
+
+    if not files:
+        raise HTTPException(status_code=400, detail="No files uploaded.")
+
+    if len(files) > 20:
+        raise HTTPException(status_code=400, detail="Maximum 20 statements per batch.")
+
+    STATEMENT_EXTENSIONS = [".pdf", ".csv", ".tsv", ".txt"]
+    for f in files:
+        fname = f.filename.lower()
+        if not any(fname.endswith(ext) for ext in STATEMENT_EXTENSIONS):
+            raise HTTPException(status_code=400, detail=f"Unsupported file type: {f.filename}. Please upload PDF or CSV files.")
+
+    upload_paths = []
+    try:
+        for f in files:
+            contents = await f.read()
+            if len(contents) > 20 * 1024 * 1024:
+                raise HTTPException(status_code=400, detail=f"File too large: {f.filename}. Maximum 20MB per file.")
+            safe_filename = Path(f.filename).name
+            job_id = str(uuid.uuid4())[:8]
+            upload_path = UPLOAD_DIR / f"{job_id}_{safe_filename}"
+            with open(upload_path, "wb") as fout:
+                fout.write(contents)
+            upload_paths.append(str(upload_path))
+
+        bulk_result = parse_statements_bulk(upload_paths)
+
+        if not bulk_result["all_transactions"]:
+            raise HTTPException(status_code=422, detail="No transactions found in any of the uploaded statements.")
+
+        job_id = str(uuid.uuid4())[:8]
+        output_filename = f"statements_{job_id}.xlsx"
+        output_path = OUTPUT_DIR / output_filename
+        export_bulk_statements_to_xlsx(bulk_result, str(output_path))
+        track_output_file(output_filename)
+
+        if not is_sub:
+            increment_user_usage(user["id"], "statement")
+
+        return JSONResponse({
+            "statements": bulk_result["statements"],
+            "all_transactions": bulk_result["all_transactions"],
+            "summary": bulk_result["summary"],
+            "statement_count": bulk_result["statement_count"],
+            "download_url": f"/downloads/{output_filename}",
+        })
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Bulk statement parsing error: %s", e)
+        raise HTTPException(status_code=500, detail=f"Bulk statement parsing error: {str(e)}")
     finally:
         for path in upload_paths:
             p = Path(path)

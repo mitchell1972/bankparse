@@ -715,6 +715,58 @@
         </div>
     </div>
 
+    <div class="results" id="bulkStatementResults">
+        <div class="card">
+            <h2 style="margin-bottom: 1rem;">Combined Statements Processed</h2>
+
+            <div class="stat-grid three-col">
+                <div class="stat">
+                    <div class="value" id="bulkStmtCount">0</div>
+                    <div class="label">Statements</div>
+                </div>
+                <div class="stat">
+                    <div class="value" id="bulkTxCount">0</div>
+                    <div class="label">Transactions</div>
+                </div>
+                <div class="stat debit">
+                    <div class="value" id="bulkNet">£0.00</div>
+                    <div class="label">Net</div>
+                </div>
+            </div>
+
+            <div class="stat-grid" style="grid-template-columns: 1fr 1fr; margin-bottom: 1rem;">
+                <div class="stat credit">
+                    <div class="value" id="bulkCredits">£0.00</div>
+                    <div class="label">Total Credits</div>
+                </div>
+                <div class="stat debit">
+                    <div class="value" id="bulkDebits">£0.00</div>
+                    <div class="label">Total Debits</div>
+                </div>
+            </div>
+
+            <h3>All Transactions</h3>
+            <div style="overflow-x: auto;">
+                <table class="preview-table" id="bulkStmtTable">
+                    <thead>
+                        <tr>
+                            <th>Source</th>
+                            <th>Date</th>
+                            <th>Description</th>
+                            <th>Amount</th>
+                        </tr>
+                    </thead>
+                    <tbody id="bulkStmtBody"></tbody>
+                </table>
+            </div>
+            <p class="preview-note" id="bulkStmtNote"></p>
+
+            <a id="bulkStmtDownloadLink" href="#" class="btn" style="text-decoration: none;">
+                Download Combined Spreadsheet (.xlsx)
+            </a>
+        </div>
+    </div>
+
     <!-- Features -->
     <div class="card">
         <div class="features">
@@ -1023,10 +1075,10 @@
             fileInput.multiple = true;
             parseBtn.textContent = 'Extract Receipt Items';
         } else {
-            title.textContent = 'Drop your bank statement here';
-            hint.textContent = 'or click to browse — PDF or CSV files accepted';
+            title.textContent = 'Drop your bank statements here';
+            hint.textContent = 'or click to browse — PDF or CSV files accepted. Select multiple for bulk processing.';
             fileInput.accept = '.pdf,.csv,.tsv,.txt';
-            fileInput.multiple = false;
+            fileInput.multiple = true;
             parseBtn.textContent = 'Convert to Spreadsheet';
         }
 
@@ -1039,6 +1091,7 @@
         document.getElementById('statementResults').classList.remove('show');
         document.getElementById('receiptResults').classList.remove('show');
         document.getElementById('bulkReceiptResults').classList.remove('show');
+        document.getElementById('bulkStatementResults').classList.remove('show');
 
         // Re-check paywall for the new mode
         checkPaywall();
@@ -1066,8 +1119,8 @@
                 setMode('receipt');
             }
 
-            // Multiple files in receipt mode = bulk upload
-            if (this.files.length > 1 && currentMode === 'receipt') {
+            // Multiple files = bulk upload (receipts or statements)
+            if (this.files.length > 1) {
                 fileInfo.classList.remove('show');
                 let totalSize = 0;
                 const listEl = document.getElementById('bulkFileItems');
@@ -1076,14 +1129,14 @@
                     const f = this.files[i];
                     totalSize += f.size;
                     const div = document.createElement('div');
-                    div.style.cssText = 'padding:0.25rem 0; border-bottom:1px solid #E8DAEF;';
+                    div.style.cssText = 'padding:0.25rem 0; border-bottom:1px solid var(--border);';
                     div.textContent = f.name + ' (' + formatBytes(f.size) + ')';
                     listEl.appendChild(div);
                 }
                 document.getElementById('bulkFileCount').textContent = this.files.length + ' files selected';
                 document.getElementById('bulkFileSize').textContent = formatBytes(totalSize) + ' total';
                 document.getElementById('bulkFileList').style.display = 'block';
-                parseBtn.textContent = 'Extract All Receipts';
+                parseBtn.textContent = currentMode === 'receipt' ? 'Extract All Receipts' : 'Convert All Statements';
             } else {
                 document.getElementById('bulkFileList').style.display = 'none';
                 fileName.textContent = file.name;
@@ -1102,6 +1155,7 @@
             document.getElementById('statementResults').classList.remove('show');
             document.getElementById('receiptResults').classList.remove('show');
             document.getElementById('bulkReceiptResults').classList.remove('show');
+        document.getElementById('bulkStatementResults').classList.remove('show');
         }
     });
 
@@ -1133,19 +1187,24 @@
         if (!fileInput.files.length) return;
 
         const isReceipt = currentMode === 'receipt';
-        const isBulk = isReceipt && fileInput.files.length > 1;
+        const isBulkReceipt = isReceipt && fileInput.files.length > 1;
+        const isBulkStatement = !isReceipt && fileInput.files.length > 1;
+        const isBulk = isBulkReceipt || isBulkStatement;
 
         errorMsg.classList.remove('show');
         document.getElementById('statementResults').classList.remove('show');
         document.getElementById('receiptResults').classList.remove('show');
         document.getElementById('bulkReceiptResults').classList.remove('show');
+        document.getElementById('bulkStatementResults').classList.remove('show');
         progressSection.classList.add('show');
         parseBtn.disabled = true;
         parseBtn.innerHTML = '<span class="spinner"></span> Processing...';
 
         let apiUrl;
-        if (isBulk) {
+        if (isBulkReceipt) {
             apiUrl = '/api/parse-receipts-bulk';
+        } else if (isBulkStatement) {
+            apiUrl = '/api/parse-statements-bulk';
         } else if (isReceipt) {
             apiUrl = '/api/parse-receipt';
         } else {
@@ -1154,11 +1213,13 @@
 
         // Simulate progress
         let progress = 0;
-        const steps = isBulk
+        const steps = isBulkReceipt
             ? ['Uploading files...', 'Reading receipts...', 'Extracting items...', 'Combining results...', 'Building spreadsheet...']
-            : isReceipt
-                ? ['Uploading...', 'Reading receipt...', 'Extracting items...', 'Building spreadsheet...']
-                : ['Uploading...', 'Reading statement...', 'Extracting transactions...', 'Building spreadsheet...'];
+            : isBulkStatement
+                ? ['Uploading files...', 'Reading statements...', 'Extracting transactions...', 'Combining results...', 'Building spreadsheet...']
+                : isReceipt
+                    ? ['Uploading...', 'Reading receipt...', 'Extracting items...', 'Building spreadsheet...']
+                    : ['Uploading...', 'Reading statement...', 'Extracting transactions...', 'Building spreadsheet...'];
         let step = 0;
 
         const progressInterval = setInterval(() => {
@@ -1172,7 +1233,7 @@
 
         try {
             const formData = new FormData();
-            if (isBulk) {
+            if (isBulkReceipt || isBulkStatement) {
                 for (let i = 0; i < fileInput.files.length; i++) {
                     formData.append('files', fileInput.files[i]);
                 }
@@ -1201,8 +1262,10 @@
 
             setTimeout(() => {
                 progressSection.classList.remove('show');
-                if (isBulk) {
+                if (isBulkReceipt) {
                     showBulkReceiptResults(data);
+                } else if (isBulkStatement) {
+                    showBulkStatementResults(data);
                 } else if (isReceipt) {
                     showReceiptResults(data);
                 } else {
@@ -1428,6 +1491,48 @@
             };
         }
         const results = document.getElementById('receiptResults');
+        results.classList.add('show');
+        results.scrollIntoView({ behavior: 'smooth' });
+    }
+
+    function showBulkStatementResults(data) {
+        const { all_transactions, summary, statement_count, download_url } = data;
+
+        document.getElementById('bulkStmtCount').textContent = statement_count;
+        document.getElementById('bulkTxCount').textContent = summary.total_transactions;
+        document.getElementById('bulkNet').textContent = formatCurrency(summary.net);
+        document.getElementById('bulkCredits').textContent = formatCurrency(summary.total_credits);
+        document.getElementById('bulkDebits').textContent = formatCurrency(summary.total_debits);
+
+        const tbody = document.getElementById('bulkStmtBody');
+        tbody.innerHTML = '';
+        const preview = all_transactions.slice(0, 50);
+        preview.forEach((tx) => {
+            const tr = document.createElement('tr');
+            const amtClass = tx.amount >= 0 ? 'credit' : 'debit';
+            tr.innerHTML = `
+                <td>${escapeHtml(tx.source || '')}</td>
+                <td>${escapeHtml(tx.date)}</td>
+                <td>${escapeHtml(tx.description)}</td>
+                <td class="${amtClass}">${formatCurrency(tx.amount)}</td>
+            `;
+            tbody.appendChild(tr);
+        });
+
+        const note = document.getElementById('bulkStmtNote');
+        if (all_transactions.length > 50) {
+            note.textContent = `Showing 50 of ${all_transactions.length} transactions. Download the spreadsheet for the full list.`;
+        } else {
+            note.textContent = `${statement_count} statements, ${summary.total_transactions} transactions. Net: ${formatCurrency(summary.net)}`;
+        }
+
+        const dlLink = document.getElementById('bulkStmtDownloadLink');
+        if (download_url) {
+            dlLink.href = download_url;
+            dlLink.onclick = null;
+        }
+
+        const results = document.getElementById('bulkStatementResults');
         results.classList.add('show');
         results.scrollIntoView({ behavior: 'smooth' });
     }
