@@ -110,7 +110,7 @@ async def lifespan(app):
 
 
 # App
-app = FastAPI(title="BankParse", version="2.3.0", lifespan=lifespan)
+app = FastAPI(title="BankScan AI", version="2.3.0", lifespan=lifespan)
 
 ALLOWED_ORIGINS = os.environ.get("ALLOWED_ORIGINS", "http://localhost:8000").split(",")
 app.add_middleware(
@@ -777,7 +777,7 @@ async def chat_endpoint(request: Request):
     formatted_context = _format_chat_context(context_type, context_data)
 
     system_prompt = (
-        "You are a helpful financial assistant for BankParse. The user has uploaded "
+        "You are a helpful financial assistant for BankScan AI. The user has uploaded "
         "bank statements and/or store receipts. Answer their questions based ONLY on "
         "the data provided below. Be concise, specific, and use GBP (\u00a3) currency "
         "formatting. If asked to calculate totals, show your working. If the data "
@@ -953,8 +953,8 @@ async def get_config():
         "free_statement_limit": FREE_STATEMENT_LIMIT,
         "free_receipt_limit": FREE_RECEIPT_LIMIT,
         "plans": {
-            "pro": {"price": "\u00a39.99/mo", "name": "BankParse Pro"},
-            "business": {"price": "\u00a319.99/mo", "name": "BankParse Business"},
+            "pro": {"price": "\u00a39.99/mo", "name": "BankScan AI Pro"},
+            "business": {"price": "\u00a319.99/mo", "name": "BankScan AI Business"},
         },
     })
 

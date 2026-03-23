@@ -32,10 +32,10 @@ def send_otp_email(to_email: str, code: str) -> bool:
         logger.warning("SMTP not configured — OTP code for %s: %s", to_email, code)
         return True
 
-    subject = "BankParse — Your verification code"
+    subject = "BankScan AI — Your verification code"
     html_body = f"""
     <div style="font-family: -apple-system, sans-serif; max-width: 480px; margin: 0 auto; padding: 2rem;">
-        <h2 style="color: #1B4F72;">BankParse Verification</h2>
+        <h2 style="color: #1B4F72;">BankScan AI Verification</h2>
         <p>Your verification code is:</p>
         <div style="background: #F0F4F8; padding: 1.5rem; text-align: center; border-radius: 8px; margin: 1.5rem 0;">
             <span style="font-size: 2rem; font-weight: bold; letter-spacing: 0.3em; color: #1B4F72;">{code}</span>
@@ -43,7 +43,7 @@ def send_otp_email(to_email: str, code: str) -> bool:
         <p style="color: #666;">This code expires in <strong>10 minutes</strong>.</p>
         <p style="color: #666;">If you didn't request this code, you can safely ignore this email.</p>
         <hr style="border: none; border-top: 1px solid #eee; margin: 1.5rem 0;">
-        <p style="color: #999; font-size: 0.85rem;">BankParse — Bank statements &amp; receipts to spreadsheet</p>
+        <p style="color: #999; font-size: 0.85rem;">BankScan AI — AI-powered bank statement &amp; receipt intelligence</p>
     </div>
     """
 
@@ -51,7 +51,7 @@ def send_otp_email(to_email: str, code: str) -> bool:
     msg["Subject"] = subject
     msg["From"] = SMTP_FROM
     msg["To"] = to_email
-    msg.attach(MIMEText(f"Your BankParse verification code is: {code}\n\nThis code expires in 10 minutes.", "plain"))
+    msg.attach(MIMEText(f"Your BankScan AI verification code is: {code}\n\nThis code expires in 10 minutes.", "plain"))
     msg.attach(MIMEText(html_body, "html"))
 
     try:

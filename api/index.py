@@ -97,7 +97,7 @@ LOGIN_HTML = LOGIN_PATH.read_text() if LOGIN_PATH.exists() else ""
 if IS_PRODUCTION and SECRET_KEY == "bankparse-dev-secret-change-me":
     raise RuntimeError("FATAL: SECRET_KEY must be set to a secure random value in production. Generate one with: python -c \"import secrets; print(secrets.token_hex(32))\"")
 
-app = FastAPI(title="BankParse", version="2.3.0")
+app = FastAPI(title="BankScan AI", version="2.3.0")
 
 from csrf import CSRFMiddleware
 app.add_middleware(CSRFMiddleware)
@@ -703,8 +703,8 @@ async def get_config():
         "free_statement_limit": FREE_STATEMENT_LIMIT,
         "free_receipt_limit": FREE_RECEIPT_LIMIT,
         "plans": {
-            "pro": {"price": "\u00a39.99/mo", "name": "BankParse Pro"},
-            "business": {"price": "\u00a319.99/mo", "name": "BankParse Business"},
+            "pro": {"price": "\u00a39.99/mo", "name": "BankScan AI Pro"},
+            "business": {"price": "\u00a319.99/mo", "name": "BankScan AI Business"},
         },
     })
 
@@ -714,7 +714,7 @@ async def get_config():
 # ==========================================================================
 
 CHAT_SYSTEM_PROMPT = (
-    "You are a helpful financial assistant for BankParse. The user has uploaded "
+    "You are a helpful financial assistant for BankScan AI. The user has uploaded "
     "bank statements and/or store receipts. Answer their questions based ONLY on "
     "the data provided below. Be concise, specific, and use GBP (\u00a3) currency "
     "formatting. If asked to calculate totals, show your working. If the data "
