@@ -411,8 +411,10 @@
             font-weight: 700;
         }
         .usage-badge.free { background: #F9E79F; color: #7D6608; }
-        .usage-badge.pro { background: #AED6F1; color: #1B4F72; }
+        .usage-badge.starter { background: #AED6F1; color: #1B4F72; }
+        .usage-badge.pro { background: #85C1E9; color: #154360; }
         .usage-badge.business { background: #A9DFBF; color: #1E8449; }
+        .usage-badge.enterprise { background: #D2B4DE; color: #6C3483; }
         .usage-badge.exhausted { background: #F5B7B1; color: #922B21; }
 
         /* Paywall overlay */
@@ -433,14 +435,14 @@
         .paywall-card p { color: var(--muted); margin-bottom: 1.5rem; }
         .paywall-plans {
             display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 1rem;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 0.75rem;
             margin-bottom: 1rem;
         }
         .plan-card {
             border: 2px solid var(--border);
             border-radius: 10px;
-            padding: 1.25rem;
+            padding: 1rem;
             cursor: pointer;
             transition: all 0.2s;
             position: relative;
@@ -457,40 +459,63 @@
             transform: translateX(-50%);
             background: var(--primary);
             color: white;
-            font-size: 0.65rem;
+            font-size: 0.6rem;
             font-weight: 700;
-            padding: 0.15rem 0.6rem;
+            padding: 0.15rem 0.5rem;
             border-radius: 8px;
+            white-space: nowrap;
         }
-        .plan-card .plan-name { font-weight: 700; font-size: 1.05rem; }
-        .plan-card .plan-price { color: var(--primary); font-size: 1.4rem; font-weight: 800; margin: 0.5rem 0; }
-        .plan-card .plan-price span { font-size: 0.8rem; font-weight: 400; color: var(--muted); }
+        .plan-card.best-value::before {
+            content: 'BEST VALUE';
+            position: absolute;
+            top: -10px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--accent);
+            color: white;
+            font-size: 0.6rem;
+            font-weight: 700;
+            padding: 0.15rem 0.5rem;
+            border-radius: 8px;
+            white-space: nowrap;
+        }
+        .plan-card .plan-name { font-weight: 700; font-size: 0.95rem; }
+        .plan-card .plan-price { color: var(--primary); font-size: 1.2rem; font-weight: 800; margin: 0.4rem 0; }
+        .plan-card .plan-price span { font-size: 0.75rem; font-weight: 400; color: var(--muted); }
         .plan-card ul {
             list-style: none;
             text-align: left;
-            font-size: 0.8rem;
+            font-size: 0.72rem;
             color: var(--muted);
-            margin-top: 0.75rem;
+            margin-top: 0.5rem;
         }
-        .plan-card ul li { padding: 0.2rem 0; }
-        .plan-card ul li::before { content: '✓ '; color: var(--accent); font-weight: 700; }
+        .plan-card ul li { padding: 0.15rem 0; }
+        .plan-card ul li.yes::before { content: '\2713 '; color: var(--accent); font-weight: 700; }
+        .plan-card ul li.no::before { content: '\2717 '; color: var(--danger); font-weight: 700; }
         .btn-subscribe {
             display: block;
             width: 100%;
-            margin-top: 0.75rem;
-            padding: 0.6rem;
+            margin-top: 0.5rem;
+            padding: 0.5rem;
             border: none;
             border-radius: 6px;
             font-weight: 700;
-            font-size: 0.9rem;
+            font-size: 0.82rem;
             cursor: pointer;
             transition: all 0.2s;
         }
+        .btn-subscribe.starter-btn { background: var(--primary-light); color: white; }
+        .btn-subscribe.starter-btn:hover { background: var(--primary); }
         .btn-subscribe.pro-btn { background: var(--primary); color: white; }
         .btn-subscribe.pro-btn:hover { background: var(--primary-light); }
         .btn-subscribe.biz-btn { background: var(--accent); color: white; }
         .btn-subscribe.biz-btn:hover { background: #219A52; }
+        .btn-subscribe.ent-btn { background: #8E44AD; color: white; }
+        .btn-subscribe.ent-btn:hover { background: #A569BD; }
 
+        @media (max-width: 900px) {
+            .paywall-plans { grid-template-columns: repeat(2, 1fr); }
+        }
         @media (max-width: 600px) {
             .paywall-plans { grid-template-columns: 1fr; }
         }
@@ -698,8 +723,8 @@
     <!-- Paywall -->
     <div class="paywall" id="paywall">
         <div class="paywall-card">
-            <h2>Free Limit Reached</h2>
-            <p>You've used your free conversion. Upgrade to continue converting unlimited bank statements and receipts.</p>
+            <h2>Scan Limit Reached</h2>
+            <p>You've used your monthly scans. Upgrade your plan to continue converting bank statements and receipts.</p>
 
             <!-- Email input -->
             <div style="margin-bottom: 1.5rem;">
@@ -710,29 +735,57 @@
             </div>
 
             <div class="paywall-plans">
+                <div class="plan-card">
+                    <div class="plan-name">Starter</div>
+                    <div class="plan-price">&pound;9.99 <span>/month</span></div>
+                    <ul>
+                        <li class="yes">100 scans/month</li>
+                        <li class="yes">Bulk upload (5 files)</li>
+                        <li class="yes">AI-powered parsing</li>
+                        <li class="yes">Auto-insights</li>
+                        <li class="yes">Pre-built reports</li>
+                        <li class="no">AI Chat</li>
+                    </ul>
+                    <button class="btn-subscribe starter-btn" onclick="subscribe('starter')">Get Starter</button>
+                </div>
                 <div class="plan-card popular">
                     <div class="plan-name">Pro</div>
-                    <div class="plan-price">£9.99 <span>/month</span></div>
+                    <div class="plan-price">&pound;29.99 <span>/month</span></div>
                     <ul>
-                        <li>Unlimited statements &amp; receipts</li>
-                        <li>AI-powered parsing</li>
-                        <li>20 AI chat questions/day</li>
-                        <li>Bulk upload (up to 5 files)</li>
-                        <li>Excel export</li>
+                        <li class="yes">500 scans/month</li>
+                        <li class="yes">Bulk upload (20 files)</li>
+                        <li class="yes">AI-powered parsing</li>
+                        <li class="yes">Auto-insights</li>
+                        <li class="yes">Pre-built reports</li>
+                        <li class="no">AI Chat</li>
                     </ul>
                     <button class="btn-subscribe pro-btn" onclick="subscribe('pro')">Get Pro</button>
                 </div>
                 <div class="plan-card">
                     <div class="plan-name">Business</div>
-                    <div class="plan-price">£19.99 <span>/month</span></div>
+                    <div class="plan-price">&pound;79.99 <span>/month</span></div>
                     <ul>
-                        <li>Everything in Pro</li>
-                        <li>Unlimited AI chat</li>
-                        <li>Bulk upload (up to 50 files)</li>
-                        <li>API access</li>
-                        <li>Priority support</li>
+                        <li class="yes">2,000 scans/month</li>
+                        <li class="yes">Bulk upload (50 files)</li>
+                        <li class="yes">AI-powered parsing</li>
+                        <li class="yes">Auto-insights</li>
+                        <li class="yes">Pre-built reports</li>
+                        <li class="yes">AI Chat (50/day)</li>
                     </ul>
                     <button class="btn-subscribe biz-btn" onclick="subscribe('business')">Get Business</button>
+                </div>
+                <div class="plan-card best-value">
+                    <div class="plan-name">Enterprise</div>
+                    <div class="plan-price">&pound;199 <span>/month</span></div>
+                    <ul>
+                        <li class="yes">Unlimited scans</li>
+                        <li class="yes">Bulk upload (100 files)</li>
+                        <li class="yes">AI-powered parsing</li>
+                        <li class="yes">Auto-insights</li>
+                        <li class="yes">Pre-built reports</li>
+                        <li class="yes">AI Chat (unlimited)</li>
+                    </ul>
+                    <button class="btn-subscribe ent-btn" onclick="subscribe('enterprise')">Get Enterprise</button>
                 </div>
             </div>
 
@@ -1135,13 +1188,26 @@
         const bar = document.getElementById('usageBar');
         const text = document.getElementById('usageText');
         const badge = document.getElementById('usageBadge');
-        const tier = usageData.tier || (usageData.has_subscription ? 'pro' : 'free');
+        const tier = usageData.tier || 'free';
+        const scansUsed = usageData.monthly_scans_used || 0;
+        const scansLimit = usageData.monthly_scans_limit;
+        const chatUsed = usageData.chat_used_today || 0;
+        const chatLimit = usageData.chat_limit;
 
         bar.style.display = 'flex';
 
+        if (tier === 'enterprise') {
+            bar.className = 'usage-bar subscribed';
+            text.textContent = 'Enterprise \u2014 unlimited scans & chat';
+            badge.textContent = 'ENTERPRISE';
+            badge.className = 'usage-badge enterprise';
+            return;
+        }
+
         if (tier === 'business') {
             bar.className = 'usage-bar subscribed';
-            text.textContent = 'BankScan AI Business \u2014 unlimited everything';
+            const chatStr = chatLimit ? ` | Chat: ${chatUsed}/${chatLimit} today` : '';
+            text.textContent = `Business: ${scansUsed.toLocaleString()}/${scansLimit ? scansLimit.toLocaleString() : '\u221E'} scans this month${chatStr}`;
             badge.textContent = 'BUSINESS';
             badge.className = 'usage-badge business';
             return;
@@ -1149,25 +1215,30 @@
 
         if (tier === 'pro') {
             bar.className = 'usage-bar subscribed';
-            text.textContent = 'BankScan AI Pro \u2014 unlimited uploads, 20 chats/day';
+            text.textContent = `Pro: ${scansUsed.toLocaleString()}/${scansLimit ? scansLimit.toLocaleString() : '\u221E'} scans this month`;
             badge.textContent = 'PRO';
             badge.className = 'usage-badge pro';
             return;
         }
 
-        // Free tier
-        const stmtLeft = Math.max(0, usageData.statements_limit - usageData.statements_used);
-        const rcptLeft = Math.max(0, usageData.receipts_limit - usageData.receipts_used);
-        const totalLeft = stmtLeft + rcptLeft;
+        if (tier === 'starter') {
+            bar.className = 'usage-bar subscribed';
+            text.textContent = `Starter: ${scansUsed.toLocaleString()}/${scansLimit ? scansLimit.toLocaleString() : '\u221E'} scans this month`;
+            badge.textContent = 'STARTER';
+            badge.className = 'usage-badge starter';
+            return;
+        }
 
-        if (totalLeft === 0) {
+        // Free tier
+        const remaining = Math.max(0, (scansLimit || 2) - scansUsed);
+        if (remaining === 0) {
             bar.className = 'usage-bar exhausted';
-            text.textContent = 'Free conversions used up';
+            text.textContent = 'Free scans used up';
             badge.textContent = 'UPGRADE';
             badge.className = 'usage-badge exhausted';
         } else {
             bar.className = 'usage-bar';
-            text.textContent = `Free: ${stmtLeft} statement, ${rcptLeft} receipt remaining`;
+            text.textContent = `Free: ${scansUsed}/${scansLimit || 2} scans this month`;
             badge.textContent = 'FREE';
             badge.className = 'usage-badge free';
         }
@@ -1175,17 +1246,17 @@
 
     function checkPaywall() {
         if (!usageData) return;
-        if (usageData.has_subscription) {
+        const tier = usageData.tier || 'free';
+        const scansUsed = usageData.monthly_scans_used || 0;
+        const scansLimit = usageData.monthly_scans_limit;
+
+        // Unlimited tiers never see paywall
+        if (scansLimit === null) {
             hidePaywall();
             return;
         }
 
-        const stmtLeft = Math.max(0, usageData.statements_limit - usageData.statements_used);
-        const rcptLeft = Math.max(0, usageData.receipts_limit - usageData.receipts_used);
-
-        if (currentMode === 'statement' && stmtLeft <= 0) {
-            showPaywall();
-        } else if (currentMode === 'receipt' && rcptLeft <= 0) {
+        if (scansUsed >= scansLimit) {
             showPaywall();
         } else {
             hidePaywall();
@@ -1425,10 +1496,12 @@
 
             // Multiple files = bulk upload (receipts or statements)
             if (this.files.length > 1) {
+                const tierLimits = (usageData && usageData.tier_limits) || {};
+                const bulkMax = tierLimits.bulk_max_files || 0;
+
                 // Gate bulk upload for free users
-                if (tier === 'free') {
-                    errorMsg.textContent = 'Bulk upload requires a Pro or Business subscription.';
-                    errorMsg.innerHTML = 'Bulk upload requires a Pro or Business subscription. <a href="#paywall" onclick="showPaywall(); return false;" style="color:var(--primary-light); font-weight:600;">Upgrade now</a>';
+                if (bulkMax === 0) {
+                    errorMsg.innerHTML = 'Bulk upload requires a paid subscription (Starter or above). <a href="#paywall" onclick="showPaywall(); return false;" style="color:var(--primary-light); font-weight:600;">Upgrade now</a>';
                     errorMsg.classList.add('show');
                     parseBtn.disabled = true;
                     this.value = '';
@@ -1436,15 +1509,8 @@
                 }
 
                 // Enforce file limits per tier
-                if (tier === 'pro' && this.files.length > 5) {
-                    errorMsg.innerHTML = 'Pro plan allows up to 5 files per batch. <a href="#paywall" onclick="showPaywall(); return false;" style="color:var(--primary-light); font-weight:600;">Upgrade to Business</a> for up to 50.';
-                    errorMsg.classList.add('show');
-                    parseBtn.disabled = true;
-                    this.value = '';
-                    return;
-                }
-                if (tier === 'business' && this.files.length > 50) {
-                    errorMsg.textContent = 'Maximum 50 files per batch.';
+                if (this.files.length > bulkMax) {
+                    errorMsg.innerHTML = `Your plan allows up to ${bulkMax} files per batch. <a href="#paywall" onclick="showPaywall(); return false;" style="color:var(--primary-light); font-weight:600;">Upgrade</a> for more.`;
                     errorMsg.classList.add('show');
                     parseBtn.disabled = true;
                     this.value = '';
@@ -2233,39 +2299,37 @@
 
         const input = document.getElementById('chatInput');
         const sendBtn = document.getElementById('chatSendBtn');
-        const tier = (usageData && usageData.tier) || (usageData && usageData.has_subscription ? 'pro' : 'free');
+        const tier = (usageData && usageData.tier) || 'free';
+        const chatLimit = usageData && usageData.chat_limit;
 
-        if (tier === 'free') {
-            // Disable chat for free users
+        // Chat only available on business and enterprise
+        if (chatLimit === 0 || chatLimit === undefined) {
+            // Disable chat for free/starter/pro users
             input.disabled = true;
-            input.placeholder = 'Upgrade to Pro to use AI Chat...';
+            input.placeholder = 'AI Chat requires Business or Enterprise plan...';
             sendBtn.disabled = true;
-            // Show upgrade message in chat body
             clearChat();
             const messages = document.getElementById('chatMessages');
             const typing = document.getElementById('chatTyping');
             const notice = document.createElement('div');
             notice.className = 'chat-bubble ai';
-            notice.innerHTML = 'AI Chat is available on Pro and Business plans. <a href="#paywall" onclick="showPaywall(); return false;" style="color:var(--primary-light); font-weight:600;">Upgrade</a> to ask questions about your data.';
+            notice.innerHTML = 'AI Chat is available on Business (\u00a379.99/mo) and Enterprise (\u00a3199/mo) plans. <a href="#paywall" onclick="showPaywall(); return false;" style="color:var(--primary-light); font-weight:600;">Upgrade</a> to ask questions about your data.';
             messages.insertBefore(notice, typing);
         } else {
             input.disabled = false;
             sendBtn.disabled = false;
-            if (tier === 'business') {
-                if (contextType === 'statement' || contextType === 'bulk_statement') {
-                    input.placeholder = 'Ask about your transactions...';
-                } else {
-                    input.placeholder = 'Ask about your expenses...';
-                }
+            const topicHint = (contextType === 'statement' || contextType === 'bulk_statement')
+                ? 'Ask about your transactions...'
+                : 'Ask about your expenses...';
+
+            if (chatLimit === null) {
+                // Enterprise: unlimited
+                input.placeholder = topicHint;
             } else {
-                // Pro tier - show chat usage
-                const chatsUsed = (usageData && usageData.chats_used) || 0;
-                const chatsLeft = Math.max(0, 20 - chatsUsed);
-                if (contextType === 'statement' || contextType === 'bulk_statement') {
-                    input.placeholder = `Ask about your transactions... (${chatsLeft}/20 today)`;
-                } else {
-                    input.placeholder = `Ask about your expenses... (${chatsLeft}/20 today)`;
-                }
+                // Business: show daily limit
+                const chatUsed = (usageData && usageData.chat_used_today) || 0;
+                const chatsLeft = Math.max(0, chatLimit - chatUsed);
+                input.placeholder = `${topicHint} (${chatsLeft}/${chatLimit} today)`;
             }
         }
     }

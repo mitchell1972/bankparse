@@ -40,6 +40,7 @@ from database import (
     create_user, get_user_by_email, update_user, increment_user_usage,
     get_user_by_stripe_customer,
     get_chat_usage, increment_chat_usage,
+    get_monthly_scans, increment_monthly_scans,
 )
 from otp import generate_otp, send_otp_email
 from ratelimit import check_rate_limit
@@ -48,7 +49,7 @@ from core import (
     # Constants
     SECRET_KEY, IS_PRODUCTION,
     STRIPE_SECRET_KEY, STRIPE_PUBLISHABLE_KEY, STRIPE_WEBHOOK_SECRET,
-    STRIPE_PRO_PRICE_ID, STRIPE_BUSINESS_PRICE_ID,
+    STRIPE_STARTER_PRICE_ID, STRIPE_PRO_PRICE_ID, STRIPE_BUSINESS_PRICE_ID, STRIPE_ENTERPRISE_PRICE_ID,
     STRIPE_AVAILABLE,
     FREE_STATEMENT_LIMIT, FREE_RECEIPT_LIMIT,
     TIER_LIMITS,
@@ -196,13 +197,13 @@ async def get_usage_status(request: Request):
     user = get_current_user(request)
     if not user:
         return JSONResponse({
-            "statements_used": 0,
-            "receipts_used": 0,
-            "statements_limit": FREE_STATEMENT_LIMIT,
-            "receipts_limit": FREE_RECEIPT_LIMIT,
             "has_subscription": False,
             "tier": "free",
             "tier_limits": TIER_LIMITS["free"],
+            "monthly_scans_used": 0,
+            "monthly_scans_limit": TIER_LIMITS["free"]["monthly_scans"],
+            "chat_used_today": 0,
+            "chat_limit": 0,
             "email": None,
             "stripe_configured": bool(STRIPE_PUBLISHABLE_KEY),
         })
@@ -210,17 +211,17 @@ async def get_usage_status(request: Request):
     tier = get_user_tier(user)
     is_subscriber = tier != "free"
     limits = TIER_LIMITS[tier]
-    chat_used = get_chat_usage(user["id"]) if tier != "free" else 0
+    scans_used = get_monthly_scans(user["id"])
+    chat_used = get_chat_usage(user["id"]) if limits["chat_per_day"] else 0
 
     return JSONResponse({
-        "statements_used": user.get("statements_used", 0),
-        "receipts_used": user.get("receipts_used", 0),
-        "statements_limit": FREE_STATEMENT_LIMIT,
-        "receipts_limit": FREE_RECEIPT_LIMIT,
         "has_subscription": is_subscriber,
         "tier": tier,
         "tier_limits": limits,
+        "monthly_scans_used": scans_used,
+        "monthly_scans_limit": limits["monthly_scans"],
         "chat_used_today": chat_used,
+        "chat_limit": limits["chat_per_day"],
         "email": user["email"],
         "stripe_configured": bool(STRIPE_PUBLISHABLE_KEY),
     })
@@ -380,8 +381,8 @@ async def parse_statement(request: Request, file: UploadFile = File(...)):
         export_to_xlsx(result, str(output_path))
         xlsx_b64 = base64.b64encode(output_path.read_bytes()).decode("utf-8")
 
-        if tier == "free":
-            increment_user_usage(user["id"], "statement")
+        # Increment monthly scan count for all tiers
+        increment_monthly_scans(user["id"], 1)
 
         response = JSONResponse({
             "transactions": result["transactions"],
@@ -448,8 +449,8 @@ async def parse_receipt_endpoint(request: Request, file: UploadFile = File(...))
         export_receipt_to_xlsx(result, str(output_path))
         xlsx_b64 = base64.b64encode(output_path.read_bytes()).decode("utf-8")
 
-        if tier == "free":
-            increment_user_usage(user["id"], "receipt")
+        # Increment monthly scan count for all tiers
+        increment_monthly_scans(user["id"], 1)
 
         response = JSONResponse({
             "items": result["items"],
@@ -485,7 +486,7 @@ async def parse_receipts_bulk_endpoint(request: Request, files: List[UploadFile]
 
     # Free tier cannot use bulk upload
     if limits["bulk_max_files"] == 0:
-        raise HTTPException(status_code=403, detail="Bulk upload requires a Pro or Business subscription.")
+        raise HTTPException(status_code=403, detail="Bulk upload requires a paid subscription (Starter or above).")
 
     # AI parsers required for bulk
     if not AI_PARSERS_AVAILABLE or not ANTHROPIC_API_KEY:
@@ -504,6 +505,14 @@ async def parse_receipts_bulk_endpoint(request: Request, files: List[UploadFile]
 
     if len(files) > limits["bulk_max_files"]:
         raise HTTPException(status_code=400, detail=f"Maximum {limits['bulk_max_files']} receipts per batch on your plan.")
+
+    # Check monthly scan limit for the batch
+    monthly_limit = limits["monthly_scans"]
+    if monthly_limit is not None:
+        scans_used = get_monthly_scans(user["id"])
+        if scans_used + len(files) > monthly_limit:
+            remaining = max(0, monthly_limit - scans_used)
+            raise HTTPException(status_code=403, detail=f"Monthly scan limit reached. You have {remaining} scans remaining this month.")
 
     # Validate and save all files to /tmp
     upload_paths = []
@@ -542,8 +551,8 @@ async def parse_receipts_bulk_endpoint(request: Request, files: List[UploadFile]
         export_bulk_receipts_to_xlsx(results, str(output_path))
         xlsx_b64 = base64.b64encode(output_path.read_bytes()).decode("utf-8")
 
-        # Pro/Business tiers don't increment usage counters
-        # (bulk upload is subscriber-only, so no need to count)
+        # Increment monthly scan count for all files in batch
+        increment_monthly_scans(user["id"], len(upload_paths))
 
         return JSONResponse({
             "receipts": results,
@@ -590,7 +599,7 @@ async def parse_statements_bulk_endpoint(request: Request, files: List[UploadFil
 
     # Free tier cannot use bulk upload
     if limits["bulk_max_files"] == 0:
-        raise HTTPException(status_code=403, detail="Bulk upload requires a Pro or Business subscription.")
+        raise HTTPException(status_code=403, detail="Bulk upload requires a paid subscription (Starter or above).")
 
     # AI parsers required for bulk
     if not AI_PARSERS_AVAILABLE or not ANTHROPIC_API_KEY:
@@ -609,6 +618,14 @@ async def parse_statements_bulk_endpoint(request: Request, files: List[UploadFil
 
     if len(files) > limits["bulk_max_files"]:
         raise HTTPException(status_code=400, detail=f"Maximum {limits['bulk_max_files']} statements per batch on your plan.")
+
+    # Check monthly scan limit for the batch
+    monthly_limit = limits["monthly_scans"]
+    if monthly_limit is not None:
+        scans_used = get_monthly_scans(user["id"])
+        if scans_used + len(files) > monthly_limit:
+            remaining = max(0, monthly_limit - scans_used)
+            raise HTTPException(status_code=403, detail=f"Monthly scan limit reached. You have {remaining} scans remaining this month.")
 
     STATEMENT_EXTENSIONS = [".pdf", ".csv", ".tsv", ".txt"]
     for f in files:
@@ -640,7 +657,8 @@ async def parse_statements_bulk_endpoint(request: Request, files: List[UploadFil
         export_bulk_statements_to_xlsx(bulk_result, str(output_path))
         xlsx_b64 = base64.b64encode(output_path.read_bytes()).decode("utf-8")
 
-        # Pro/Business tiers don't increment usage counters
+        # Increment monthly scan count for all files in batch
+        increment_monthly_scans(user["id"], len(upload_paths))
 
         return JSONResponse({
             "statements": bulk_result["statements"],
@@ -684,10 +702,16 @@ async def create_checkout_session(request: Request):
         raise HTTPException(status_code=401, detail="Authentication required.")
 
     body = await request.json()
-    plan = body.get("plan", "pro")
+    plan = body.get("plan", "starter")
     email = user["email"]
 
-    price_id = STRIPE_PRO_PRICE_ID if plan == "pro" else STRIPE_BUSINESS_PRICE_ID
+    plan_price_map = {
+        "starter": STRIPE_STARTER_PRICE_ID,
+        "pro": STRIPE_PRO_PRICE_ID,
+        "business": STRIPE_BUSINESS_PRICE_ID,
+        "enterprise": STRIPE_ENTERPRISE_PRICE_ID,
+    }
+    price_id = plan_price_map.get(plan, "")
     if not price_id:
         raise HTTPException(status_code=500, detail="Stripe price not configured for this plan.")
 
@@ -808,11 +832,11 @@ async def stripe_webhook(request: Request):
 async def get_config():
     return JSONResponse({
         "stripe_publishable_key": STRIPE_PUBLISHABLE_KEY,
-        "free_statement_limit": FREE_STATEMENT_LIMIT,
-        "free_receipt_limit": FREE_RECEIPT_LIMIT,
         "plans": {
-            "pro": {"price": "\u00a39.99/mo", "name": "BankScan AI Pro"},
-            "business": {"price": "\u00a319.99/mo", "name": "BankScan AI Business"},
+            "starter": {"price": "\u00a39.99/mo", "name": "BankScan AI Starter", "monthly_scans": 100},
+            "pro": {"price": "\u00a329.99/mo", "name": "BankScan AI Pro", "monthly_scans": 500},
+            "business": {"price": "\u00a379.99/mo", "name": "BankScan AI Business", "monthly_scans": 2000},
+            "enterprise": {"price": "\u00a3199/mo", "name": "BankScan AI Enterprise", "monthly_scans": "Unlimited"},
         },
     })
 
@@ -950,17 +974,20 @@ async def chat(request: Request):
     tier = get_user_tier(user)
     limits = TIER_LIMITS[tier]
 
-    # Free tier: no chat access
+    # Chat access: only business (50/day) and enterprise (unlimited)
     if limits["chat_per_day"] == 0:
-        raise HTTPException(status_code=403, detail="AI Chat requires a Pro or Business subscription.")
+        raise HTTPException(
+            status_code=403,
+            detail="AI Chat is available on Business (\u00a379.99/mo) and Enterprise (\u00a3199/mo) plans."
+        )
 
-    # Pro tier: enforce daily limit
+    # Business tier: enforce daily limit
     if limits["chat_per_day"] is not None:
         chat_used = get_chat_usage(user["id"])
         if chat_used >= limits["chat_per_day"]:
             raise HTTPException(
                 status_code=403,
-                detail=f"Daily chat limit reached ({limits['chat_per_day']}/day). Upgrade to Business for unlimited."
+                detail=f"Daily chat limit reached ({limits['chat_per_day']}/day). Upgrade to Enterprise for unlimited."
             )
 
     # Check anthropic availability

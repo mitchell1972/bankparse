@@ -16,6 +16,7 @@ from fastapi.responses import JSONResponse
 
 from database import (
     get_user_by_id, update_user,
+    get_monthly_scans, increment_monthly_scans,
 )
 
 # --- Optional Stripe import ---
@@ -38,41 +39,62 @@ ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 STRIPE_SECRET_KEY = os.environ.get("STRIPE_SECRET_KEY", "")
 STRIPE_PUBLISHABLE_KEY = os.environ.get("STRIPE_PUBLISHABLE_KEY", "")
 STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
+STRIPE_STARTER_PRICE_ID = os.environ.get("STRIPE_STARTER_PRICE_ID", "")
 STRIPE_PRO_PRICE_ID = os.environ.get("STRIPE_PRO_PRICE_ID", "")
 STRIPE_BUSINESS_PRICE_ID = os.environ.get("STRIPE_BUSINESS_PRICE_ID", "")
+STRIPE_ENTERPRISE_PRICE_ID = os.environ.get("STRIPE_ENTERPRISE_PRICE_ID", "")
 
 # Initialize Stripe
 if STRIPE_AVAILABLE and STRIPE_SECRET_KEY:
     stripe.api_key = STRIPE_SECRET_KEY
 
-# --- Free tier limits (legacy, kept for backward compat in /api/config) ---
-FREE_STATEMENT_LIMIT = 1
-FREE_RECEIPT_LIMIT = 1
-
 # --- Tier limits ---
 TIER_LIMITS = {
     "free": {
-        "statements": 1,
-        "receipts": 1,
-        "chat_per_day": 0,
+        "monthly_scans": 2,  # 1 statement + 1 receipt
         "bulk_max_files": 0,
         "ai_parsing": False,
+        "auto_insights": False,
+        "pre_built_reports": False,
+        "chat_per_day": 0,
     },
-    "pro": {
-        "statements": None,  # unlimited
-        "receipts": None,
-        "chat_per_day": 20,
+    "starter": {
+        "monthly_scans": 100,
         "bulk_max_files": 5,
         "ai_parsing": True,
+        "auto_insights": True,
+        "pre_built_reports": True,
+        "chat_per_day": 0,
+    },
+    "pro": {
+        "monthly_scans": 500,
+        "bulk_max_files": 20,
+        "ai_parsing": True,
+        "auto_insights": True,
+        "pre_built_reports": True,
+        "chat_per_day": 0,
     },
     "business": {
-        "statements": None,  # unlimited
-        "receipts": None,
-        "chat_per_day": None,  # unlimited
+        "monthly_scans": 2000,
         "bulk_max_files": 50,
         "ai_parsing": True,
+        "auto_insights": True,
+        "pre_built_reports": True,
+        "chat_per_day": 50,
+    },
+    "enterprise": {
+        "monthly_scans": None,  # unlimited
+        "bulk_max_files": 100,
+        "ai_parsing": True,
+        "auto_insights": True,
+        "pre_built_reports": True,
+        "chat_per_day": None,  # unlimited
     },
 }
+
+# Legacy constants (kept for backward compat in case external code references them)
+FREE_STATEMENT_LIMIT = 1
+FREE_RECEIPT_LIMIT = 1
 
 # --- Test/admin accounts (bypass free tier limits) ---
 UNLIMITED_EMAILS = set(
@@ -219,16 +241,19 @@ def verify_subscription(user: dict) -> bool:
 
 
 def get_user_tier(user: dict) -> str:
-    """Determine user's subscription tier: 'free', 'pro', or 'business'.
+    """Determine user's subscription tier.
+
+    Tiers: 'free', 'starter', 'pro', 'business', 'enterprise'.
 
     Logic:
-      - UNLIMITED_EMAILS always get 'business'
-      - Active subscribers: check Stripe price ID to distinguish pro vs business
+      - UNLIMITED_EMAILS always get 'enterprise'
+      - Active subscribers: check Stripe price ID to determine tier
+      - Legacy subscribers with unrecognised price IDs: map to 'starter'
       - Everyone else: 'free'
     """
     email = (user.get("email") or "").lower()
     if email in UNLIMITED_EMAILS:
-        return "business"
+        return "enterprise"
 
     if not user.get("stripe_customer_id"):
         return "free"
@@ -243,40 +268,42 @@ def get_user_tier(user: dict) -> str:
             subs = stripe.Subscription.list(customer=stripe_customer_id, status="active", limit=1)
             if subs.data:
                 sub = subs.data[0]
-                # Check the price ID on the first subscription item
                 try:
                     price_id = sub["items"]["data"][0]["price"]["id"]
                 except (KeyError, IndexError, TypeError):
                     price_id = ""
-                if price_id == STRIPE_BUSINESS_PRICE_ID:
+
+                if price_id == STRIPE_ENTERPRISE_PRICE_ID and STRIPE_ENTERPRISE_PRICE_ID:
+                    return "enterprise"
+                if price_id == STRIPE_BUSINESS_PRICE_ID and STRIPE_BUSINESS_PRICE_ID:
                     return "business"
-                if price_id == STRIPE_PRO_PRICE_ID:
+                if price_id == STRIPE_PRO_PRICE_ID and STRIPE_PRO_PRICE_ID:
                     return "pro"
-                # If price ID doesn't match known IDs, default to pro for active subscribers
-                return "pro"
+                if price_id == STRIPE_STARTER_PRICE_ID and STRIPE_STARTER_PRICE_ID:
+                    return "starter"
+
+                # Unrecognised price ID (e.g. legacy "pro" at old £9.99 price) -> map to starter
+                return "starter"
         except Exception:
-            # Stripe unreachable — default active subscribers to pro (don't lock out paying users)
-            return "pro"
+            # Stripe unreachable — default active subscribers to starter (don't lock out paying users)
+            return "starter"
 
     # Fallback: active subscription but can't determine tier
-    return "pro"
+    return "starter"
 
 
 def check_can_use(user: dict, mode: str) -> tuple[bool, str]:
-    """Check if user can use the service.
+    """Check if user can use the service based on monthly scan limits.
 
-    Returns (allowed, tier) where tier is 'free', 'pro', or 'business'.
+    Returns (allowed, tier).
     """
     tier = get_user_tier(user)
     limits = TIER_LIMITS[tier]
 
-    if mode == "statement":
-        limit = limits["statements"]
-        if limit is not None and user.get("statements_used", 0) >= limit:
-            return False, tier
-    elif mode == "receipt":
-        limit = limits["receipts"]
-        if limit is not None and user.get("receipts_used", 0) >= limit:
+    monthly_limit = limits["monthly_scans"]
+    if monthly_limit is not None:
+        scans_used = get_monthly_scans(user["id"])
+        if scans_used >= monthly_limit:
             return False, tier
 
     return True, tier
