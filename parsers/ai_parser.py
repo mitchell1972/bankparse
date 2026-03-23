@@ -1,7 +1,7 @@
 """
-BankParse — AI-powered document parser using Claude Haiku vision.
+BankScan AI — AI-powered document parser using Claude Sonnet 4 vision.
 Replaces Tesseract OCR with Claude API for near-perfect extraction.
-Cost: ~0.3p per receipt, ~1p per bank statement page.
+Cost: ~3p per receipt, ~10p per bank statement page.
 """
 
 import os
@@ -15,7 +15,7 @@ from typing import Optional
 logger = logging.getLogger("bankparse.ai_parser")
 
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
-AI_MODEL = os.environ.get("AI_MODEL", "claude-haiku-4-5-20251001")
+AI_MODEL = os.environ.get("AI_MODEL", "claude-sonnet-4-20250514")
 
 # Lazy import
 _client = None
