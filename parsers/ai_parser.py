@@ -15,7 +15,7 @@ from typing import Optional
 logger = logging.getLogger("bankparse.ai_parser")
 
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
-AI_MODEL = os.environ.get("AI_MODEL", "claude-sonnet-4-20250514")
+AI_MODEL = os.environ.get("AI_MODEL", "claude-haiku-4-5-20251001")
 
 # Lazy import
 _client = None
