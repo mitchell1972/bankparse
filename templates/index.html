@@ -723,8 +723,8 @@
     <!-- Paywall -->
     <div class="paywall" id="paywall">
         <div class="paywall-card">
-            <h2>Scan Limit Reached</h2>
-            <p>You've used your monthly scans. Upgrade your plan to continue converting bank statements and receipts.</p>
+            <h2>Limit Reached</h2>
+            <p>You've used your monthly allowance. Upgrade your plan to continue converting bank statements and receipts.</p>
 
             <!-- Email input -->
             <div style="margin-bottom: 1.5rem;">
@@ -1245,7 +1245,7 @@
         const receiptsRemaining = Math.max(0, (receiptsLimit || 1) - receiptsUsed);
         if (statementsRemaining === 0 && receiptsRemaining === 0) {
             bar.className = 'usage-bar exhausted';
-            text.textContent = 'Free scans used up';
+            text.textContent = 'Free allowance used up';
             badge.textContent = 'UPGRADE';
             badge.className = 'usage-badge exhausted';
         } else {
