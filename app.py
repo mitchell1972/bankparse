@@ -697,9 +697,10 @@ async def parse_statements_bulk_endpoint(request: Request, files: list[UploadFil
 
 def _format_chat_context(context_type: str, context_data: dict) -> str:
     """Format parsed results into readable text for the chat system prompt.
-    Truncates to roughly 3000 tokens (~12000 chars) to keep costs low."""
+    Sonnet 4 has 200K context — we can send ALL transactions for accurate answers.
+    Truncates at 150K chars (~40K tokens) as a safety limit."""
     lines = []
-    max_chars = 12000
+    max_chars = 150000
 
     if context_type == "statement":
         summary = context_data.get("summary", {})

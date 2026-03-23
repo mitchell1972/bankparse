@@ -833,9 +833,9 @@ CHAT_SYSTEM_PROMPT = (
 def _format_context_data(context_type: str, context_data: dict) -> str:
     """Format context_data into a text summary for the AI prompt.
 
-    Truncates long transaction/item lists to keep under ~3000 tokens.
+    Sonnet 4 has 200K context — send ALL data for accurate answers.
     """
-    MAX_ITEMS = 80  # rough limit to stay under ~3000 tokens
+    MAX_ITEMS = 5000  # Sonnet 4 can handle thousands of transactions
 
     parts: list[str] = []
 
