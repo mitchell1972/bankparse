@@ -185,11 +185,18 @@ async def register(request: Request):
     if not password or len(password) < 8:
         raise HTTPException(status_code=400, detail="Password must be at least 8 characters.")
 
+    # Check if email already exists
+    existing = get_user_by_email(email)
+    if existing:
+        raise HTTPException(status_code=409, detail="An account with this email already exists.")
+
     pw_hash = hash_password(password)
     try:
         user_id = create_user(email, pw_hash)
-    except sqlite3.IntegrityError:
-        raise HTTPException(status_code=409, detail="An account with this email already exists.")
+    except Exception as e:
+        if "unique" in str(e).lower() or "duplicate" in str(e).lower() or "constraint" in str(e).lower():
+            raise HTTPException(status_code=409, detail="An account with this email already exists.")
+        raise HTTPException(status_code=500, detail="Registration failed. Please try again.")
 
     response = JSONResponse({"status": "ok", "email": email})
     set_auth_cookie(response, user_id)
