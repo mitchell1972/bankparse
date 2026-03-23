@@ -733,12 +733,12 @@ async def create_checkout_session(request: Request):
         # Link stripe customer to user record
         update_user(user["id"], stripe_customer_id=customer_id)
 
-        origin = request.headers.get("origin", "https://bankparse-pi.vercel.app")
+        origin = request.headers.get("origin", "https://bankscanai.com")
         session = stripe.checkout.Session.create(
             mode="subscription",
             customer=customer_id,
             payment_method_types=["card"],
-            line_items=[{"price": price_id, "quantity": 1}],
+            line_items=[{"price": price_id.strip(), "quantity": 1}],
             success_url=f"{origin}/?session_id={{CHECKOUT_SESSION_ID}}&status=success",
             cancel_url=f"{origin}/?status=cancelled",
             metadata={"user_id": str(user["id"])},
@@ -749,8 +749,10 @@ async def create_checkout_session(request: Request):
 
     except HTTPException:
         raise
-    except Exception:
-        raise HTTPException(status_code=500, detail="An internal error occurred.")
+    except Exception as e:
+        import logging
+        logging.getLogger("bankparse").exception("Checkout error")
+        raise HTTPException(status_code=500, detail=f"Checkout error: {str(e)}")
 
 
 @app.get("/api/verify-session")
