@@ -221,23 +221,38 @@ for plan in ["starter", "pro", "business", "enterprise"]:
 # =============================================
 print("\n--- SECTION 7: Paywall UI ---")
 
-# Register via API first, then use cookies in Playwright
+# Full UI-based flow: landing → register → dashboard → paywall
 email7 = f"e2e_paywall_{TS}@test.com"
-s7, h7, ok7 = get_session(email7, "TestPass123!")
 
 with sync_playwright() as p:
     browser = p.chromium.launch(headless=True)
     ctx = browser.new_context(viewport={"width": 1280, "height": 900})
     page = ctx.new_page()
 
-    # Set auth cookies from API session into Playwright
-    for name, value in s7.cookies.get_dict().items():
-        ctx.add_cookies([{"name": name, "value": value, "domain": "bankscanai.com", "path": "/"}])
-
-    # Go to app (should be logged in via cookies)
-    page.goto(BASE)
+    # Start from landing, click Try Free
+    page.goto(f"{BASE}/landing")
     page.wait_for_load_state("networkidle")
+    page.click("a.btn-hero")
+    page.wait_for_load_state("networkidle")
+    time.sleep(1)
+
+    # Should be on /login — click "Create Account" tab
+    create_tab = page.query_selector(".tab:not(.active)")
+    if create_tab:
+        create_tab.click()
+        time.sleep(0.5)
+
+    # Fill registration form
+    page.fill("input#email", email7)
+    page.fill("input#password", "TestPass123!")
+    page.click("button#submitBtn")
     time.sleep(2)
+    page.wait_for_load_state("networkidle")
+    time.sleep(3)
+
+    # Should be on dashboard now (or at least not on /login)
+    on_dashboard = "/login" not in page.url and "/landing" not in page.url
+    log("7.0 UI Registration → dashboard", on_dashboard, page.url)
 
     # Trigger paywall
     page.evaluate("() => { if (typeof showPaywall === 'function') showPaywall(); }")
