@@ -49,9 +49,12 @@ if STRIPE_AVAILABLE and STRIPE_SECRET_KEY:
     stripe.api_key = STRIPE_SECRET_KEY
 
 # --- Tier limits ---
+# Statements and receipts tracked separately
+# Target clients: Starter 5-10, Pro 11-25, Business 26-70, Enterprise 71-1000
 TIER_LIMITS = {
     "free": {
-        "monthly_scans": 2,  # 1 statement + 1 receipt
+        "monthly_statements": 1,
+        "monthly_receipts": 1,
         "bulk_max_files": 0,
         "ai_parsing": False,
         "auto_insights": False,
@@ -59,7 +62,8 @@ TIER_LIMITS = {
         "chat_per_day": 0,
     },
     "starter": {
-        "monthly_scans": 100,
+        "monthly_statements": 120,   # ~10 clients × 2 accounts × 6 months catch-up
+        "monthly_receipts": 500,     # ~10 clients × 50 receipts avg
         "bulk_max_files": 5,
         "ai_parsing": True,
         "auto_insights": True,
@@ -67,7 +71,8 @@ TIER_LIMITS = {
         "chat_per_day": 0,
     },
     "pro": {
-        "monthly_scans": 500,
+        "monthly_statements": 300,   # ~25 clients
+        "monthly_receipts": 1500,    # ~25 clients × 60 receipts avg
         "bulk_max_files": 20,
         "ai_parsing": True,
         "auto_insights": True,
@@ -75,7 +80,8 @@ TIER_LIMITS = {
         "chat_per_day": 0,
     },
     "business": {
-        "monthly_scans": 2000,
+        "monthly_statements": 840,   # ~70 clients
+        "monthly_receipts": 5000,    # ~70 clients × 70 receipts avg
         "bulk_max_files": 50,
         "ai_parsing": True,
         "auto_insights": True,
@@ -83,12 +89,13 @@ TIER_LIMITS = {
         "chat_per_day": 50,
     },
     "enterprise": {
-        "monthly_scans": None,  # unlimited
+        "monthly_statements": None,  # unlimited
+        "monthly_receipts": None,    # unlimited
         "bulk_max_files": 100,
         "ai_parsing": True,
         "auto_insights": True,
         "pre_built_reports": True,
-        "chat_per_day": None,  # unlimited
+        "chat_per_day": None,        # unlimited
     },
 }
 
@@ -293,17 +300,27 @@ def get_user_tier(user: dict) -> str:
 
 
 def check_can_use(user: dict, mode: str) -> tuple[bool, str]:
-    """Check if user can use the service based on monthly scan limits.
+    """Check if user can use the service based on monthly limits.
 
+    mode: 'statement' or 'receipt'
     Returns (allowed, tier).
     """
+    from database import get_monthly_statements, get_monthly_receipts
+
     tier = get_user_tier(user)
     limits = TIER_LIMITS[tier]
 
-    monthly_limit = limits["monthly_scans"]
-    if monthly_limit is not None:
-        scans_used = get_monthly_scans(user["id"])
-        if scans_used >= monthly_limit:
-            return False, tier
+    if mode == "statement":
+        limit = limits["monthly_statements"]
+        if limit is not None:
+            used = get_monthly_statements(user["id"])
+            if used >= limit:
+                return False, tier
+    elif mode == "receipt":
+        limit = limits["monthly_receipts"]
+        if limit is not None:
+            used = get_monthly_receipts(user["id"])
+            if used >= limit:
+                return False, tier
 
     return True, tier

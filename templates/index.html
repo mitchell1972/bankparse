@@ -737,52 +737,56 @@
             <div class="paywall-plans">
                 <div class="plan-card">
                     <div class="plan-name">Starter</div>
-                    <div class="plan-price">&pound;9.99 <span>/month</span></div>
+                    <div class="plan-price">&pound;7.99 <span>/month</span></div>
+                    <p style="font-size:0.75rem; color:var(--muted); margin-bottom:0.5rem;">5-10 clients</p>
                     <ul>
-                        <li class="yes">100 scans/month</li>
+                        <li class="yes">120 statements/month</li>
+                        <li class="yes">500 receipts/month</li>
                         <li class="yes">Bulk upload (5 files)</li>
                         <li class="yes">AI-powered parsing</li>
-                        <li class="yes">Auto-insights</li>
-                        <li class="yes">Pre-built reports</li>
+                        <li class="yes">Auto-insights &amp; reports</li>
                         <li class="no">AI Chat</li>
                     </ul>
                     <button class="btn-subscribe starter-btn" onclick="subscribe('starter')">Get Starter</button>
                 </div>
                 <div class="plan-card popular">
                     <div class="plan-name">Pro</div>
-                    <div class="plan-price">&pound;29.99 <span>/month</span></div>
+                    <div class="plan-price">&pound;24.99 <span>/month</span></div>
+                    <p style="font-size:0.75rem; color:var(--muted); margin-bottom:0.5rem;">11-25 clients</p>
                     <ul>
-                        <li class="yes">500 scans/month</li>
+                        <li class="yes">300 statements/month</li>
+                        <li class="yes">1,500 receipts/month</li>
                         <li class="yes">Bulk upload (20 files)</li>
                         <li class="yes">AI-powered parsing</li>
-                        <li class="yes">Auto-insights</li>
-                        <li class="yes">Pre-built reports</li>
+                        <li class="yes">Auto-insights &amp; reports</li>
                         <li class="no">AI Chat</li>
                     </ul>
                     <button class="btn-subscribe pro-btn" onclick="subscribe('pro')">Get Pro</button>
                 </div>
                 <div class="plan-card">
                     <div class="plan-name">Business</div>
-                    <div class="plan-price">&pound;79.99 <span>/month</span></div>
+                    <div class="plan-price">&pound;59.99 <span>/month</span></div>
+                    <p style="font-size:0.75rem; color:var(--muted); margin-bottom:0.5rem;">26-70 clients</p>
                     <ul>
-                        <li class="yes">2,000 scans/month</li>
+                        <li class="yes">840 statements/month</li>
+                        <li class="yes">5,000 receipts/month</li>
                         <li class="yes">Bulk upload (50 files)</li>
                         <li class="yes">AI-powered parsing</li>
-                        <li class="yes">Auto-insights</li>
-                        <li class="yes">Pre-built reports</li>
+                        <li class="yes">Auto-insights &amp; reports</li>
                         <li class="yes">AI Chat (50/day)</li>
                     </ul>
                     <button class="btn-subscribe biz-btn" onclick="subscribe('business')">Get Business</button>
                 </div>
                 <div class="plan-card best-value">
                     <div class="plan-name">Enterprise</div>
-                    <div class="plan-price">&pound;199 <span>/month</span></div>
+                    <div class="plan-price">&pound;149 <span>/month</span></div>
+                    <p style="font-size:0.75rem; color:var(--muted); margin-bottom:0.5rem;">71-1,000 clients</p>
                     <ul>
-                        <li class="yes">Unlimited scans</li>
+                        <li class="yes">Unlimited statements</li>
+                        <li class="yes">Unlimited receipts</li>
                         <li class="yes">Bulk upload (100 files)</li>
                         <li class="yes">AI-powered parsing</li>
-                        <li class="yes">Auto-insights</li>
-                        <li class="yes">Pre-built reports</li>
+                        <li class="yes">Auto-insights &amp; reports</li>
                         <li class="yes">AI Chat (unlimited)</li>
                     </ul>
                     <button class="btn-subscribe ent-btn" onclick="subscribe('enterprise')">Get Enterprise</button>
@@ -2313,7 +2317,7 @@
             const typing = document.getElementById('chatTyping');
             const notice = document.createElement('div');
             notice.className = 'chat-bubble ai';
-            notice.innerHTML = 'AI Chat is available on Business (\u00a379.99/mo) and Enterprise (\u00a3199/mo) plans. <a href="#paywall" onclick="showPaywall(); return false;" style="color:var(--primary-light); font-weight:600;">Upgrade</a> to ask questions about your data.';
+            notice.innerHTML = 'AI Chat is available on Business (\u00a359.99/mo) and Enterprise (\u00a3149/mo) plans. <a href="#paywall" onclick="showPaywall(); return false;" style="color:var(--primary-light); font-weight:600;">Upgrade</a> to ask questions about your data.';
             messages.insertBefore(notice, typing);
         } else {
             input.disabled = false;

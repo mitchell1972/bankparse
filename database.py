@@ -101,7 +101,7 @@ def _execute_insert(sql: str, params: tuple = ()) -> int:
         return cursor.lastrowid
 
 
-_USER_COLS = "id, email, password_hash, stripe_customer_id, statements_used, receipts_used, subscription_status, subscription_checked_at, chat_count, chat_date, scans_this_month, scan_month, created_at"
+_USER_COLS = "id, email, password_hash, stripe_customer_id, statements_used, receipts_used, subscription_status, subscription_checked_at, chat_count, chat_date, scans_this_month, scan_month, statements_this_month, receipts_this_month, usage_month, created_at"
 
 
 # --- Schema ---
@@ -166,6 +166,9 @@ def init_db():
         ("chat_date", "TEXT DEFAULT NULL"),
         ("scans_this_month", "INTEGER DEFAULT 0"),
         ("scan_month", "TEXT DEFAULT NULL"),
+        ("statements_this_month", "INTEGER DEFAULT 0"),
+        ("receipts_this_month", "INTEGER DEFAULT 0"),
+        ("usage_month", "TEXT DEFAULT NULL"),
     ]:
         try:
             _execute(f"ALTER TABLE users ADD COLUMN {col} {col_def}")
@@ -196,7 +199,7 @@ def get_user_by_stripe_customer(stripe_customer_id: str) -> dict | None:
 
 
 def update_user(user_id: int, **kwargs):
-    allowed = {"stripe_customer_id", "statements_used", "receipts_used", "email", "password_hash", "subscription_status", "subscription_checked_at", "chat_count", "chat_date", "scans_this_month", "scan_month"}
+    allowed = {"stripe_customer_id", "statements_used", "receipts_used", "email", "password_hash", "subscription_status", "subscription_checked_at", "chat_count", "chat_date", "scans_this_month", "scan_month", "statements_this_month", "receipts_this_month", "usage_month"}
     fields = {k: v for k, v in kwargs.items() if k in allowed}
     if not fields:
         return
@@ -254,6 +257,52 @@ def increment_monthly_scans(user_id: int, count: int = 1):
         _execute("UPDATE users SET scans_this_month = scans_this_month + ? WHERE id = ?", (count, user_id))
     else:
         _execute("UPDATE users SET scans_this_month = ?, scan_month = ? WHERE id = ?", (count, current_month, user_id))
+
+
+def get_monthly_statements(user_id: int) -> int:
+    """Return statements uploaded this calendar month."""
+    import datetime
+    row = _fetchone_dict("SELECT statements_this_month, usage_month FROM users WHERE id = ?", (user_id,))
+    if not row:
+        return 0
+    current_month = datetime.date.today().strftime("%Y-%m")
+    if row.get("usage_month") != current_month:
+        return 0
+    return row.get("statements_this_month", 0) or 0
+
+
+def get_monthly_receipts(user_id: int) -> int:
+    """Return receipts uploaded this calendar month."""
+    import datetime
+    row = _fetchone_dict("SELECT receipts_this_month, usage_month FROM users WHERE id = ?", (user_id,))
+    if not row:
+        return 0
+    current_month = datetime.date.today().strftime("%Y-%m")
+    if row.get("usage_month") != current_month:
+        return 0
+    return row.get("receipts_this_month", 0) or 0
+
+
+def increment_monthly_statements(user_id: int, count: int = 1):
+    """Increment monthly statement counter. Resets if month changed."""
+    import datetime
+    current_month = datetime.date.today().strftime("%Y-%m")
+    row = _fetchone_dict("SELECT usage_month FROM users WHERE id = ?", (user_id,))
+    if row and row.get("usage_month") == current_month:
+        _execute("UPDATE users SET statements_this_month = statements_this_month + ? WHERE id = ?", (count, user_id))
+    else:
+        _execute("UPDATE users SET statements_this_month = ?, receipts_this_month = 0, usage_month = ? WHERE id = ?", (count, current_month, user_id))
+
+
+def increment_monthly_receipts(user_id: int, count: int = 1):
+    """Increment monthly receipt counter. Resets if month changed."""
+    import datetime
+    current_month = datetime.date.today().strftime("%Y-%m")
+    row = _fetchone_dict("SELECT usage_month FROM users WHERE id = ?", (user_id,))
+    if row and row.get("usage_month") == current_month:
+        _execute("UPDATE users SET receipts_this_month = receipts_this_month + ? WHERE id = ?", (count, user_id))
+    else:
+        _execute("UPDATE users SET receipts_this_month = ?, statements_this_month = 0, usage_month = ? WHERE id = ?", (count, current_month, user_id))
 
 
 # --- Session functions (legacy, used by restore flow) ---

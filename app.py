@@ -1014,10 +1014,10 @@ async def get_config():
     return JSONResponse({
         "stripe_publishable_key": STRIPE_PUBLISHABLE_KEY,
         "plans": {
-            "starter": {"price": "\u00a39.99/mo", "name": "BankScan AI Starter", "monthly_scans": 100},
-            "pro": {"price": "\u00a329.99/mo", "name": "BankScan AI Pro", "monthly_scans": 500},
-            "business": {"price": "\u00a379.99/mo", "name": "BankScan AI Business", "monthly_scans": 2000},
-            "enterprise": {"price": "\u00a3199/mo", "name": "BankScan AI Enterprise", "monthly_scans": "Unlimited"},
+            "starter": {"price": "\u00a37.99/mo", "name": "BankScan AI Starter", "statements": 120, "receipts": 500, "clients": "5-10"},
+            "pro": {"price": "\u00a324.99/mo", "name": "BankScan AI Pro", "statements": 300, "receipts": 1500, "clients": "11-25"},
+            "business": {"price": "\u00a359.99/mo", "name": "BankScan AI Business", "statements": 840, "receipts": 5000, "clients": "26-70"},
+            "enterprise": {"price": "\u00a3149/mo", "name": "BankScan AI Enterprise", "statements": "Unlimited", "receipts": "Unlimited", "clients": "71-1,000"},
         },
     })
 
