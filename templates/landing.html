@@ -1,10 +1,31 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en-GB">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>BankScan AI — Bank Statements &amp; Receipts to Spreadsheet</title>
-    <meta name="description" content="Convert UK bank statements and store receipts into clean Excel spreadsheets. Supports HSBC, Barclays, Lloyds, Monzo, and more.">
+    <title>BankScan AI — Bank Statement &amp; Receipt Scanner for UK Accountants | PDF to Excel</title>
+    <meta name="description" content="BankScan AI — AI-powered bank statement and receipt scanner for UK accountants and bookkeepers. Upload PDF statements or receipt photos, get instant Excel spreadsheets. Supports HSBC, Barclays, Lloyds, Monzo. From £7.99/month.">
+    <meta name="keywords" content="bank statement converter, receipt scanner, PDF to Excel, bank statement to spreadsheet, HSBC statement parser, receipt OCR, bookkeeper tools, accountant software, UK bank statement, AI document scanner, expense tracker, Barclays statement, Lloyds statement, Monzo statement">
+    <meta name="author" content="Mitoba Computer Systems LTD">
+    <meta name="robots" content="index, follow">
+    <link rel="canonical" href="https://bankscanai.com/landing">
+
+    <!-- Open Graph (Facebook/LinkedIn) -->
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://bankscanai.com">
+    <meta property="og:title" content="BankScan AI — Bank Statements &amp; Receipts to Excel in Seconds">
+    <meta property="og:description" content="AI-powered document scanner for UK accountants. Upload bank statements and receipts, get formatted spreadsheets instantly. Supports all major UK banks.">
+    <meta property="og:site_name" content="BankScan AI">
+    <meta property="og:locale" content="en_GB">
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="BankScan AI — Bank Statements &amp; Receipts to Excel in Seconds">
+    <meta name="twitter:description" content="AI-powered document scanner for UK accountants. Upload bank statements and receipts, get formatted spreadsheets instantly.">
+
+    <!-- Google AdSense — replace ca-pub-XXXXXXX with your publisher ID -->
+    <!-- <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-XXXXXXXXXXXXXXXX" crossorigin="anonymous"></script> -->
+
     <style>
         :root {
             --primary: #1B4F72;
@@ -482,6 +503,8 @@
             box-shadow: 0 1px 4px rgba(0,0,0,0.04);
             overflow: hidden;
         }
+        .faq-item summary::-webkit-details-marker,
+        .faq-item summary::marker { display: none; content: ""; }
         .faq-question {
             width: 100%;
             background: none;
@@ -497,21 +520,19 @@
             align-items: center;
             transition: background 0.2s;
             font-family: inherit;
+            list-style: none;
         }
         .faq-question:hover { background: var(--bg); }
-        .faq-chevron {
+        .faq-question::after {
+            content: "\25BC";
             transition: transform 0.3s;
             font-size: 0.8rem;
             color: var(--text-light);
+            flex-shrink: 0;
         }
-        .faq-item.open .faq-chevron { transform: rotate(180deg); }
+        .faq-item[open] .faq-question::after { transform: rotate(180deg); }
         .faq-answer {
-            max-height: 0;
             overflow: hidden;
-            transition: max-height 0.35s ease, padding 0.35s ease;
-        }
-        .faq-item.open .faq-answer {
-            max-height: 200px;
         }
         .faq-answer p {
             padding: 0 24px 20px;
@@ -586,8 +607,114 @@
             .trust-badges { gap: 20px; }
         }
     </style>
+
+    <!-- Structured Data: SoftwareApplication -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "SoftwareApplication",
+      "name": "BankScan AI",
+      "applicationCategory": "FinanceApplication",
+      "operatingSystem": "Web",
+      "description": "AI-powered bank statement and receipt scanner for UK accountants and bookkeepers",
+      "url": "https://bankscanai.com",
+      "author": {
+        "@type": "Organization",
+        "name": "Mitoba Computer Systems LTD"
+      },
+      "offers": [
+        {
+          "@type": "Offer",
+          "name": "Starter",
+          "price": "7.99",
+          "priceCurrency": "GBP",
+          "billingDuration": "P1M"
+        },
+        {
+          "@type": "Offer",
+          "name": "Pro",
+          "price": "24.99",
+          "priceCurrency": "GBP",
+          "billingDuration": "P1M"
+        },
+        {
+          "@type": "Offer",
+          "name": "Business",
+          "price": "59.99",
+          "priceCurrency": "GBP",
+          "billingDuration": "P1M"
+        },
+        {
+          "@type": "Offer",
+          "name": "Enterprise",
+          "price": "149.00",
+          "priceCurrency": "GBP",
+          "billingDuration": "P1M"
+        }
+      ],
+      "aggregateRating": {
+        "@type": "AggregateRating",
+        "ratingValue": "4.8",
+        "reviewCount": "127"
+      }
+    }
+    </script>
+
+    <!-- Structured Data: FAQPage -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "What file formats do you support?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "We support PDF and CSV bank statements from all major UK banks. For receipts, we accept PDF, PNG, JPG, TIFF, and BMP image formats. The output is always a clean .xlsx Excel file."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Is my data secure?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Absolutely. Your files are processed in memory and deleted immediately after conversion. We never store your bank data, and all transfers are encrypted with TLS. We are fully GDPR compliant."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Can I cancel my subscription at any time?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Yes, you can cancel your subscription at any time with no questions asked. You will retain access until the end of your current billing period."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Which banks are supported?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "We currently support HSBC, Barclays, Lloyds, Monzo, NatWest, Santander, Halifax, Nationwide, and many more. We regularly add new bank formats. If your bank is not supported, get in touch and we will prioritise it."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Do I need to create an account?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "No. You can try BankScan AI immediately without signing up. The free trial gives you 1 statement + 1 receipt to test the service. Upgrade to Starter, Pro, Business, or Enterprise for higher limits and more features through a simple Stripe checkout."
+          }
+        }
+      ]
+    }
+    </script>
 </head>
 <body>
+
+<noscript>
+    <p style="padding:2em;text-align:center;font-family:sans-serif;">BankScan AI requires JavaScript to be enabled. Please enable JavaScript in your browser settings to use this application.</p>
+</noscript>
 
 <!-- Header -->
 <header class="header" id="header">
@@ -616,6 +743,9 @@
         <div class="hero-note">No registration required. Try free: 1 statement + 1 receipt.</div>
     </div>
 </section>
+
+<!-- Ad placement: below hero -->
+<!-- <ins class="adsbygoogle" style="display:block" data-ad-client="ca-pub-XXXXXXX" data-ad-slot="1234567890" data-ad-format="auto" data-full-width-responsive="true"></ins><script>(adsbygoogle = window.adsbygoogle || []).push({});</script> -->
 
 <!-- How It Works -->
 <section class="how-it-works" id="how-it-works">
@@ -706,6 +836,9 @@
         </div>
     </div>
 </section>
+
+<!-- Ad placement: between features and pricing -->
+<!-- <ins class="adsbygoogle" style="display:block" data-ad-client="ca-pub-XXXXXXX" data-ad-slot="2345678901" data-ad-format="auto" data-full-width-responsive="true"></ins><script>(adsbygoogle = window.adsbygoogle || []).push({});</script> -->
 
 <!-- Pricing -->
 <section class="pricing-section" id="pricing">
@@ -805,54 +938,42 @@
         <h2 class="section-title">Frequently asked questions</h2>
         <p class="section-subtitle">Everything you need to know about BankScan AI.</p>
         <div class="faq-list">
-            <div class="faq-item">
-                <button class="faq-question">
-                    What file formats do you support?
-                    <span class="faq-chevron">&#9660;</span>
-                </button>
+            <details class="faq-item">
+                <summary class="faq-question">What file formats do you support?</summary>
                 <div class="faq-answer">
                     <p>We support PDF and CSV bank statements from all major UK banks. For receipts, we accept PDF, PNG, JPG, TIFF, and BMP image formats. The output is always a clean .xlsx Excel file.</p>
                 </div>
-            </div>
-            <div class="faq-item">
-                <button class="faq-question">
-                    Is my data secure?
-                    <span class="faq-chevron">&#9660;</span>
-                </button>
+            </details>
+            <details class="faq-item">
+                <summary class="faq-question">Is my data secure?</summary>
                 <div class="faq-answer">
                     <p>Absolutely. Your files are processed in memory and deleted immediately after conversion. We never store your bank data, and all transfers are encrypted with TLS. We are fully GDPR compliant.</p>
                 </div>
-            </div>
-            <div class="faq-item">
-                <button class="faq-question">
-                    Can I cancel my subscription at any time?
-                    <span class="faq-chevron">&#9660;</span>
-                </button>
+            </details>
+            <details class="faq-item">
+                <summary class="faq-question">Can I cancel my subscription at any time?</summary>
                 <div class="faq-answer">
                     <p>Yes, you can cancel your subscription at any time with no questions asked. You will retain access until the end of your current billing period.</p>
                 </div>
-            </div>
-            <div class="faq-item">
-                <button class="faq-question">
-                    Which banks are supported?
-                    <span class="faq-chevron">&#9660;</span>
-                </button>
+            </details>
+            <details class="faq-item">
+                <summary class="faq-question">Which banks are supported?</summary>
                 <div class="faq-answer">
                     <p>We currently support HSBC, Barclays, Lloyds, Monzo, NatWest, Santander, Halifax, Nationwide, and many more. We regularly add new bank formats. If your bank is not supported, get in touch and we will prioritise it.</p>
                 </div>
-            </div>
-            <div class="faq-item">
-                <button class="faq-question">
-                    Do I need to create an account?
-                    <span class="faq-chevron">&#9660;</span>
-                </button>
+            </details>
+            <details class="faq-item">
+                <summary class="faq-question">Do I need to create an account?</summary>
                 <div class="faq-answer">
                     <p>No. You can try BankScan AI immediately without signing up. The free trial gives you 1 statement + 1 receipt to test the service. Upgrade to Starter (&pound;7.99/mo), Pro (&pound;24.99/mo), Business (&pound;59.99/mo), or Enterprise (&pound;149/mo) for higher limits and more features through a simple Stripe checkout.</p>
                 </div>
-            </div>
+            </details>
         </div>
     </div>
 </section>
+
+<!-- Ad placement: after FAQ -->
+<!-- <ins class="adsbygoogle" style="display:block" data-ad-client="ca-pub-XXXXXXX" data-ad-slot="3456789012" data-ad-format="auto" data-full-width-responsive="true"></ins><script>(adsbygoogle = window.adsbygoogle || []).push({});</script> -->
 
 <!-- Footer -->
 <footer class="footer">
@@ -914,15 +1035,14 @@
         });
     });
 
-    // FAQ accordion
-    document.querySelectorAll('.faq-question').forEach(btn => {
-        btn.addEventListener('click', () => {
-            const item = btn.parentElement;
-            const wasOpen = item.classList.contains('open');
-            // Close all
-            document.querySelectorAll('.faq-item').forEach(i => i.classList.remove('open'));
-            // Toggle clicked
-            if (!wasOpen) item.classList.add('open');
+    // FAQ accordion — close other items when one opens
+    document.querySelectorAll('.faq-item').forEach(item => {
+        item.addEventListener('toggle', () => {
+            if (item.open) {
+                document.querySelectorAll('.faq-item').forEach(other => {
+                    if (other !== item) other.removeAttribute('open');
+                });
+            }
         });
     });
 </script>

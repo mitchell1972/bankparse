@@ -19,7 +19,7 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from fastapi import FastAPI, UploadFile, File, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse
 
 from typing import List
 
@@ -1073,6 +1073,25 @@ async def chat(request: Request):
     except Exception as e:
         logger.exception("Chat API error: %s", e)
         raise HTTPException(status_code=500, detail="An error occurred while processing your question. Please try again.")
+
+
+@app.get("/robots.txt", response_class=PlainTextResponse)
+async def robots():
+    return """User-agent: *
+Allow: /landing
+Allow: /login
+Disallow: /api/
+Disallow: /downloads/
+Sitemap: https://bankscanai.com/sitemap.xml"""
+
+
+@app.get("/sitemap.xml", response_class=PlainTextResponse)
+async def sitemap():
+    return """<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemapns.org/schemas/sitemap/0.9">
+  <url><loc>https://bankscanai.com/landing</loc><priority>1.0</priority><changefreq>weekly</changefreq></url>
+  <url><loc>https://bankscanai.com/login</loc><priority>0.5</priority><changefreq>monthly</changefreq></url>
+</urlset>"""
 
 
 @app.get("/api/health")
