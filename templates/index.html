@@ -732,11 +732,10 @@
             <h2>Limit Reached</h2>
             <p>You've used your monthly allowance. Upgrade your plan to continue converting bank statements and receipts.</p>
 
-            <!-- Email input -->
+            <!-- Logged-in user info -->
             <div style="margin-bottom: 1.5rem;">
-                <input type="email" id="paywallEmail" placeholder="Enter your email to subscribe"
-                    style="width: 100%; padding: 0.75rem 1rem; border: 2px solid var(--border); border-radius: 8px; font-size: 1rem; outline: none; transition: border 0.2s;"
-                    onfocus="this.style.borderColor='var(--primary-light)'" onblur="this.style.borderColor='var(--border)'" />
+                <p id="paywallUserEmail" style="font-size: 0.9rem; color: var(--muted); text-align: center;"></p>
+                <input type="hidden" id="paywallEmail" />
                 <p id="paywallEmailError" style="color: var(--danger); font-size: 0.8rem; margin-top: 0.25rem; display: none;"></p>
             </div>
 
@@ -1318,6 +1317,11 @@
     function showPaywall() {
         document.getElementById('paywall').classList.add('show');
         document.getElementById('uploadCard').style.display = 'none';
+        // Show logged-in user's email
+        const emailEl = document.getElementById('paywallUserEmail');
+        if (emailEl && usageData?.email) {
+            emailEl.textContent = `Upgrading: ${usageData.email}`;
+        }
     }
 
     function hidePaywall() {
@@ -1326,20 +1330,15 @@
     }
 
     async function subscribe(plan) {
-        const emailInput = document.getElementById('paywallEmail');
         const emailError = document.getElementById('paywallEmailError');
-        const email = emailInput.value.trim().toLowerCase();
-
-        // Validate email
-        if (!email || !email.includes('@') || !email.includes('.')) {
-            emailError.textContent = 'Please enter a valid email address to continue.';
+        // User is already logged in — use their email from usageData
+        const email = usageData?.email || '';
+        if (!email) {
+            emailError.textContent = 'Please log in first.';
             emailError.style.display = 'block';
-            emailInput.style.borderColor = 'var(--danger)';
-            emailInput.focus();
             return;
         }
         emailError.style.display = 'none';
-        emailInput.style.borderColor = 'var(--border)';
 
         try {
             const res = await fetch('/api/create-checkout', {
