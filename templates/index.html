@@ -1495,13 +1495,13 @@
 
         if (mode === 'receipt') {
             title.textContent = 'Drop your store receipts here';
-            hint.textContent = 'or click to browse — PDF, image (PNG, JPG) or HEIC accepted. Select multiple files for bulk upload.';
+            hint.textContent = 'Click to add files one at a time — PDF, image (PNG, JPG) or HEIC. Each selection adds to your list.';
             fileInput.accept = '.pdf,.png,.jpg,.jpeg,.tiff,.tif,.bmp,.webp,.heic,.heif';
             fileInput.multiple = true;
             parseBtn.textContent = 'Extract Receipt Items';
         } else {
             title.textContent = 'Drop your bank statements here';
-            hint.textContent = 'or click to browse — PDF or CSV files accepted. Select multiple for bulk processing.';
+            hint.textContent = 'Click to add files one at a time — PDF or CSV. Each selection adds to your list.';
             fileInput.accept = '.pdf,.csv,.tsv,.txt';
             fileInput.multiple = true;
             parseBtn.textContent = 'Convert to Spreadsheet';
@@ -1534,6 +1534,40 @@
 
     const IMAGE_EXTS = ['png','jpg','jpeg','tiff','tif','bmp','webp','heic','heif'];
 
+    // Accumulated file list — files persist across multiple picker opens
+    let accumulatedFiles = [];
+
+    function removeAccumulatedFile(index) {
+        accumulatedFiles.splice(index, 1);
+        renderAccumulatedFiles();
+        if (accumulatedFiles.length === 0) {
+            document.getElementById('bulkFileList').style.display = 'none';
+            parseBtn.textContent = currentMode === 'receipt' ? 'Extract Receipt Items' : 'Convert to Spreadsheet';
+            parseBtn.disabled = true;
+        }
+    }
+
+    function renderAccumulatedFiles() {
+        const listEl = document.getElementById('bulkFileItems');
+        listEl.innerHTML = '';
+        let totalSize = 0;
+        accumulatedFiles.forEach((f, i) => {
+            totalSize += f.size;
+            const div = document.createElement('div');
+            div.style.cssText = 'padding:0.4rem 0; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center;';
+            div.innerHTML = `<span>${f.name} (${formatBytes(f.size)})</span><button onclick="removeAccumulatedFile(${i})" style="background:none; border:none; color:var(--danger); cursor:pointer; font-size:1.1rem; padding:0 0.5rem;" title="Remove">&times;</button>`;
+            listEl.appendChild(div);
+        });
+        document.getElementById('bulkFileCount').textContent = accumulatedFiles.length + ' file' + (accumulatedFiles.length !== 1 ? 's' : '') + ' selected';
+        document.getElementById('bulkFileSize').textContent = formatBytes(totalSize) + ' total';
+        if (accumulatedFiles.length > 1) {
+            parseBtn.textContent = currentMode === 'receipt' ? 'Extract All Receipts' : 'Convert All Statements';
+        } else if (accumulatedFiles.length === 1) {
+            parseBtn.textContent = currentMode === 'receipt' ? 'Extract Receipt Items' : 'Convert to Spreadsheet';
+        }
+        parseBtn.disabled = accumulatedFiles.length === 0;
+    }
+
     fileInput.addEventListener('change', function() {
         if (this.files.length > 0) {
             const file = this.files[0];
@@ -1545,8 +1579,21 @@
                 setMode('receipt');
             }
 
-            // Multiple files = bulk upload (receipts or statements)
-            if (this.files.length > 1) {
+            // Add new files to accumulated list (don't replace)
+            for (let i = 0; i < this.files.length; i++) {
+                // Avoid duplicates by name
+                const exists = accumulatedFiles.some(f => f.name === this.files[i].name && f.size === this.files[i].size);
+                if (!exists) {
+                    accumulatedFiles.push(this.files[i]);
+                }
+            }
+            // Reset the input so the same file can be re-selected
+            this.value = '';
+
+            const totalFiles = accumulatedFiles.length;
+
+            // Multiple files = bulk upload
+            if (totalFiles > 1) {
                 const tierLimits = (usageData && usageData.tier_limits) || {};
                 const bulkMax = tierLimits.bulk_max_files || 0;
 
@@ -1555,16 +1602,14 @@
                     errorMsg.innerHTML = 'Bulk upload requires a paid subscription (Starter or above). <a href="#paywall" onclick="showPaywall(); return false;" style="color:var(--primary-light); font-weight:600;">Upgrade now</a>';
                     errorMsg.classList.add('show');
                     parseBtn.disabled = true;
-                    this.value = '';
                     return;
                 }
 
                 // Enforce file limits per tier
-                if (this.files.length > bulkMax) {
-                    errorMsg.innerHTML = `Your plan allows up to ${bulkMax} files per batch. <a href="#paywall" onclick="showPaywall(); return false;" style="color:var(--primary-light); font-weight:600;">Upgrade</a> for more.`;
+                if (totalFiles > bulkMax) {
+                    errorMsg.innerHTML = `Your plan allows up to ${bulkMax} files per batch. You have ${totalFiles} selected. Remove some or <a href="#paywall" onclick="showPaywall(); return false;" style="color:var(--primary-light); font-weight:600;">upgrade</a>.`;
                     errorMsg.classList.add('show');
                     parseBtn.disabled = true;
-                    this.value = '';
                     return;
                 }
 
@@ -1580,43 +1625,24 @@
                         limit = usageData.statements_limit;
                         typeLabel = 'statements';
                     }
-                    if (limit !== null && used + this.files.length > limit) {
+                    if (limit !== null && used + totalFiles > limit) {
                         const remaining = Math.max(0, limit - used);
-                        errorMsg.innerHTML = `You have ${remaining} ${typeLabel} remaining this month but selected ${this.files.length} files. <a href="#paywall" onclick="showPaywall(); return false;" style="color:var(--primary-light); font-weight:600;">Upgrade</a> for more.`;
+                        errorMsg.innerHTML = `You have ${remaining} ${typeLabel} remaining this month but selected ${totalFiles} files. <a href="#paywall" onclick="showPaywall(); return false;" style="color:var(--primary-light); font-weight:600;">Upgrade</a> for more.`;
                         errorMsg.classList.add('show');
                         parseBtn.disabled = true;
-                        this.value = '';
                         return;
                     }
                 }
 
+                errorMsg.classList.remove('show');
                 fileInfo.classList.remove('show');
-                let totalSize = 0;
-                const listEl = document.getElementById('bulkFileItems');
-                listEl.innerHTML = '';
-                for (let i = 0; i < this.files.length; i++) {
-                    const f = this.files[i];
-                    totalSize += f.size;
-                    const div = document.createElement('div');
-                    div.style.cssText = 'padding:0.25rem 0; border-bottom:1px solid var(--border);';
-                    div.textContent = f.name + ' (' + formatBytes(f.size) + ')';
-                    listEl.appendChild(div);
-                }
-                document.getElementById('bulkFileCount').textContent = this.files.length + ' files selected';
-                document.getElementById('bulkFileSize').textContent = formatBytes(totalSize) + ' total';
+                renderAccumulatedFiles();
                 document.getElementById('bulkFileList').style.display = 'block';
-                parseBtn.textContent = currentMode === 'receipt' ? 'Extract All Receipts' : 'Convert All Statements';
             } else {
-                document.getElementById('bulkFileList').style.display = 'none';
-                fileName.textContent = file.name;
-                fileSize.textContent = formatBytes(file.size);
-                if (ext === 'pdf') fileIcon.textContent = '📕';
-                else if (IMAGE_EXTS.includes(ext)) fileIcon.textContent = '🖼️';
-                else fileIcon.textContent = '📗';
-                fileInfo.classList.add('show');
-                if (currentMode === 'receipt') {
-                    parseBtn.textContent = 'Extract Receipt Items';
-                }
+                // Single file — show in file list with option to add more
+                fileInfo.classList.remove('show');
+                renderAccumulatedFiles();
+                document.getElementById('bulkFileList').style.display = 'block';
             }
 
             parseBtn.disabled = false;
@@ -1653,11 +1679,13 @@
     // Form submit
     uploadForm.addEventListener('submit', async function(e) {
         e.preventDefault();
-        if (!fileInput.files.length) return;
+        // Use accumulated files if available, otherwise fileInput
+        const totalFiles = accumulatedFiles.length || fileInput.files.length;
+        if (!totalFiles) return;
 
         const isReceipt = currentMode === 'receipt';
-        const isBulkReceipt = isReceipt && fileInput.files.length > 1;
-        const isBulkStatement = !isReceipt && fileInput.files.length > 1;
+        const isBulkReceipt = isReceipt && totalFiles > 1;
+        const isBulkStatement = !isReceipt && totalFiles > 1;
         const isBulk = isBulkReceipt || isBulkStatement;
 
         errorMsg.classList.remove('show');
@@ -1703,9 +1731,12 @@
         try {
             const formData = new FormData();
             if (isBulkReceipt || isBulkStatement) {
-                for (let i = 0; i < fileInput.files.length; i++) {
-                    formData.append('files', fileInput.files[i]);
+                // Use accumulated files instead of fileInput.files
+                for (let i = 0; i < accumulatedFiles.length; i++) {
+                    formData.append('files', accumulatedFiles[i]);
                 }
+            } else if (accumulatedFiles.length === 1) {
+                formData.append('file', accumulatedFiles[0]);
             } else {
                 formData.append('file', fileInput.files[0]);
             }
@@ -2284,8 +2315,9 @@
         chatContextType = null;
         chatContextData = null;
         clearChat();
-        // Reset file input
+        // Reset file input and accumulated files
         fileInput.value = '';
+        accumulatedFiles = [];
         fileInfo.classList.remove('show');
         document.getElementById('bulkFileList').style.display = 'none';
         // Reset button
