@@ -823,7 +823,7 @@ async def chat_endpoint(request: Request):
         client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
         response = client.messages.create(
-            model="claude-3-haiku-20240307",
+            model="claude-haiku-4-20250414",
             max_tokens=1024,
             system=system_prompt,
             messages=[{"role": "user", "content": message}],
