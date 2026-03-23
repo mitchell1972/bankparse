@@ -30,8 +30,8 @@ from parsers.receipt_parser import parse_receipt
 
 # AI-powered parsers (optional — require anthropic SDK)
 try:
-    from parsers.ai_parser import parse_receipt_ai, parse_receipts_bulk, parse_statement_ai
-    from parsers.xlsx_exporter import export_bulk_receipts_to_xlsx
+    from parsers.ai_parser import parse_receipt_ai, parse_receipts_bulk, parse_statement_ai, parse_statements_bulk
+    from parsers.xlsx_exporter import export_bulk_receipts_to_xlsx, export_bulk_statements_to_xlsx
     AI_PARSERS_AVAILABLE = True
 except ImportError:
     AI_PARSERS_AVAILABLE = False
@@ -39,6 +39,7 @@ from database import (
     get_usage, save_usage, increment_usage, store_otp, verify_otp,
     create_user, get_user_by_email, update_user, increment_user_usage,
     get_user_by_stripe_customer,
+    get_chat_usage, increment_chat_usage,
 )
 from otp import generate_otp, send_otp_email
 from ratelimit import check_rate_limit
@@ -50,6 +51,7 @@ from core import (
     STRIPE_PRO_PRICE_ID, STRIPE_BUSINESS_PRICE_ID,
     STRIPE_AVAILABLE,
     FREE_STATEMENT_LIMIT, FREE_RECEIPT_LIMIT,
+    TIER_LIMITS,
     AUTH_COOKIE, AUTH_COOKIE_MAX_AGE,
     COOKIE_NAME, COOKIE_MAX_AGE,
     SUBSCRIPTION_CACHE_TTL,
@@ -61,7 +63,7 @@ from core import (
     # Session helpers
     get_session_id, ensure_session, set_session_cookie,
     # Subscription helpers
-    verify_subscription, check_can_use,
+    verify_subscription, check_can_use, get_user_tier,
 )
 
 # Re-import stripe if available (needed for direct Stripe API calls in routes)
@@ -199,13 +201,16 @@ async def get_usage_status(request: Request):
             "statements_limit": FREE_STATEMENT_LIMIT,
             "receipts_limit": FREE_RECEIPT_LIMIT,
             "has_subscription": False,
+            "tier": "free",
+            "tier_limits": TIER_LIMITS["free"],
             "email": None,
             "stripe_configured": bool(STRIPE_PUBLISHABLE_KEY),
         })
 
-    is_subscriber = False
-    if user.get("stripe_customer_id"):
-        is_subscriber = verify_subscription(user)
+    tier = get_user_tier(user)
+    is_subscriber = tier != "free"
+    limits = TIER_LIMITS[tier]
+    chat_used = get_chat_usage(user["id"]) if tier != "free" else 0
 
     return JSONResponse({
         "statements_used": user.get("statements_used", 0),
@@ -213,6 +218,9 @@ async def get_usage_status(request: Request):
         "statements_limit": FREE_STATEMENT_LIMIT,
         "receipts_limit": FREE_RECEIPT_LIMIT,
         "has_subscription": is_subscriber,
+        "tier": tier,
+        "tier_limits": limits,
+        "chat_used_today": chat_used,
         "email": user["email"],
         "stripe_configured": bool(STRIPE_PUBLISHABLE_KEY),
     })
@@ -331,9 +339,11 @@ async def parse_statement(request: Request, file: UploadFile = File(...)):
     if not user:
         raise HTTPException(status_code=401, detail="Authentication required.")
 
-    allowed, is_sub = check_can_use(user, "statement")
+    allowed, tier = check_can_use(user, "statement")
     if not allowed:
         raise HTTPException(status_code=403, detail="FREE_LIMIT_REACHED")
+
+    limits = TIER_LIMITS[tier]
 
     filename = file.filename.lower()
     if not any(filename.endswith(ext) for ext in [".pdf", ".csv", ".tsv", ".txt"]):
@@ -355,8 +365,8 @@ async def parse_statement(request: Request, file: UploadFile = File(...)):
         else:
             result = parse_csv(str(upload_path))
 
-        # AI fallback: if pdfplumber/csv found nothing, try AI-powered parsing
-        if not result["transactions"] and AI_PARSERS_AVAILABLE and ANTHROPIC_API_KEY:
+        # AI fallback: only for Pro/Business tiers (ai_parsing == True)
+        if not result["transactions"] and limits["ai_parsing"] and AI_PARSERS_AVAILABLE and ANTHROPIC_API_KEY:
             try:
                 logger.info("No transactions from standard parser, trying AI fallback")
                 result = parse_statement_ai(str(upload_path))
@@ -370,7 +380,7 @@ async def parse_statement(request: Request, file: UploadFile = File(...)):
         export_to_xlsx(result, str(output_path))
         xlsx_b64 = base64.b64encode(output_path.read_bytes()).decode("utf-8")
 
-        if not is_sub:
+        if tier == "free":
             increment_user_usage(user["id"], "statement")
 
         response = JSONResponse({
@@ -397,9 +407,11 @@ async def parse_receipt_endpoint(request: Request, file: UploadFile = File(...))
     if not user:
         raise HTTPException(status_code=401, detail="Authentication required.")
 
-    allowed, is_sub = check_can_use(user, "receipt")
+    allowed, tier = check_can_use(user, "receipt")
     if not allowed:
         raise HTTPException(status_code=403, detail="FREE_LIMIT_REACHED")
+
+    limits = TIER_LIMITS[tier]
 
     filename = file.filename.lower()
     if not any(filename.endswith(ext) for ext in RECEIPT_EXTENSIONS):
@@ -416,9 +428,9 @@ async def parse_receipt_endpoint(request: Request, file: UploadFile = File(...))
         f.write(contents)
 
     try:
-        # Try AI-powered parsing first if available
+        # AI-powered parsing only for Pro/Business tiers
         result = None
-        if AI_PARSERS_AVAILABLE and ANTHROPIC_API_KEY:
+        if limits["ai_parsing"] and AI_PARSERS_AVAILABLE and ANTHROPIC_API_KEY:
             try:
                 result = parse_receipt_ai(str(upload_path))
             except Exception as ai_err:
@@ -436,7 +448,7 @@ async def parse_receipt_endpoint(request: Request, file: UploadFile = File(...))
         export_receipt_to_xlsx(result, str(output_path))
         xlsx_b64 = base64.b64encode(output_path.read_bytes()).decode("utf-8")
 
-        if not is_sub:
+        if tier == "free":
             increment_user_usage(user["id"], "receipt")
 
         response = JSONResponse({
@@ -467,7 +479,13 @@ async def parse_receipts_bulk_endpoint(request: Request, files: List[UploadFile]
     if not user:
         raise HTTPException(status_code=401, detail="Authentication required.")
 
-    # CSRF check is handled by CSRFMiddleware for all POST routes
+    # Tier-based access control
+    tier = get_user_tier(user)
+    limits = TIER_LIMITS[tier]
+
+    # Free tier cannot use bulk upload
+    if limits["bulk_max_files"] == 0:
+        raise HTTPException(status_code=403, detail="Bulk upload requires a Pro or Business subscription.")
 
     # AI parsers required for bulk
     if not AI_PARSERS_AVAILABLE or not ANTHROPIC_API_KEY:
@@ -481,16 +499,11 @@ async def parse_receipts_bulk_endpoint(request: Request, files: List[UploadFile]
     if not check_rate_limit(f"{client_ip}:/api/parse-receipts-bulk", limit=5, window_seconds=60):
         raise HTTPException(status_code=429, detail="Rate limit exceeded. Please try again later.")
 
-    # Usage check (counts as 1 receipt use for the whole batch)
-    allowed, is_sub = check_can_use(user, "receipt")
-    if not allowed:
-        raise HTTPException(status_code=403, detail="FREE_LIMIT_REACHED")
-
     if not files:
         raise HTTPException(status_code=400, detail="No files provided.")
 
-    if len(files) > 50:
-        raise HTTPException(status_code=400, detail="Maximum 50 receipts per batch.")
+    if len(files) > limits["bulk_max_files"]:
+        raise HTTPException(status_code=400, detail=f"Maximum {limits['bulk_max_files']} receipts per batch on your plan.")
 
     # Validate and save all files to /tmp
     upload_paths = []
@@ -529,9 +542,8 @@ async def parse_receipts_bulk_endpoint(request: Request, files: List[UploadFile]
         export_bulk_receipts_to_xlsx(results, str(output_path))
         xlsx_b64 = base64.b64encode(output_path.read_bytes()).decode("utf-8")
 
-        # Increment usage once for the whole batch
-        if not is_sub:
-            increment_user_usage(user["id"], "receipt")
+        # Pro/Business tiers don't increment usage counters
+        # (bulk upload is subscriber-only, so no need to count)
 
         return JSONResponse({
             "receipts": results,
@@ -555,6 +567,102 @@ async def parse_receipts_bulk_endpoint(request: Request, files: List[UploadFile]
             except OSError:
                 pass
         output_file = TMP_DIR / f"receipts_bulk_{job_id}.xlsx"
+        if output_file.exists():
+            try:
+                output_file.unlink()
+            except OSError:
+                pass
+
+
+# ==========================================================================
+# Bulk Statement Parsing
+# ==========================================================================
+
+@app.post("/api/parse-statements-bulk")
+async def parse_statements_bulk_endpoint(request: Request, files: List[UploadFile] = File(...)):
+    """Parse multiple bank statement files in a single batch."""
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required.")
+
+    tier = get_user_tier(user)
+    limits = TIER_LIMITS[tier]
+
+    # Free tier cannot use bulk upload
+    if limits["bulk_max_files"] == 0:
+        raise HTTPException(status_code=403, detail="Bulk upload requires a Pro or Business subscription.")
+
+    # AI parsers required for bulk
+    if not AI_PARSERS_AVAILABLE or not ANTHROPIC_API_KEY:
+        raise HTTPException(
+            status_code=501,
+            detail="AI-powered parsing is not available. Please configure ANTHROPIC_API_KEY.",
+        )
+
+    # Rate limiting
+    client_ip = request.client.host if request.client else "unknown"
+    if not check_rate_limit(f"{client_ip}:/api/parse-statements-bulk", limit=5, window_seconds=60):
+        raise HTTPException(status_code=429, detail="Rate limit exceeded. Please try again later.")
+
+    if not files:
+        raise HTTPException(status_code=400, detail="No files provided.")
+
+    if len(files) > limits["bulk_max_files"]:
+        raise HTTPException(status_code=400, detail=f"Maximum {limits['bulk_max_files']} statements per batch on your plan.")
+
+    STATEMENT_EXTENSIONS = [".pdf", ".csv", ".tsv", ".txt"]
+    for f in files:
+        fname = f.filename.lower()
+        if not any(fname.endswith(ext) for ext in STATEMENT_EXTENSIONS):
+            raise HTTPException(status_code=400, detail=f"Unsupported file type: {f.filename}. Please upload PDF or CSV files.")
+
+    upload_paths = []
+    job_id = str(uuid.uuid4())[:8]
+
+    try:
+        for i, upload_file in enumerate(files):
+            contents = await upload_file.read()
+            if len(contents) > 20 * 1024 * 1024:
+                raise HTTPException(status_code=400, detail=f"File '{upload_file.filename}' is too large. Max 20MB per file.")
+
+            safe_name = Path(upload_file.filename).name
+            upload_path = TMP_DIR / f"{job_id}_{i}_{safe_name}"
+            with open(upload_path, "wb") as f:
+                f.write(contents)
+            upload_paths.append(str(upload_path))
+
+        bulk_result = parse_statements_bulk(upload_paths)
+
+        if not bulk_result["all_transactions"]:
+            raise HTTPException(status_code=422, detail="No transactions found in any of the uploaded statements.")
+
+        output_path = TMP_DIR / f"statements_bulk_{job_id}.xlsx"
+        export_bulk_statements_to_xlsx(bulk_result, str(output_path))
+        xlsx_b64 = base64.b64encode(output_path.read_bytes()).decode("utf-8")
+
+        # Pro/Business tiers don't increment usage counters
+
+        return JSONResponse({
+            "statements": bulk_result["statements"],
+            "all_transactions": bulk_result["all_transactions"],
+            "summary": bulk_result["summary"],
+            "statement_count": bulk_result["statement_count"],
+            "xlsx_base64": xlsx_b64,
+            "xlsx_filename": f"statements_bulk_{job_id}.xlsx",
+        })
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Bulk statement parsing error: %s", e)
+        raise HTTPException(status_code=500, detail="An internal error occurred.")
+    finally:
+        for p in upload_paths:
+            try:
+                Path(p).unlink(missing_ok=True)
+            except OSError:
+                pass
+        output_file = TMP_DIR / f"statements_bulk_{job_id}.xlsx"
         if output_file.exists():
             try:
                 output_file.unlink()
@@ -838,6 +946,23 @@ async def chat(request: Request):
     if not user:
         raise HTTPException(status_code=401, detail="Authentication required.")
 
+    # Tier-based access control
+    tier = get_user_tier(user)
+    limits = TIER_LIMITS[tier]
+
+    # Free tier: no chat access
+    if limits["chat_per_day"] == 0:
+        raise HTTPException(status_code=403, detail="AI Chat requires a Pro or Business subscription.")
+
+    # Pro tier: enforce daily limit
+    if limits["chat_per_day"] is not None:
+        chat_used = get_chat_usage(user["id"])
+        if chat_used >= limits["chat_per_day"]:
+            raise HTTPException(
+                status_code=403,
+                detail=f"Daily chat limit reached ({limits['chat_per_day']}/day). Upgrade to Business for unlimited."
+            )
+
     # Check anthropic availability
     if not ANTHROPIC_AVAILABLE:
         raise HTTPException(
@@ -898,6 +1023,9 @@ async def chat(request: Request):
 
         reply_text = response.content[0].text
         tokens_used = (response.usage.input_tokens or 0) + (response.usage.output_tokens or 0)
+
+        # Increment daily chat usage counter
+        increment_chat_usage(user["id"])
 
         return JSONResponse({
             "response": reply_text,

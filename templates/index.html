@@ -322,6 +322,7 @@
         }
         .usage-badge.free { background: #F9E79F; color: #7D6608; }
         .usage-badge.pro { background: #AED6F1; color: #1B4F72; }
+        .usage-badge.business { background: #A9DFBF; color: #1E8449; }
         .usage-badge.exhausted { background: #F5B7B1; color: #922B21; }
 
         /* Paywall overlay */
@@ -446,6 +447,7 @@
             display: none;
         }
         .error-msg.show { display: block; }
+        .error-msg a { color: var(--primary-light); font-weight: 600; }
 
         /* Chat */
         .chat-section {
@@ -622,10 +624,11 @@
                     <div class="plan-name">Pro</div>
                     <div class="plan-price">£9.99 <span>/month</span></div>
                     <ul>
-                        <li>Unlimited statements</li>
-                        <li>Unlimited receipts</li>
-                        <li>All UK bank formats</li>
-                        <li>Priority support</li>
+                        <li>Unlimited statements &amp; receipts</li>
+                        <li>AI-powered parsing</li>
+                        <li>20 AI chat questions/day</li>
+                        <li>Bulk upload (up to 5 files)</li>
+                        <li>Excel export</li>
                     </ul>
                     <button class="btn-subscribe pro-btn" onclick="subscribe('pro')">Get Pro</button>
                 </div>
@@ -634,9 +637,10 @@
                     <div class="plan-price">£19.99 <span>/month</span></div>
                     <ul>
                         <li>Everything in Pro</li>
+                        <li>Unlimited AI chat</li>
+                        <li>Bulk upload (up to 50 files)</li>
                         <li>API access</li>
-                        <li>Batch upload</li>
-                        <li>Dedicated support</li>
+                        <li>Priority support</li>
                     </ul>
                     <button class="btn-subscribe biz-btn" onclick="subscribe('business')">Get Business</button>
                 </div>
@@ -1012,18 +1016,27 @@
         const bar = document.getElementById('usageBar');
         const text = document.getElementById('usageText');
         const badge = document.getElementById('usageBadge');
+        const tier = usageData.tier || (usageData.has_subscription ? 'pro' : 'free');
 
         bar.style.display = 'flex';
 
-        if (usageData.has_subscription) {
+        if (tier === 'business') {
             bar.className = 'usage-bar subscribed';
-            const email = usageData.email ? ` (${usageData.email})` : '';
-            text.textContent = `Unlimited conversions active${email}`;
+            text.textContent = 'BankScan AI Business \u2014 unlimited everything';
+            badge.textContent = 'BUSINESS';
+            badge.className = 'usage-badge business';
+            return;
+        }
+
+        if (tier === 'pro') {
+            bar.className = 'usage-bar subscribed';
+            text.textContent = 'BankScan AI Pro \u2014 unlimited uploads, 20 chats/day';
             badge.textContent = 'PRO';
             badge.className = 'usage-badge pro';
             return;
         }
 
+        // Free tier
         const stmtLeft = Math.max(0, usageData.statements_limit - usageData.statements_used);
         const rcptLeft = Math.max(0, usageData.receipts_limit - usageData.receipts_used);
         const totalLeft = stmtLeft + rcptLeft;
@@ -1284,6 +1297,7 @@
         if (this.files.length > 0) {
             const file = this.files[0];
             const ext = file.name.split('.').pop().toLowerCase();
+            const tier = (usageData && usageData.tier) || (usageData && usageData.has_subscription ? 'pro' : 'free');
 
             // Auto-switch to receipt mode if user drops an image while on statement tab
             if (IMAGE_EXTS.includes(ext) && currentMode === 'statement') {
@@ -1292,6 +1306,32 @@
 
             // Multiple files = bulk upload (receipts or statements)
             if (this.files.length > 1) {
+                // Gate bulk upload for free users
+                if (tier === 'free') {
+                    errorMsg.textContent = 'Bulk upload requires a Pro or Business subscription.';
+                    errorMsg.innerHTML = 'Bulk upload requires a Pro or Business subscription. <a href="#paywall" onclick="showPaywall(); return false;" style="color:var(--primary-light); font-weight:600;">Upgrade now</a>';
+                    errorMsg.classList.add('show');
+                    parseBtn.disabled = true;
+                    this.value = '';
+                    return;
+                }
+
+                // Enforce file limits per tier
+                if (tier === 'pro' && this.files.length > 5) {
+                    errorMsg.innerHTML = 'Pro plan allows up to 5 files per batch. <a href="#paywall" onclick="showPaywall(); return false;" style="color:var(--primary-light); font-weight:600;">Upgrade to Business</a> for up to 50.';
+                    errorMsg.classList.add('show');
+                    parseBtn.disabled = true;
+                    this.value = '';
+                    return;
+                }
+                if (tier === 'business' && this.files.length > 50) {
+                    errorMsg.textContent = 'Maximum 50 files per batch.';
+                    errorMsg.classList.add('show');
+                    parseBtn.disabled = true;
+                    this.value = '';
+                    return;
+                }
+
                 fileInfo.classList.remove('show');
                 let totalSize = 0;
                 const listEl = document.getElementById('bulkFileItems');
@@ -1806,12 +1846,42 @@
         const section = document.getElementById('chatSection');
         section.classList.add('show');
 
-        // Set placeholder based on context type
         const input = document.getElementById('chatInput');
-        if (contextType === 'statement' || contextType === 'bulk_statement') {
-            input.placeholder = 'Ask about your transactions...';
+        const sendBtn = document.getElementById('chatSendBtn');
+        const tier = (usageData && usageData.tier) || (usageData && usageData.has_subscription ? 'pro' : 'free');
+
+        if (tier === 'free') {
+            // Disable chat for free users
+            input.disabled = true;
+            input.placeholder = 'Upgrade to Pro to use AI Chat...';
+            sendBtn.disabled = true;
+            // Show upgrade message in chat body
+            clearChat();
+            const messages = document.getElementById('chatMessages');
+            const typing = document.getElementById('chatTyping');
+            const notice = document.createElement('div');
+            notice.className = 'chat-bubble ai';
+            notice.innerHTML = 'AI Chat is available on Pro and Business plans. <a href="#paywall" onclick="showPaywall(); return false;" style="color:var(--primary-light); font-weight:600;">Upgrade</a> to ask questions about your data.';
+            messages.insertBefore(notice, typing);
         } else {
-            input.placeholder = 'Ask about your expenses...';
+            input.disabled = false;
+            sendBtn.disabled = false;
+            if (tier === 'business') {
+                if (contextType === 'statement' || contextType === 'bulk_statement') {
+                    input.placeholder = 'Ask about your transactions...';
+                } else {
+                    input.placeholder = 'Ask about your expenses...';
+                }
+            } else {
+                // Pro tier - show chat usage
+                const chatsUsed = (usageData && usageData.chats_used) || 0;
+                const chatsLeft = Math.max(0, 20 - chatsUsed);
+                if (contextType === 'statement' || contextType === 'bulk_statement') {
+                    input.placeholder = `Ask about your transactions... (${chatsLeft}/20 today)`;
+                } else {
+                    input.placeholder = `Ask about your expenses... (${chatsLeft}/20 today)`;
+                }
+            }
         }
     }
 

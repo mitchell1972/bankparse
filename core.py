@@ -45,9 +45,34 @@ STRIPE_BUSINESS_PRICE_ID = os.environ.get("STRIPE_BUSINESS_PRICE_ID", "")
 if STRIPE_AVAILABLE and STRIPE_SECRET_KEY:
     stripe.api_key = STRIPE_SECRET_KEY
 
-# --- Free tier limits ---
+# --- Free tier limits (legacy, kept for backward compat in /api/config) ---
 FREE_STATEMENT_LIMIT = 1
 FREE_RECEIPT_LIMIT = 1
+
+# --- Tier limits ---
+TIER_LIMITS = {
+    "free": {
+        "statements": 1,
+        "receipts": 1,
+        "chat_per_day": 0,
+        "bulk_max_files": 0,
+        "ai_parsing": False,
+    },
+    "pro": {
+        "statements": None,  # unlimited
+        "receipts": None,
+        "chat_per_day": 20,
+        "bulk_max_files": 5,
+        "ai_parsing": True,
+    },
+    "business": {
+        "statements": None,  # unlimited
+        "receipts": None,
+        "chat_per_day": None,  # unlimited
+        "bulk_max_files": 50,
+        "ai_parsing": True,
+    },
+}
 
 # --- Test/admin accounts (bypass free tier limits) ---
 UNLIMITED_EMAILS = set(
@@ -193,20 +218,65 @@ def verify_subscription(user: dict) -> bool:
         return status in ("active", "trialing")
 
 
-def check_can_use(user: dict, mode: str) -> tuple[bool, bool]:
-    """Check if user can use the service. Returns (allowed, is_subscriber)."""
-    # Admin/test accounts bypass all limits
+def get_user_tier(user: dict) -> str:
+    """Determine user's subscription tier: 'free', 'pro', or 'business'.
+
+    Logic:
+      - UNLIMITED_EMAILS always get 'business'
+      - Active subscribers: check Stripe price ID to distinguish pro vs business
+      - Everyone else: 'free'
+    """
     email = (user.get("email") or "").lower()
     if email in UNLIMITED_EMAILS:
-        return True, True
+        return "business"
 
-    if user.get("stripe_customer_id"):
-        if verify_subscription(user):
-            return True, True
+    if not user.get("stripe_customer_id"):
+        return "free"
 
-    if mode == "statement" and user.get("statements_used", 0) >= FREE_STATEMENT_LIMIT:
-        return False, False
-    if mode == "receipt" and user.get("receipts_used", 0) >= FREE_RECEIPT_LIMIT:
-        return False, False
+    if not verify_subscription(user):
+        return "free"
 
-    return True, False
+    # Subscriber — determine tier from Stripe price ID
+    stripe_customer_id = user.get("stripe_customer_id")
+    if STRIPE_AVAILABLE and STRIPE_SECRET_KEY and stripe_customer_id:
+        try:
+            subs = stripe.Subscription.list(customer=stripe_customer_id, status="active", limit=1)
+            if subs.data:
+                sub = subs.data[0]
+                # Check the price ID on the first subscription item
+                try:
+                    price_id = sub["items"]["data"][0]["price"]["id"]
+                except (KeyError, IndexError, TypeError):
+                    price_id = ""
+                if price_id == STRIPE_BUSINESS_PRICE_ID:
+                    return "business"
+                if price_id == STRIPE_PRO_PRICE_ID:
+                    return "pro"
+                # If price ID doesn't match known IDs, default to pro for active subscribers
+                return "pro"
+        except Exception:
+            # Stripe unreachable — default active subscribers to pro (don't lock out paying users)
+            return "pro"
+
+    # Fallback: active subscription but can't determine tier
+    return "pro"
+
+
+def check_can_use(user: dict, mode: str) -> tuple[bool, str]:
+    """Check if user can use the service.
+
+    Returns (allowed, tier) where tier is 'free', 'pro', or 'business'.
+    """
+    tier = get_user_tier(user)
+    limits = TIER_LIMITS[tier]
+
+    if mode == "statement":
+        limit = limits["statements"]
+        if limit is not None and user.get("statements_used", 0) >= limit:
+            return False, tier
+    elif mode == "receipt":
+        limit = limits["receipts"]
+        if limit is not None and user.get("receipts_used", 0) >= limit:
+            return False, tier
+
+    return True, tier

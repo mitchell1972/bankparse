@@ -101,7 +101,7 @@ def _execute_insert(sql: str, params: tuple = ()) -> int:
         return cursor.lastrowid
 
 
-_USER_COLS = "id, email, password_hash, stripe_customer_id, statements_used, receipts_used, subscription_status, subscription_checked_at, created_at"
+_USER_COLS = "id, email, password_hash, stripe_customer_id, statements_used, receipts_used, subscription_status, subscription_checked_at, chat_count, chat_date, created_at"
 
 
 # --- Schema ---
@@ -118,6 +118,8 @@ def init_db():
             receipts_used INTEGER DEFAULT 0,
             subscription_status TEXT DEFAULT NULL,
             subscription_checked_at REAL DEFAULT NULL,
+            chat_count INTEGER DEFAULT 0,
+            chat_date TEXT DEFAULT NULL,
             created_at REAL DEFAULT (strftime('%s', 'now'))
         )""",
         """CREATE TABLE IF NOT EXISTS sessions (
@@ -155,6 +157,14 @@ def init_db():
     ]
     for stmt in stmts:
         _execute(stmt)
+
+    # Migrate: add chat_count and chat_date columns if missing (existing databases)
+    for col, col_def in [("chat_count", "INTEGER DEFAULT 0"), ("chat_date", "TEXT DEFAULT NULL")]:
+        try:
+            _execute(f"ALTER TABLE users ADD COLUMN {col} {col_def}")
+        except Exception:
+            pass  # Column already exists
+
     logger.info("Database schema initialized")
 
 
@@ -179,7 +189,7 @@ def get_user_by_stripe_customer(stripe_customer_id: str) -> dict | None:
 
 
 def update_user(user_id: int, **kwargs):
-    allowed = {"stripe_customer_id", "statements_used", "receipts_used", "email", "password_hash", "subscription_status", "subscription_checked_at"}
+    allowed = {"stripe_customer_id", "statements_used", "receipts_used", "email", "password_hash", "subscription_status", "subscription_checked_at", "chat_count", "chat_date"}
     fields = {k: v for k, v in kwargs.items() if k in allowed}
     if not fields:
         return
@@ -191,6 +201,29 @@ def update_user(user_id: int, **kwargs):
 def increment_user_usage(user_id: int, mode: str):
     column = "statements_used" if mode == "statement" else "receipts_used"
     _execute(f"UPDATE users SET {column} = {column} + 1 WHERE id = ?", (user_id,))
+
+
+def get_chat_usage(user_id: int) -> int:
+    """Return the number of chat messages used today. Resets if chat_date is not today."""
+    import datetime
+    row = _fetchone_dict("SELECT chat_count, chat_date FROM users WHERE id = ?", (user_id,))
+    if not row:
+        return 0
+    today = datetime.date.today().isoformat()
+    if row.get("chat_date") != today:
+        return 0
+    return row.get("chat_count", 0) or 0
+
+
+def increment_chat_usage(user_id: int):
+    """Increment the daily chat counter. Resets to 1 if the date has changed."""
+    import datetime
+    today = datetime.date.today().isoformat()
+    row = _fetchone_dict("SELECT chat_date FROM users WHERE id = ?", (user_id,))
+    if row and row.get("chat_date") == today:
+        _execute("UPDATE users SET chat_count = chat_count + 1 WHERE id = ?", (user_id,))
+    else:
+        _execute("UPDATE users SET chat_count = 1, chat_date = ? WHERE id = ?", (today, user_id))
 
 
 # --- Session functions (legacy, used by restore flow) ---
