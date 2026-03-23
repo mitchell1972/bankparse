@@ -254,7 +254,7 @@
             margin-top: 0.75rem;
         }
 
-        /* Pagination */
+        /* Pagination — row-level (single statement/receipt transactions) */
         .pagination {
             display: flex;
             align-items: center;
@@ -290,6 +290,96 @@
             font-size: 0.85rem;
             color: var(--muted);
             margin: 0 0.5rem;
+        }
+
+        /* Bulk file-level pagination */
+        .bulk-pagination {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 1rem;
+            margin: 1.5rem 0;
+            padding: 1rem;
+            background: var(--bg);
+            border-radius: 12px;
+        }
+        .bulk-pagination button {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 0.5rem 1.25rem;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 0.9rem;
+            transition: background 0.2s;
+        }
+        .bulk-pagination button:disabled {
+            background: var(--border);
+            color: var(--muted);
+            cursor: not-allowed;
+        }
+        .bulk-pagination button:hover:not(:disabled) {
+            background: var(--primary-light);
+        }
+        .bulk-pagination button.view-all-btn {
+            background: transparent;
+            color: var(--primary);
+            border: 2px solid var(--primary);
+            padding: 0.45rem 1rem;
+        }
+        .bulk-pagination button.view-all-btn:hover:not(:disabled) {
+            background: var(--primary);
+            color: white;
+        }
+        .bulk-pagination button.view-all-btn.active {
+            background: var(--primary);
+            color: white;
+        }
+        .bulk-pagination .page-info {
+            font-weight: 600;
+            color: var(--text);
+            min-width: 150px;
+            text-align: center;
+        }
+        .bulk-pagination .page-dots {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        .bulk-pagination .page-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: var(--border);
+            cursor: pointer;
+            transition: background 0.2s;
+            border: none;
+            padding: 0;
+        }
+        .bulk-pagination .page-dot.active {
+            background: var(--primary);
+        }
+        .bulk-pagination .page-dot:hover {
+            background: var(--primary-light);
+        }
+        .bulk-file-header {
+            background: var(--bg);
+            border-radius: 8px;
+            padding: 0.75rem 1rem;
+            margin-bottom: 0.75rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .bulk-file-header .file-title {
+            font-weight: 600;
+            color: var(--text);
+        }
+        .bulk-file-header .file-meta {
+            font-size: 0.85rem;
+            color: var(--muted);
         }
 
         /* Usage bar */
@@ -792,7 +882,7 @@
                 </div>
             </div>
 
-            <h3>Items found</h3>
+            <h3 id="receiptItemsHeading">Items found</h3>
             <div style="overflow-x: auto;">
                 <table class="preview-table receipt-table" id="receiptTable">
                     <thead>
@@ -807,6 +897,7 @@
                     <tbody id="receiptBody"></tbody>
                 </table>
             </div>
+            <div class="pagination" id="receiptPagination"></div>
             <p class="preview-note" id="receiptNote"></p>
 
             <a id="receiptDownloadLink" href="#" class="btn btn-receipt" style="text-decoration: none;">
@@ -838,10 +929,23 @@
                 </div>
             </div>
 
-            <h3>All Items</h3>
+            <div class="bulk-pagination" id="bulkReceiptPagination">
+                <button id="bulkRcptPrev" onclick="showBulkReceiptPage(bulkReceiptPage - 1)">Prev</button>
+                <span class="page-info" id="bulkRcptPageInfo">All Receipts</span>
+                <div class="page-dots" id="bulkRcptDots"></div>
+                <button id="bulkRcptNext" onclick="showBulkReceiptPage(bulkReceiptPage + 1)">Next</button>
+                <button class="view-all-btn active" id="bulkRcptAllBtn" onclick="showBulkReceiptPage(0)">View All</button>
+            </div>
+
+            <div id="bulkRcptFileHeader" class="bulk-file-header" style="display:none;">
+                <span class="file-title" id="bulkRcptFileName"></span>
+                <span class="file-meta" id="bulkRcptFileMeta"></span>
+            </div>
+
+            <h3 id="bulkReceiptHeading">All Items</h3>
             <div style="overflow-x: auto;">
                 <table class="preview-table receipt-table" id="bulkReceiptTable">
-                    <thead>
+                    <thead id="bulkReceiptThead">
                         <tr>
                             <th>Store</th>
                             <th>Item</th>
@@ -853,6 +957,7 @@
                     <tbody id="bulkReceiptBody"></tbody>
                 </table>
             </div>
+            <div class="pagination" id="bulkRcptRowPagination"></div>
             <p class="preview-note" id="bulkReceiptNote"></p>
 
             <a id="bulkDownloadLink" href="#" class="btn btn-receipt" style="text-decoration: none;">
@@ -894,10 +999,23 @@
                 </div>
             </div>
 
-            <h3>All Transactions</h3>
+            <div class="bulk-pagination" id="bulkStmtPagination">
+                <button id="bulkStmtPrev" onclick="showBulkStatementPage(bulkStatementPage - 1)">Prev</button>
+                <span class="page-info" id="bulkStmtPageInfo">All Statements</span>
+                <div class="page-dots" id="bulkStmtDots"></div>
+                <button id="bulkStmtNext" onclick="showBulkStatementPage(bulkStatementPage + 1)">Next</button>
+                <button class="view-all-btn active" id="bulkStmtAllBtn" onclick="showBulkStatementPage(0)">View All</button>
+            </div>
+
+            <div id="bulkStmtFileHeader" class="bulk-file-header" style="display:none;">
+                <span class="file-title" id="bulkStmtFileName"></span>
+                <span class="file-meta" id="bulkStmtFileMeta"></span>
+            </div>
+
+            <h3 id="bulkStmtHeading">All Transactions</h3>
             <div style="overflow-x: auto;">
                 <table class="preview-table" id="bulkStmtTable">
-                    <thead>
+                    <thead id="bulkStmtThead">
                         <tr>
                             <th>Source</th>
                             <th>Date</th>
@@ -908,6 +1026,7 @@
                     <tbody id="bulkStmtBody"></tbody>
                 </table>
             </div>
+            <div class="pagination" id="bulkStmtRowPagination"></div>
             <p class="preview-note" id="bulkStmtNote"></p>
 
             <a id="bulkStmtDownloadLink" href="#" class="btn" style="text-decoration: none;">
@@ -1510,6 +1629,23 @@
     let allTransactions = [];
     let currentPage = 1;
     const perPage = 25;
+    const ITEMS_PER_PAGE = 25;
+
+    // Bulk pagination state
+    let bulkReceiptData = null;
+    let bulkReceiptPage = 0;      // 0 = "all", 1..N = individual receipt
+    let bulkReceiptRowPage = 1;   // Row-level pagination within current view
+
+    let bulkStatementData = null;
+    let bulkStatementPage = 0;
+    let bulkStatementRowPage = 1;
+
+    // Single receipt pagination state
+    let allReceiptItems = [];
+    let receiptItemPage = 1;
+
+    // Tracks which pagination context is active for keyboard navigation
+    let activePaginationContext = null; // 'statement', 'receipt', 'bulkReceipt', 'bulkStatement'
 
     function showStatementResults(data) {
         const { summary, transactions, download_url } = data;
@@ -1541,7 +1677,7 @@
         const results = document.getElementById('statementResults');
         results.classList.add('show');
         results.scrollIntoView({ behavior: 'smooth' });
-
+        activePaginationContext = 'statement';
         showChat('statement', data);
     }
 
@@ -1551,11 +1687,9 @@
         const end = Math.min(start + perPage, allTransactions.length);
         const pageTransactions = allTransactions.slice(start, end);
 
-        // Update heading
         document.getElementById('previewHeading').textContent =
-            `Transactions (${start + 1}–${end} of ${allTransactions.length})`;
+            `Transactions (${start + 1}\u2013${end} of ${allTransactions.length})`;
 
-        // Render table rows
         const tbody = document.getElementById('previewBody');
         tbody.innerHTML = '';
         pageTransactions.forEach(tx => {
@@ -1565,82 +1699,336 @@
                 <td>${escapeHtml(tx.date)}</td>
                 <td>${escapeHtml(tx.description)}</td>
                 <td class="${amtClass}">${tx.amount >= 0 ? '+' : ''}${formatCurrency(tx.amount)}</td>
-                <td>${tx.balance !== null ? formatCurrency(tx.balance) : '—'}</td>
+                <td>${tx.balance !== null ? formatCurrency(tx.balance) : '\u2014'}</td>
             `;
             tbody.appendChild(tr);
         });
 
-        // Render pagination controls
-        const pag = document.getElementById('pagination');
-        pag.innerHTML = '';
+        renderRowPagination(document.getElementById('pagination'), currentPage, totalPages, (p) => {
+            currentPage = p;
+            renderTransactionPage();
+            document.getElementById('previewHeading').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
 
-        if (totalPages <= 1) {
+        if (totalPages > 1) {
+            document.getElementById('previewNote').textContent =
+                `Page ${currentPage} of ${totalPages}. Download the spreadsheet for all data with formatting.`;
+        } else {
             document.getElementById('previewNote').textContent = '';
-            return;
         }
-
-        // Previous button
-        const prevBtn = document.createElement('button');
-        prevBtn.textContent = '← Prev';
-        prevBtn.disabled = currentPage === 1;
-        prevBtn.onclick = () => { currentPage--; renderTransactionPage(); scrollToTable(); };
-        pag.appendChild(prevBtn);
-
-        // Page number buttons
-        const maxButtons = 7;
-        let startPage = Math.max(1, currentPage - Math.floor(maxButtons / 2));
-        let endPage = Math.min(totalPages, startPage + maxButtons - 1);
-        if (endPage - startPage + 1 < maxButtons) {
-            startPage = Math.max(1, endPage - maxButtons + 1);
-        }
-
-        if (startPage > 1) {
-            const first = document.createElement('button');
-            first.textContent = '1';
-            first.onclick = () => { currentPage = 1; renderTransactionPage(); scrollToTable(); };
-            pag.appendChild(first);
-            if (startPage > 2) {
-                const dots = document.createElement('span');
-                dots.className = 'page-info';
-                dots.textContent = '…';
-                pag.appendChild(dots);
-            }
-        }
-
-        for (let i = startPage; i <= endPage; i++) {
-            const btn = document.createElement('button');
-            btn.textContent = i;
-            if (i === currentPage) btn.className = 'active';
-            btn.onclick = () => { currentPage = i; renderTransactionPage(); scrollToTable(); };
-            pag.appendChild(btn);
-        }
-
-        if (endPage < totalPages) {
-            if (endPage < totalPages - 1) {
-                const dots = document.createElement('span');
-                dots.className = 'page-info';
-                dots.textContent = '…';
-                pag.appendChild(dots);
-            }
-            const last = document.createElement('button');
-            last.textContent = totalPages;
-            last.onclick = () => { currentPage = totalPages; renderTransactionPage(); scrollToTable(); };
-            pag.appendChild(last);
-        }
-
-        // Next button
-        const nextBtn = document.createElement('button');
-        nextBtn.textContent = 'Next →';
-        nextBtn.disabled = currentPage === totalPages;
-        nextBtn.onclick = () => { currentPage++; renderTransactionPage(); scrollToTable(); };
-        pag.appendChild(nextBtn);
-
-        document.getElementById('previewNote').textContent =
-            `Page ${currentPage} of ${totalPages}. Download the spreadsheet for all data with formatting.`;
     }
 
     function scrollToTable() {
         document.getElementById('previewHeading').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    // ---------------------------------------------------------------
+    // Generic row-level pagination renderer
+    // ---------------------------------------------------------------
+    function renderRowPagination(container, page, totalPages, onPageChange) {
+        container.innerHTML = '';
+        if (totalPages <= 1) return;
+
+        const prevBtn = document.createElement('button');
+        prevBtn.textContent = '\u2190 Prev';
+        prevBtn.disabled = page === 1;
+        prevBtn.onclick = () => onPageChange(page - 1);
+        container.appendChild(prevBtn);
+
+        const maxButtons = 7;
+        let startP = Math.max(1, page - Math.floor(maxButtons / 2));
+        let endP = Math.min(totalPages, startP + maxButtons - 1);
+        if (endP - startP + 1 < maxButtons) startP = Math.max(1, endP - maxButtons + 1);
+
+        if (startP > 1) {
+            const first = document.createElement('button');
+            first.textContent = '1';
+            first.onclick = () => onPageChange(1);
+            container.appendChild(first);
+            if (startP > 2) {
+                const dots = document.createElement('span');
+                dots.className = 'page-info';
+                dots.textContent = '\u2026';
+                container.appendChild(dots);
+            }
+        }
+        for (let i = startP; i <= endP; i++) {
+            const btn = document.createElement('button');
+            btn.textContent = i;
+            if (i === page) btn.className = 'active';
+            btn.onclick = () => onPageChange(i);
+            container.appendChild(btn);
+        }
+        if (endP < totalPages) {
+            if (endP < totalPages - 1) {
+                const dots = document.createElement('span');
+                dots.className = 'page-info';
+                dots.textContent = '\u2026';
+                container.appendChild(dots);
+            }
+            const last = document.createElement('button');
+            last.textContent = totalPages;
+            last.onclick = () => onPageChange(totalPages);
+            container.appendChild(last);
+        }
+
+        const nextBtn = document.createElement('button');
+        nextBtn.textContent = 'Next \u2192';
+        nextBtn.disabled = page === totalPages;
+        nextBtn.onclick = () => onPageChange(page + 1);
+        container.appendChild(nextBtn);
+    }
+
+    // ---------------------------------------------------------------
+    // Bulk dot navigation builder
+    // ---------------------------------------------------------------
+    function renderBulkDots(container, totalFiles, activePage) {
+        container.innerHTML = '';
+        const maxDots = 12;
+        const showDots = totalFiles <= maxDots;
+        if (showDots) {
+            for (let i = 1; i <= totalFiles; i++) {
+                const dot = document.createElement('button');
+                dot.className = 'page-dot' + (i === activePage ? ' active' : '');
+                dot.title = 'File ' + i;
+                dot.onclick = (() => {
+                    const idx = i;
+                    return () => {
+                        if (container.id === 'bulkRcptDots') showBulkReceiptPage(idx);
+                        else showBulkStatementPage(idx);
+                    };
+                })();
+                container.appendChild(dot);
+            }
+        } else {
+            const info = document.createElement('span');
+            info.style.cssText = 'font-size:0.8rem; color:var(--muted);';
+            info.textContent = totalFiles + ' files';
+            container.appendChild(info);
+        }
+    }
+
+    // ---------------------------------------------------------------
+    // Bulk Receipt pagination
+    // ---------------------------------------------------------------
+    function showBulkReceiptPage(page) {
+        if (!bulkReceiptData) return;
+        const receipts = bulkReceiptData.receipts || [];
+        const totalFiles = receipts.length;
+        if (page < 0) page = 0;
+        if (page > totalFiles) page = totalFiles;
+        bulkReceiptPage = page;
+        bulkReceiptRowPage = 1;
+
+        const prevBtn = document.getElementById('bulkRcptPrev');
+        const nextBtn = document.getElementById('bulkRcptNext');
+        const pageInfo = document.getElementById('bulkRcptPageInfo');
+        const allBtn = document.getElementById('bulkRcptAllBtn');
+        const fileHeader = document.getElementById('bulkRcptFileHeader');
+        const heading = document.getElementById('bulkReceiptHeading');
+        const thead = document.getElementById('bulkReceiptThead');
+
+        allBtn.classList.toggle('active', page === 0);
+
+        if (page === 0) {
+            // All items view
+            prevBtn.disabled = true;
+            nextBtn.disabled = totalFiles < 1;
+            pageInfo.textContent = 'All Receipts';
+            fileHeader.style.display = 'none';
+            heading.textContent = 'All Items';
+            thead.innerHTML = '<tr><th>Store</th><th>Item</th><th>Qty</th><th>Unit Price</th><th>Total</th></tr>';
+            renderBulkDots(document.getElementById('bulkRcptDots'), totalFiles, 0);
+            renderBulkReceiptRows();
+        } else {
+            prevBtn.disabled = page <= 1;
+            nextBtn.disabled = page >= totalFiles;
+            pageInfo.textContent = 'Receipt ' + page + ' of ' + totalFiles;
+            renderBulkDots(document.getElementById('bulkRcptDots'), totalFiles, page);
+
+            const receipt = receipts[page - 1];
+            fileHeader.style.display = 'flex';
+            document.getElementById('bulkRcptFileName').textContent = receipt.store_name || receipt.source || ('Receipt ' + page);
+            const itemCount = (receipt.items || []).length;
+            const total = receipt.total != null ? formatCurrency(receipt.total) : '';
+            document.getElementById('bulkRcptFileMeta').textContent = itemCount + ' items' + (total ? ' \u2014 ' + total : '');
+            heading.textContent = 'Items';
+            thead.innerHTML = '<tr><th>#</th><th>Item</th><th>Qty</th><th>Unit Price</th><th>Total</th></tr>';
+            renderBulkReceiptRows();
+        }
+        activePaginationContext = 'bulkReceipt';
+    }
+
+    function renderBulkReceiptRows() {
+        const tbody = document.getElementById('bulkReceiptBody');
+        tbody.innerHTML = '';
+        let items = [];
+
+        if (bulkReceiptPage === 0) {
+            items = bulkReceiptData.combined_items || [];
+        } else {
+            const receipts = bulkReceiptData.receipts || [];
+            const receipt = receipts[bulkReceiptPage - 1];
+            items = (receipt && receipt.items) || [];
+        }
+
+        const totalPages = Math.ceil(items.length / ITEMS_PER_PAGE);
+        if (bulkReceiptRowPage > totalPages) bulkReceiptRowPage = totalPages || 1;
+        const start = (bulkReceiptRowPage - 1) * ITEMS_PER_PAGE;
+        const end = Math.min(start + ITEMS_PER_PAGE, items.length);
+        const pageItems = items.slice(start, end);
+
+        if (bulkReceiptPage === 0) {
+            pageItems.forEach(item => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>${escapeHtml(item.store)}</td>
+                    <td>${escapeHtml(item.description)}</td>
+                    <td style="text-align:center">${escapeHtml(item.quantity)}</td>
+                    <td>${formatCurrency(item.unit_price)}</td>
+                    <td>${formatCurrency(item.total_price)}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        } else {
+            pageItems.forEach((item, i) => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td style="text-align:center">${start + i + 1}</td>
+                    <td>${escapeHtml(item.description)}</td>
+                    <td style="text-align:center">${escapeHtml(item.quantity)}</td>
+                    <td>${formatCurrency(item.unit_price)}</td>
+                    <td>${formatCurrency(item.total_price)}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        renderRowPagination(document.getElementById('bulkRcptRowPagination'), bulkReceiptRowPage, totalPages, (p) => {
+            bulkReceiptRowPage = p;
+            renderBulkReceiptRows();
+            document.getElementById('bulkReceiptHeading').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+
+        const note = document.getElementById('bulkReceiptNote');
+        if (totalPages > 1) {
+            note.textContent = `Showing ${start + 1}\u2013${end} of ${items.length} items (page ${bulkReceiptRowPage} of ${totalPages}).`;
+        } else if (items.length > 0) {
+            note.textContent = items.length + ' item' + (items.length !== 1 ? 's' : '') + '.';
+        } else {
+            note.textContent = '';
+        }
+    }
+
+    // ---------------------------------------------------------------
+    // Bulk Statement pagination
+    // ---------------------------------------------------------------
+    function showBulkStatementPage(page) {
+        if (!bulkStatementData) return;
+        const stmts = bulkStatementData.statements || [];
+        const totalFiles = stmts.length;
+        if (page < 0) page = 0;
+        if (page > totalFiles) page = totalFiles;
+        bulkStatementPage = page;
+        bulkStatementRowPage = 1;
+
+        const prevBtn = document.getElementById('bulkStmtPrev');
+        const nextBtn = document.getElementById('bulkStmtNext');
+        const pageInfo = document.getElementById('bulkStmtPageInfo');
+        const allBtn = document.getElementById('bulkStmtAllBtn');
+        const fileHeader = document.getElementById('bulkStmtFileHeader');
+        const heading = document.getElementById('bulkStmtHeading');
+        const thead = document.getElementById('bulkStmtThead');
+
+        allBtn.classList.toggle('active', page === 0);
+
+        if (page === 0) {
+            prevBtn.disabled = true;
+            nextBtn.disabled = totalFiles < 1;
+            pageInfo.textContent = 'All Statements';
+            fileHeader.style.display = 'none';
+            heading.textContent = 'All Transactions';
+            thead.innerHTML = '<tr><th>Source</th><th>Date</th><th>Description</th><th>Amount</th></tr>';
+            renderBulkDots(document.getElementById('bulkStmtDots'), totalFiles, 0);
+            renderBulkStatementRows();
+        } else {
+            prevBtn.disabled = page <= 1;
+            nextBtn.disabled = page >= totalFiles;
+            pageInfo.textContent = 'Statement ' + page + ' of ' + totalFiles;
+            renderBulkDots(document.getElementById('bulkStmtDots'), totalFiles, page);
+
+            const stmt = stmts[page - 1];
+            fileHeader.style.display = 'flex';
+            document.getElementById('bulkStmtFileName').textContent = stmt.bank_name || stmt.source || ('Statement ' + page);
+            const txCount = (stmt.transactions || []).length;
+            const period = stmt.period || '';
+            document.getElementById('bulkStmtFileMeta').textContent = txCount + ' transactions' + (period ? ' \u2014 ' + period : '');
+            heading.textContent = 'Transactions';
+            thead.innerHTML = '<tr><th>Date</th><th>Description</th><th>Amount</th><th>Balance</th></tr>';
+            renderBulkStatementRows();
+        }
+        activePaginationContext = 'bulkStatement';
+    }
+
+    function renderBulkStatementRows() {
+        const tbody = document.getElementById('bulkStmtBody');
+        tbody.innerHTML = '';
+        let txns = [];
+
+        if (bulkStatementPage === 0) {
+            txns = bulkStatementData.all_transactions || [];
+        } else {
+            const stmts = bulkStatementData.statements || [];
+            const stmt = stmts[bulkStatementPage - 1];
+            txns = (stmt && stmt.transactions) || [];
+        }
+
+        const totalPages = Math.ceil(txns.length / ITEMS_PER_PAGE);
+        if (bulkStatementRowPage > totalPages) bulkStatementRowPage = totalPages || 1;
+        const start = (bulkStatementRowPage - 1) * ITEMS_PER_PAGE;
+        const end = Math.min(start + ITEMS_PER_PAGE, txns.length);
+        const pageTxns = txns.slice(start, end);
+
+        if (bulkStatementPage === 0) {
+            pageTxns.forEach(tx => {
+                const tr = document.createElement('tr');
+                const amtClass = tx.amount >= 0 ? 'credit-amount' : 'debit-amount';
+                tr.innerHTML = `
+                    <td>${escapeHtml(tx.source || '')}</td>
+                    <td>${escapeHtml(tx.date)}</td>
+                    <td>${escapeHtml(tx.description)}</td>
+                    <td class="${amtClass}">${formatCurrency(tx.amount)}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        } else {
+            pageTxns.forEach(tx => {
+                const tr = document.createElement('tr');
+                const amtClass = tx.amount >= 0 ? 'credit-amount' : 'debit-amount';
+                tr.innerHTML = `
+                    <td>${escapeHtml(tx.date)}</td>
+                    <td>${escapeHtml(tx.description)}</td>
+                    <td class="${amtClass}">${tx.amount >= 0 ? '+' : ''}${formatCurrency(tx.amount)}</td>
+                    <td>${tx.balance != null ? formatCurrency(tx.balance) : '\u2014'}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        renderRowPagination(document.getElementById('bulkStmtRowPagination'), bulkStatementRowPage, totalPages, (p) => {
+            bulkStatementRowPage = p;
+            renderBulkStatementRows();
+            document.getElementById('bulkStmtHeading').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+
+        const note = document.getElementById('bulkStmtNote');
+        if (totalPages > 1) {
+            note.textContent = `Showing ${start + 1}\u2013${end} of ${txns.length} transactions (page ${bulkStatementRowPage} of ${totalPages}).`;
+        } else if (txns.length > 0) {
+            note.textContent = txns.length + ' transaction' + (txns.length !== 1 ? 's' : '') + '.';
+        } else {
+            note.textContent = '';
+        }
     }
 
     function downloadBase64(b64Data, filename) {
@@ -1664,33 +2052,13 @@
     function showReceiptResults(data) {
         const { items, totals, metadata, download_url } = data;
 
-        // Stats
-        document.getElementById('receiptStore').textContent = metadata.store_name || '—';
+        document.getElementById('receiptStore').textContent = metadata.store_name || '\u2014';
         document.getElementById('receiptItems').textContent = metadata.item_count || items.length;
-        document.getElementById('receiptTotal').textContent = totals.total ? formatCurrency(totals.total) : '—';
+        document.getElementById('receiptTotal').textContent = totals.total ? formatCurrency(totals.total) : '\u2014';
 
-        // Items table
-        const tbody = document.getElementById('receiptBody');
-        tbody.innerHTML = '';
-        const preview = items.slice(0, 20);
-        preview.forEach((item, i) => {
-            const tr = document.createElement('tr');
-            tr.innerHTML = `
-                <td style="text-align:center">${i + 1}</td>
-                <td>${escapeHtml(item.description)}</td>
-                <td style="text-align:center">${escapeHtml(item.quantity)}</td>
-                <td>${formatCurrency(item.unit_price)}</td>
-                <td>${formatCurrency(item.total_price)}</td>
-            `;
-            tbody.appendChild(tr);
-        });
-
-        const note = document.getElementById('receiptNote');
-        if (items.length > 20) {
-            note.textContent = `Showing 20 of ${items.length} items. Download the spreadsheet for the full list.`;
-        } else {
-            note.textContent = '';
-        }
+        allReceiptItems = items;
+        receiptItemPage = 1;
+        renderReceiptItemPage();
 
         const rcptLink = document.getElementById('receiptDownloadLink');
         if (data.download_url) {
@@ -1706,8 +2074,49 @@
         const results = document.getElementById('receiptResults');
         results.classList.add('show');
         results.scrollIntoView({ behavior: 'smooth' });
-
+        activePaginationContext = 'receipt';
         showChat('receipt', data);
+    }
+
+    function renderReceiptItemPage() {
+        const totalPages = Math.ceil(allReceiptItems.length / ITEMS_PER_PAGE);
+        const start = (receiptItemPage - 1) * ITEMS_PER_PAGE;
+        const end = Math.min(start + ITEMS_PER_PAGE, allReceiptItems.length);
+        const pageItems = allReceiptItems.slice(start, end);
+
+        const heading = document.getElementById('receiptItemsHeading');
+        if (totalPages > 1) {
+            heading.textContent = `Items (${start + 1}\u2013${end} of ${allReceiptItems.length})`;
+        } else {
+            heading.textContent = 'Items found';
+        }
+
+        const tbody = document.getElementById('receiptBody');
+        tbody.innerHTML = '';
+        pageItems.forEach((item, i) => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td style="text-align:center">${start + i + 1}</td>
+                <td>${escapeHtml(item.description)}</td>
+                <td style="text-align:center">${escapeHtml(item.quantity)}</td>
+                <td>${formatCurrency(item.unit_price)}</td>
+                <td>${formatCurrency(item.total_price)}</td>
+            `;
+            tbody.appendChild(tr);
+        });
+
+        renderRowPagination(document.getElementById('receiptPagination'), receiptItemPage, totalPages, (p) => {
+            receiptItemPage = p;
+            renderReceiptItemPage();
+            document.getElementById('receiptItemsHeading').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+
+        const note = document.getElementById('receiptNote');
+        if (totalPages > 1) {
+            note.textContent = `Page ${receiptItemPage} of ${totalPages}. Download the spreadsheet for all items.`;
+        } else {
+            note.textContent = '';
+        }
     }
 
     function clearAndReset() {
@@ -1716,6 +2125,18 @@
         document.getElementById('receiptResults').classList.remove('show');
         document.getElementById('bulkReceiptResults').classList.remove('show');
         document.getElementById('bulkStatementResults').classList.remove('show');
+        // Reset pagination state
+        bulkReceiptData = null;
+        bulkReceiptPage = 0;
+        bulkReceiptRowPage = 1;
+        bulkStatementData = null;
+        bulkStatementPage = 0;
+        bulkStatementRowPage = 1;
+        allReceiptItems = [];
+        receiptItemPage = 1;
+        allTransactions = [];
+        currentPage = 1;
+        activePaginationContext = null;
         // Hide and reset chat
         document.getElementById('chatSection').classList.remove('show');
         document.getElementById('chatBody').classList.remove('open');
@@ -1750,27 +2171,9 @@
         document.getElementById('bulkCredits').textContent = formatCurrency(summary.total_credits);
         document.getElementById('bulkDebits').textContent = formatCurrency(summary.total_debits);
 
-        const tbody = document.getElementById('bulkStmtBody');
-        tbody.innerHTML = '';
-        const preview = all_transactions.slice(0, 50);
-        preview.forEach((tx) => {
-            const tr = document.createElement('tr');
-            const amtClass = tx.amount >= 0 ? 'credit' : 'debit';
-            tr.innerHTML = `
-                <td>${escapeHtml(tx.source || '')}</td>
-                <td>${escapeHtml(tx.date)}</td>
-                <td>${escapeHtml(tx.description)}</td>
-                <td class="${amtClass}">${formatCurrency(tx.amount)}</td>
-            `;
-            tbody.appendChild(tr);
-        });
-
-        const note = document.getElementById('bulkStmtNote');
-        if (all_transactions.length > 50) {
-            note.textContent = `Showing 50 of ${all_transactions.length} transactions. Download the spreadsheet for the full list.`;
-        } else {
-            note.textContent = `${statement_count} statements, ${summary.total_transactions} transactions. Net: ${formatCurrency(summary.net)}`;
-        }
+        bulkStatementData = data;
+        bulkStatementPage = 0;
+        bulkStatementRowPage = 1;
 
         const dlLink = document.getElementById('bulkStmtDownloadLink');
         if (download_url) {
@@ -1782,39 +2185,20 @@
         results.classList.add('show');
         results.scrollIntoView({ behavior: 'smooth' });
 
+        showBulkStatementPage(0);
         showChat('bulk_statement', data);
     }
 
     function showBulkReceiptResults(data) {
         const { combined_items, grand_total, receipt_count, total_items, download_url } = data;
 
-        // Stats
         document.getElementById('bulkReceiptCount').textContent = receipt_count;
         document.getElementById('bulkItemCount').textContent = total_items;
         document.getElementById('bulkGrandTotal').textContent = formatCurrency(grand_total);
 
-        // Items table
-        const tbody = document.getElementById('bulkReceiptBody');
-        tbody.innerHTML = '';
-        const preview = combined_items.slice(0, 50);
-        preview.forEach((item) => {
-            const tr = document.createElement('tr');
-            tr.innerHTML = `
-                <td>${escapeHtml(item.store)}</td>
-                <td>${escapeHtml(item.description)}</td>
-                <td style="text-align:center">${escapeHtml(item.quantity)}</td>
-                <td>${formatCurrency(item.unit_price)}</td>
-                <td>${formatCurrency(item.total_price)}</td>
-            `;
-            tbody.appendChild(tr);
-        });
-
-        const note = document.getElementById('bulkReceiptNote');
-        if (combined_items.length > 50) {
-            note.textContent = `Showing 50 of ${combined_items.length} items. Download the spreadsheet for the full list.`;
-        } else {
-            note.textContent = `${receipt_count} receipts processed, ${total_items} items found. Grand total: ${formatCurrency(grand_total)}`;
-        }
+        bulkReceiptData = data;
+        bulkReceiptPage = 0;
+        bulkReceiptRowPage = 1;
 
         const dlLink = document.getElementById('bulkDownloadLink');
         if (download_url) {
@@ -1826,6 +2210,7 @@
         results.classList.add('show');
         results.scrollIntoView({ behavior: 'smooth' });
 
+        showBulkReceiptPage(0);
         showChat('bulk_receipt', data);
     }
 
@@ -1918,6 +2303,51 @@
         }
         typing.classList.remove('show');
     }
+
+    // ---------------------------------------------------------------
+    // Keyboard navigation for pagination
+    // ---------------------------------------------------------------
+    document.addEventListener('keydown', function(e) {
+        // Skip if user is typing in an input/textarea
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) return;
+        if (!activePaginationContext) return;
+
+        const key = e.key;
+        if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(key)) return;
+        e.preventDefault();
+
+        if (activePaginationContext === 'statement') {
+            const totalPages = Math.ceil(allTransactions.length / perPage);
+            if (totalPages <= 1) return;
+            if (key === 'ArrowLeft' && currentPage > 1) { currentPage--; renderTransactionPage(); scrollToTable(); }
+            else if (key === 'ArrowRight' && currentPage < totalPages) { currentPage++; renderTransactionPage(); scrollToTable(); }
+            else if (key === 'Home') { currentPage = 1; renderTransactionPage(); scrollToTable(); }
+            else if (key === 'End') { currentPage = totalPages; renderTransactionPage(); scrollToTable(); }
+        } else if (activePaginationContext === 'receipt') {
+            const totalPages = Math.ceil(allReceiptItems.length / ITEMS_PER_PAGE);
+            if (totalPages <= 1) return;
+            if (key === 'ArrowLeft' && receiptItemPage > 1) { receiptItemPage--; renderReceiptItemPage(); }
+            else if (key === 'ArrowRight' && receiptItemPage < totalPages) { receiptItemPage++; renderReceiptItemPage(); }
+            else if (key === 'Home') { receiptItemPage = 1; renderReceiptItemPage(); }
+            else if (key === 'End') { receiptItemPage = totalPages; renderReceiptItemPage(); }
+        } else if (activePaginationContext === 'bulkReceipt') {
+            const totalFiles = (bulkReceiptData && bulkReceiptData.receipts) ? bulkReceiptData.receipts.length : 0;
+            if (key === 'ArrowLeft') {
+                if (bulkReceiptPage > 0) showBulkReceiptPage(bulkReceiptPage - 1);
+            } else if (key === 'ArrowRight') {
+                if (bulkReceiptPage < totalFiles) showBulkReceiptPage(bulkReceiptPage + 1);
+            } else if (key === 'Home') { showBulkReceiptPage(0); }
+            else if (key === 'End') { showBulkReceiptPage(totalFiles); }
+        } else if (activePaginationContext === 'bulkStatement') {
+            const totalFiles = (bulkStatementData && bulkStatementData.statements) ? bulkStatementData.statements.length : 0;
+            if (key === 'ArrowLeft') {
+                if (bulkStatementPage > 0) showBulkStatementPage(bulkStatementPage - 1);
+            } else if (key === 'ArrowRight') {
+                if (bulkStatementPage < totalFiles) showBulkStatementPage(bulkStatementPage + 1);
+            } else if (key === 'Home') { showBulkStatementPage(0); }
+            else if (key === 'End') { showBulkStatementPage(totalFiles); }
+        }
+    });
 
     async function sendChatMessage() {
         if (chatSending) return;
