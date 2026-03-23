@@ -626,6 +626,9 @@
             <a id="downloadLink" href="#" class="btn btn-success" style="text-decoration: none;">
                 Download Spreadsheet (.xlsx)
             </a>
+            <button onclick="clearAndReset()" class="btn" style="margin-top: 0.75rem; background: var(--muted);">
+                Clear &amp; Upload New
+            </button>
         </div>
     </div>
 
@@ -669,6 +672,9 @@
             <a id="receiptDownloadLink" href="#" class="btn btn-receipt" style="text-decoration: none;">
                 Download Spreadsheet (.xlsx)
             </a>
+            <button onclick="clearAndReset()" class="btn" style="margin-top: 0.75rem; background: var(--muted);">
+                Clear &amp; Upload New
+            </button>
         </div>
     </div>
 
@@ -712,6 +718,9 @@
             <a id="bulkDownloadLink" href="#" class="btn btn-receipt" style="text-decoration: none;">
                 Download Combined Spreadsheet (.xlsx)
             </a>
+            <button onclick="clearAndReset()" class="btn" style="margin-top: 0.75rem; background: var(--muted);">
+                Clear &amp; Upload New
+            </button>
         </div>
     </div>
 
@@ -764,6 +773,9 @@
             <a id="bulkStmtDownloadLink" href="#" class="btn" style="text-decoration: none;">
                 Download Combined Spreadsheet (.xlsx)
             </a>
+            <button onclick="clearAndReset()" class="btn" style="margin-top: 0.75rem; background: var(--muted);">
+                Clear &amp; Upload New
+            </button>
         </div>
     </div>
 
@@ -1493,6 +1505,29 @@
         const results = document.getElementById('receiptResults');
         results.classList.add('show');
         results.scrollIntoView({ behavior: 'smooth' });
+    }
+
+    function clearAndReset() {
+        // Hide all results
+        document.getElementById('statementResults').classList.remove('show');
+        document.getElementById('receiptResults').classList.remove('show');
+        document.getElementById('bulkReceiptResults').classList.remove('show');
+        document.getElementById('bulkStatementResults').classList.remove('show');
+        // Reset file input
+        fileInput.value = '';
+        fileInfo.classList.remove('show');
+        document.getElementById('bulkFileList').style.display = 'none';
+        // Reset button
+        parseBtn.disabled = true;
+        if (currentMode === 'receipt') {
+            parseBtn.textContent = 'Extract Receipt Items';
+        } else {
+            parseBtn.textContent = 'Convert to Spreadsheet';
+        }
+        // Clear errors
+        errorMsg.classList.remove('show');
+        // Scroll to top
+        window.scrollTo({ top: 0, behavior: 'smooth' });
     }
 
     function showBulkStatementResults(data) {
