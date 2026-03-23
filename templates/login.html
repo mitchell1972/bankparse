@@ -338,6 +338,26 @@
                     return;
                 }
 
+                // Check if user came from a pricing plan CTA
+                const urlParams = new URLSearchParams(window.location.search);
+                const plan = urlParams.get('plan');
+                if (plan && ['starter', 'pro', 'business', 'enterprise'].includes(plan)) {
+                    // Redirect to Stripe checkout
+                    try {
+                        const checkoutResp = await fetch('/api/create-checkout', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': getCsrfToken() },
+                            body: JSON.stringify({ plan, email }),
+                        });
+                        const checkoutData = await checkoutResp.json();
+                        if (checkoutData.checkout_url) {
+                            window.location.href = checkoutData.checkout_url;
+                            return;
+                        }
+                    } catch (e) {
+                        // Fall through to app if checkout fails
+                    }
+                }
                 window.location.href = '/';
             } catch (err) {
                 showError('global', 'Network error. Please check your connection and try again.');
