@@ -446,6 +446,142 @@
             display: none;
         }
         .error-msg.show { display: block; }
+
+        /* Chat */
+        .chat-section {
+            display: none;
+            margin-bottom: 1rem;
+        }
+        .chat-section.show { display: block; }
+        .chat-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.85rem 1.25rem;
+            background: var(--card);
+            border-radius: 12px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+            cursor: pointer;
+            user-select: none;
+            transition: background 0.2s;
+        }
+        .chat-header:hover { background: #F0F7FC; }
+        .chat-header-title {
+            font-weight: 600;
+            font-size: 0.95rem;
+            color: var(--primary);
+        }
+        .chat-header-hint {
+            font-size: 0.8rem;
+            color: var(--muted);
+            margin-left: 0.75rem;
+        }
+        .chat-header-toggle {
+            font-size: 1.1rem;
+            color: var(--muted);
+            transition: transform 0.3s;
+        }
+        .chat-header-toggle.open { transform: rotate(180deg); }
+        .chat-body {
+            display: none;
+            background: var(--card);
+            border-radius: 0 0 12px 12px;
+            box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+            margin-top: -4px;
+            padding: 0;
+            overflow: hidden;
+        }
+        .chat-body.open { display: block; }
+        .chat-messages {
+            max-height: 400px;
+            overflow-y: auto;
+            padding: 1.25rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+        .chat-bubble {
+            max-width: 85%;
+            padding: 0.7rem 1rem;
+            border-radius: 12px;
+            font-size: 0.9rem;
+            line-height: 1.5;
+            word-wrap: break-word;
+            white-space: pre-wrap;
+        }
+        .chat-bubble.user {
+            align-self: flex-end;
+            background: var(--primary);
+            color: white;
+            border-bottom-right-radius: 4px;
+        }
+        .chat-bubble.ai {
+            align-self: flex-start;
+            background: var(--bg);
+            color: var(--text);
+            border-bottom-left-radius: 4px;
+        }
+        .chat-typing {
+            align-self: flex-start;
+            padding: 0.7rem 1rem;
+            background: var(--bg);
+            border-radius: 12px;
+            font-size: 0.85rem;
+            color: var(--muted);
+            display: none;
+        }
+        .chat-typing.show { display: block; }
+        .chat-typing-dots {
+            display: inline-flex;
+            gap: 4px;
+        }
+        .chat-typing-dots span {
+            width: 6px; height: 6px;
+            background: var(--muted);
+            border-radius: 50%;
+            animation: chatBounce 1.4s infinite;
+        }
+        .chat-typing-dots span:nth-child(2) { animation-delay: 0.2s; }
+        .chat-typing-dots span:nth-child(3) { animation-delay: 0.4s; }
+        @keyframes chatBounce {
+            0%, 60%, 100% { transform: translateY(0); }
+            30% { transform: translateY(-4px); }
+        }
+        .chat-input-row {
+            display: flex;
+            gap: 0.5rem;
+            padding: 0.75rem 1.25rem;
+            border-top: 1px solid var(--border);
+            background: white;
+        }
+        .chat-input {
+            flex: 1;
+            padding: 0.65rem 1rem;
+            border: 2px solid var(--border);
+            border-radius: 8px;
+            font-size: 0.9rem;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        .chat-input:focus { border-color: var(--primary-light); }
+        .chat-send-btn {
+            padding: 0.65rem 1.25rem;
+            background: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: background 0.2s;
+            white-space: nowrap;
+        }
+        .chat-send-btn:hover { background: var(--primary-light); }
+        .chat-send-btn:disabled {
+            background: var(--border);
+            color: var(--muted);
+            cursor: not-allowed;
+        }
     </style>
 </head>
 <body>
@@ -776,6 +912,29 @@
             <button onclick="clearAndReset()" class="btn" style="margin-top: 0.75rem; background: var(--muted);">
                 Clear &amp; Upload New
             </button>
+        </div>
+    </div>
+
+    <!-- AI Chat Section (shared across all result types) -->
+    <div class="chat-section" id="chatSection">
+        <div class="chat-header" id="chatHeader" onclick="toggleChat()">
+            <div>
+                <span class="chat-header-title">Ask about your data</span>
+                <span class="chat-header-hint" id="chatHint">Ask questions about your uploaded data...</span>
+            </div>
+            <span class="chat-header-toggle" id="chatToggle">&#9660;</span>
+        </div>
+        <div class="chat-body" id="chatBody">
+            <div class="chat-messages" id="chatMessages">
+                <div class="chat-typing" id="chatTyping">
+                    <div class="chat-typing-dots"><span></span><span></span><span></span></div>
+                </div>
+            </div>
+            <div class="chat-input-row">
+                <input type="text" class="chat-input" id="chatInput" placeholder="Ask about your transactions..."
+                    maxlength="1000" onkeydown="if(event.key==='Enter')sendChatMessage()">
+                <button class="chat-send-btn" id="chatSendBtn" onclick="sendChatMessage()">Send</button>
+            </div>
         </div>
     </div>
 
@@ -1342,6 +1501,8 @@
         const results = document.getElementById('statementResults');
         results.classList.add('show');
         results.scrollIntoView({ behavior: 'smooth' });
+
+        showChat('statement', data);
     }
 
     function renderTransactionPage() {
@@ -1505,6 +1666,8 @@
         const results = document.getElementById('receiptResults');
         results.classList.add('show');
         results.scrollIntoView({ behavior: 'smooth' });
+
+        showChat('receipt', data);
     }
 
     function clearAndReset() {
@@ -1513,6 +1676,14 @@
         document.getElementById('receiptResults').classList.remove('show');
         document.getElementById('bulkReceiptResults').classList.remove('show');
         document.getElementById('bulkStatementResults').classList.remove('show');
+        // Hide and reset chat
+        document.getElementById('chatSection').classList.remove('show');
+        document.getElementById('chatBody').classList.remove('open');
+        document.getElementById('chatToggle').classList.remove('open');
+        chatOpen = false;
+        chatContextType = null;
+        chatContextData = null;
+        clearChat();
         // Reset file input
         fileInput.value = '';
         fileInfo.classList.remove('show');
@@ -1570,6 +1741,8 @@
         const results = document.getElementById('bulkStatementResults');
         results.classList.add('show');
         results.scrollIntoView({ behavior: 'smooth' });
+
+        showChat('bulk_statement', data);
     }
 
     function showBulkReceiptResults(data) {
@@ -1612,6 +1785,127 @@
         const results = document.getElementById('bulkReceiptResults');
         results.classList.add('show');
         results.scrollIntoView({ behavior: 'smooth' });
+
+        showChat('bulk_receipt', data);
+    }
+
+    // ==========================================================================
+    // AI Chat
+    // ==========================================================================
+
+    let chatContextType = null;
+    let chatContextData = null;
+    let chatOpen = false;
+    let chatSending = false;
+
+    function showChat(contextType, contextData) {
+        chatContextType = contextType;
+        chatContextData = contextData;
+        clearChat();
+
+        const section = document.getElementById('chatSection');
+        section.classList.add('show');
+
+        // Set placeholder based on context type
+        const input = document.getElementById('chatInput');
+        if (contextType === 'statement' || contextType === 'bulk_statement') {
+            input.placeholder = 'Ask about your transactions...';
+        } else {
+            input.placeholder = 'Ask about your expenses...';
+        }
+    }
+
+    function toggleChat() {
+        chatOpen = !chatOpen;
+        document.getElementById('chatBody').classList.toggle('open', chatOpen);
+        document.getElementById('chatToggle').classList.toggle('open', chatOpen);
+        if (chatOpen) {
+            document.getElementById('chatInput').focus();
+        }
+    }
+
+    function addChatMessage(role, text) {
+        const messages = document.getElementById('chatMessages');
+        const typing = document.getElementById('chatTyping');
+        const bubble = document.createElement('div');
+        bubble.className = 'chat-bubble ' + (role === 'user' ? 'user' : 'ai');
+        bubble.textContent = text;
+        messages.insertBefore(bubble, typing);
+        messages.scrollTop = messages.scrollHeight;
+    }
+
+    function clearChat() {
+        const messages = document.getElementById('chatMessages');
+        const typing = document.getElementById('chatTyping');
+        // Remove all bubbles, keep the typing indicator
+        while (messages.firstChild) {
+            if (messages.firstChild === typing) break;
+            messages.removeChild(messages.firstChild);
+        }
+        // Ensure typing indicator is still there and hidden
+        if (!messages.contains(typing)) {
+            messages.appendChild(typing);
+        }
+        typing.classList.remove('show');
+    }
+
+    async function sendChatMessage() {
+        if (chatSending) return;
+        const input = document.getElementById('chatInput');
+        const message = input.value.trim();
+        if (!message) return;
+        if (message.length > 1000) {
+            alert('Message too long. Maximum 1000 characters.');
+            return;
+        }
+        if (!chatContextType || !chatContextData) return;
+
+        // Expand chat if collapsed
+        if (!chatOpen) toggleChat();
+
+        addChatMessage('user', message);
+        input.value = '';
+
+        chatSending = true;
+        const sendBtn = document.getElementById('chatSendBtn');
+        sendBtn.disabled = true;
+        input.disabled = true;
+
+        const typing = document.getElementById('chatTyping');
+        typing.classList.add('show');
+        const messages = document.getElementById('chatMessages');
+        messages.scrollTop = messages.scrollHeight;
+
+        try {
+            const res = await fetch('/api/chat', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-Token': getCsrfToken(),
+                },
+                body: JSON.stringify({
+                    message: message,
+                    context_type: chatContextType,
+                    context_data: chatContextData,
+                }),
+            });
+
+            const data = await res.json();
+
+            if (!res.ok) {
+                addChatMessage('ai', 'Sorry, something went wrong: ' + (data.detail || 'Unknown error'));
+            } else {
+                addChatMessage('ai', data.response);
+            }
+        } catch (err) {
+            addChatMessage('ai', 'Could not connect to the server. Please try again.');
+        } finally {
+            typing.classList.remove('show');
+            chatSending = false;
+            sendBtn.disabled = false;
+            input.disabled = false;
+            input.focus();
+        }
     }
 </script>
 </body>

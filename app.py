@@ -11,6 +11,7 @@ import asyncio
 import logging
 import sqlite3
 import time
+import json
 from pathlib import Path
 
 from contextlib import asynccontextmanager
@@ -671,6 +672,143 @@ async def parse_statements_bulk_endpoint(request: Request, files: list[UploadFil
             p = Path(path)
             if p.exists():
                 p.unlink()
+
+
+# ==========================================================================
+# AI Chat API
+# ==========================================================================
+
+def _format_chat_context(context_type: str, context_data: dict) -> str:
+    """Format parsed results into readable text for the chat system prompt.
+    Truncates to roughly 3000 tokens (~12000 chars) to keep costs low."""
+    lines = []
+    max_chars = 12000
+
+    if context_type == "statement":
+        summary = context_data.get("summary", {})
+        lines.append(f"=== Bank Statement Summary ===")
+        lines.append(f"Total transactions: {summary.get('total_transactions', 'N/A')}")
+        lines.append(f"Total credits (money in): £{summary.get('total_credits', 0):.2f}")
+        lines.append(f"Total debits (money out): £{summary.get('total_debits', 0):.2f}")
+        lines.append(f"Net: £{summary.get('net', 0):.2f}")
+        lines.append("")
+        lines.append("=== Transactions ===")
+        for tx in context_data.get("transactions", []):
+            line = f"{tx.get('date', 'N/A')} | {tx.get('description', 'N/A')} | £{tx.get('amount', 0):.2f} | {tx.get('type', 'N/A')}"
+            lines.append(line)
+
+    elif context_type == "receipt":
+        meta = context_data.get("metadata", {})
+        totals = context_data.get("totals", {})
+        lines.append(f"=== Receipt from {meta.get('store_name', 'Unknown Store')} ===")
+        if meta.get("date"):
+            lines.append(f"Date: {meta['date']}")
+        lines.append(f"Total: £{totals.get('total', 0):.2f}")
+        if totals.get("tax") is not None:
+            lines.append(f"Tax: £{totals['tax']:.2f}")
+        lines.append("")
+        lines.append("=== Items ===")
+        for item in context_data.get("items", []):
+            line = f"{item.get('description', 'N/A')} | Qty: {item.get('quantity', 1)} | Unit: £{item.get('unit_price', 0):.2f} | Total: £{item.get('total_price', 0):.2f}"
+            lines.append(line)
+
+    elif context_type == "bulk_receipt":
+        lines.append(f"=== Bulk Receipt Summary ===")
+        lines.append(f"Receipts processed: {context_data.get('receipt_count', 0)}")
+        lines.append(f"Total items: {context_data.get('total_items', 0)}")
+        lines.append(f"Grand total: £{context_data.get('grand_total', 0):.2f}")
+        lines.append("")
+        lines.append("=== All Items ===")
+        for item in context_data.get("combined_items", []):
+            line = f"{item.get('store', 'N/A')} | {item.get('description', 'N/A')} | Qty: {item.get('quantity', 1)} | £{item.get('total_price', 0):.2f}"
+            lines.append(line)
+
+    elif context_type == "bulk_statement":
+        summary = context_data.get("summary", {})
+        lines.append(f"=== Combined Statements Summary ===")
+        lines.append(f"Statements: {context_data.get('statement_count', 0)}")
+        lines.append(f"Total transactions: {summary.get('total_transactions', 0)}")
+        lines.append(f"Total credits: £{summary.get('total_credits', 0):.2f}")
+        lines.append(f"Total debits: £{summary.get('total_debits', 0):.2f}")
+        lines.append(f"Net: £{summary.get('net', 0):.2f}")
+        lines.append("")
+        lines.append("=== All Transactions ===")
+        for tx in context_data.get("all_transactions", []):
+            source = tx.get("source", "")
+            line = f"{source} | {tx.get('date', 'N/A')} | {tx.get('description', 'N/A')} | £{tx.get('amount', 0):.2f} | {tx.get('type', 'N/A')}"
+            lines.append(line)
+
+    else:
+        lines.append("No recognized data format.")
+
+    text = "\n".join(lines)
+    if len(text) > max_chars:
+        text = text[:max_chars] + "\n\n... (data truncated for brevity)"
+    return text
+
+
+@app.post("/api/chat")
+@limiter.limit("20/minute")
+async def chat_endpoint(request: Request):
+    """AI chat about uploaded financial data."""
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required.")
+
+    if not ANTHROPIC_API_KEY:
+        raise HTTPException(status_code=501, detail="AI chat is not available. ANTHROPIC_API_KEY is not configured.")
+
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON body.")
+
+    message = body.get("message", "").strip()
+    context_type = body.get("context_type", "")
+    context_data = body.get("context_data", {})
+
+    if not message:
+        raise HTTPException(status_code=400, detail="Message is required.")
+    if len(message) > 1000:
+        raise HTTPException(status_code=400, detail="Message too long. Maximum 1000 characters.")
+    if context_type not in ("statement", "receipt", "bulk_receipt", "bulk_statement"):
+        raise HTTPException(status_code=400, detail="Invalid context_type. Must be one of: statement, receipt, bulk_receipt, bulk_statement.")
+
+    formatted_context = _format_chat_context(context_type, context_data)
+
+    system_prompt = (
+        "You are a helpful financial assistant for BankParse. The user has uploaded "
+        "bank statements and/or store receipts. Answer their questions based ONLY on "
+        "the data provided below. Be concise, specific, and use GBP (\u00a3) currency "
+        "formatting. If asked to calculate totals, show your working. If the data "
+        "doesn't contain the answer, say so clearly.\n\n"
+        f"Here is the uploaded financial data:\n{formatted_context}"
+    )
+
+    try:
+        import anthropic
+        client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+
+        response = client.messages.create(
+            model="claude-3-haiku-20240307",
+            max_tokens=1024,
+            system=system_prompt,
+            messages=[{"role": "user", "content": message}],
+        )
+
+        ai_text = response.content[0].text
+        tokens_used = (response.usage.input_tokens or 0) + (response.usage.output_tokens or 0)
+
+        return JSONResponse({
+            "response": ai_text,
+            "tokens_used": tokens_used,
+        })
+
+    except ImportError:
+        raise HTTPException(status_code=501, detail="Anthropic SDK is not installed.")
+    except Exception as e:
+        logger.exception("Chat API error: %s", e)
+        raise HTTPException(status_code=500, detail="Failed to get AI response. Please try again.")
 
 
 # ==========================================================================

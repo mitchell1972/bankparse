@@ -70,6 +70,13 @@ try:
 except ImportError:
     pass
 
+# AI chat support (optional — requires anthropic SDK)
+try:
+    import anthropic
+    ANTHROPIC_AVAILABLE = True
+except ImportError:
+    ANTHROPIC_AVAILABLE = False
+
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 
 logger = logging.getLogger("bankparse")
@@ -700,6 +707,210 @@ async def get_config():
             "business": {"price": "\u00a319.99/mo", "name": "BankParse Business"},
         },
     })
+
+
+# ==========================================================================
+# AI Chat API
+# ==========================================================================
+
+CHAT_SYSTEM_PROMPT = (
+    "You are a helpful financial assistant for BankParse. The user has uploaded "
+    "bank statements and/or store receipts. Answer their questions based ONLY on "
+    "the data provided below. Be concise, specific, and use GBP (\u00a3) currency "
+    "formatting. If asked to calculate totals, show your working. If the data "
+    "doesn't contain the answer, say so clearly."
+)
+
+
+def _format_context_data(context_type: str, context_data: dict) -> str:
+    """Format context_data into a text summary for the AI prompt.
+
+    Truncates long transaction/item lists to keep under ~3000 tokens.
+    """
+    MAX_ITEMS = 80  # rough limit to stay under ~3000 tokens
+
+    parts: list[str] = []
+
+    if context_type == "statement":
+        # Single statement
+        if meta := context_data.get("metadata"):
+            parts.append(f"Statement: {meta.get('bank', 'Unknown bank')}")
+            if meta.get("period"):
+                parts.append(f"Period: {meta['period']}")
+
+        if summary := context_data.get("summary"):
+            parts.append(f"Total income: \u00a3{summary.get('total_income', 0):.2f}")
+            parts.append(f"Total expenses: \u00a3{summary.get('total_expenses', 0):.2f}")
+            parts.append(f"Net: \u00a3{summary.get('net', 0):.2f}")
+            parts.append(f"Transaction count: {summary.get('transaction_count', 0)}")
+
+        txns = context_data.get("transactions", [])
+        if txns:
+            truncated = txns[:MAX_ITEMS]
+            parts.append(f"\nTransactions ({len(truncated)} of {len(txns)}):")
+            for t in truncated:
+                date = t.get("date", "")
+                desc = t.get("description", "")[:60]
+                amount = t.get("amount", 0)
+                parts.append(f"  {date}  {desc}  \u00a3{amount}")
+
+    elif context_type == "receipt":
+        # Single receipt
+        if meta := context_data.get("metadata"):
+            parts.append(f"Store: {meta.get('store_name', 'Unknown')}")
+            if meta.get("date"):
+                parts.append(f"Date: {meta['date']}")
+
+        if totals := context_data.get("totals"):
+            parts.append(f"Subtotal: \u00a3{totals.get('subtotal', 0):.2f}")
+            parts.append(f"Tax: \u00a3{totals.get('tax', 0):.2f}")
+            parts.append(f"Total: \u00a3{totals.get('total', 0):.2f}")
+
+        items = context_data.get("items", [])
+        if items:
+            truncated = items[:MAX_ITEMS]
+            parts.append(f"\nItems ({len(truncated)} of {len(items)}):")
+            for it in truncated:
+                name = it.get("description", it.get("name", ""))[:50]
+                qty = it.get("quantity", 1)
+                price = it.get("price", 0)
+                parts.append(f"  {name} x{qty}  \u00a3{price}")
+
+    elif context_type == "bulk_receipt":
+        receipts = context_data.get("receipts", [])
+        parts.append(f"Batch of {len(receipts)} receipts")
+        if grand := context_data.get("grand_total"):
+            parts.append(f"Grand total: \u00a3{grand:.2f}")
+
+        item_count = 0
+        for r in receipts:
+            store = r.get("metadata", {}).get("store_name", "Unknown")
+            total = r.get("totals", {}).get("total", 0)
+            parts.append(f"\n--- {store} (total: \u00a3{total}) ---")
+            for it in r.get("items", []):
+                if item_count >= MAX_ITEMS:
+                    parts.append("  ... (truncated)")
+                    break
+                name = it.get("description", it.get("name", ""))[:50]
+                price = it.get("price", 0)
+                parts.append(f"  {name}  \u00a3{price}")
+                item_count += 1
+            if item_count >= MAX_ITEMS:
+                break
+
+    elif context_type == "bulk_statement":
+        statements = context_data.get("statements", [])
+        parts.append(f"Batch of {len(statements)} statements")
+        if summary := context_data.get("summary"):
+            parts.append(f"Total income: \u00a3{summary.get('total_income', 0):.2f}")
+            parts.append(f"Total expenses: \u00a3{summary.get('total_expenses', 0):.2f}")
+
+        txn_count = 0
+        for s in statements:
+            bank = s.get("metadata", {}).get("bank", "Unknown")
+            parts.append(f"\n--- {bank} ---")
+            for t in s.get("transactions", []):
+                if txn_count >= MAX_ITEMS:
+                    parts.append("  ... (truncated)")
+                    break
+                date = t.get("date", "")
+                desc = t.get("description", "")[:60]
+                amount = t.get("amount", 0)
+                parts.append(f"  {date}  {desc}  \u00a3{amount}")
+                txn_count += 1
+            if txn_count >= MAX_ITEMS:
+                break
+
+    else:
+        parts.append(f"Context type: {context_type}")
+        # Best-effort: dump a truncated repr
+        raw = str(context_data)[:2000]
+        parts.append(raw)
+
+    return "\n".join(parts)
+
+
+@app.post("/api/chat")
+async def chat(request: Request):
+    """AI chat endpoint — answer questions about uploaded financial data."""
+    # Authentication
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required.")
+
+    # Check anthropic availability
+    if not ANTHROPIC_AVAILABLE:
+        raise HTTPException(
+            status_code=501,
+            detail="AI chat is not available. The anthropic SDK is not installed.",
+        )
+    if not ANTHROPIC_API_KEY:
+        raise HTTPException(
+            status_code=501,
+            detail="AI chat is not configured. ANTHROPIC_API_KEY is not set.",
+        )
+
+    # Rate limiting (20/minute)
+    client_ip = request.client.host if request.client else "unknown"
+    if not check_rate_limit(f"{client_ip}:/api/chat", limit=20, window_seconds=60):
+        raise HTTPException(status_code=429, detail="Rate limit exceeded. Please try again later.")
+
+    # Parse request body
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON body.")
+
+    message = body.get("message", "")
+    context_type = body.get("context_type", "")
+    context_data = body.get("context_data", {})
+
+    # Validate message
+    if not message or not message.strip():
+        raise HTTPException(status_code=400, detail="Message is required.")
+    if len(message) > 1000:
+        raise HTTPException(status_code=400, detail="Message too long. Maximum 1000 characters.")
+
+    # Validate context_type
+    valid_types = {"statement", "receipt", "bulk_receipt", "bulk_statement"}
+    if context_type not in valid_types:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid context_type. Must be one of: {', '.join(sorted(valid_types))}",
+        )
+
+    # Build prompt
+    context_text = _format_context_data(context_type, context_data)
+
+    try:
+        client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+        response = client.messages.create(
+            model="claude-3-5-haiku-latest",
+            max_tokens=1024,
+            system=CHAT_SYSTEM_PROMPT,
+            messages=[
+                {
+                    "role": "user",
+                    "content": f"Here is the financial data:\n\n{context_text}\n\nQuestion: {message}",
+                }
+            ],
+        )
+
+        reply_text = response.content[0].text
+        tokens_used = (response.usage.input_tokens or 0) + (response.usage.output_tokens or 0)
+
+        return JSONResponse({
+            "response": reply_text,
+            "tokens_used": tokens_used,
+        })
+
+    except anthropic.AuthenticationError:
+        raise HTTPException(status_code=501, detail="AI chat configuration error. Invalid API key.")
+    except anthropic.RateLimitError:
+        raise HTTPException(status_code=429, detail="AI service rate limit reached. Please try again shortly.")
+    except Exception as e:
+        logger.exception("Chat API error: %s", e)
+        raise HTTPException(status_code=500, detail="An error occurred while processing your question. Please try again.")
 
 
 @app.get("/api/health")
