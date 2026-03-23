@@ -125,7 +125,7 @@ async def login_page(request: Request):
 async def home(request: Request):
     user = get_current_user(request)
     if not user:
-        return RedirectResponse(url="/login", status_code=302)
+        return RedirectResponse(url="/landing", status_code=302)
     return HTMLResponse(TEMPLATE_HTML)
 
 
