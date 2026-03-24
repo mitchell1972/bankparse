@@ -45,6 +45,12 @@ def clean_db():
 
     # Re-initialize schema on test db
     database.init_db()
+
+    # Reset rate limiter state
+    from app import app as _app
+    if hasattr(_app.state, "limiter"):
+        _app.state.limiter.reset()
+
     yield
 
     # Cleanup after test
@@ -100,7 +106,7 @@ def test_home_redirects_to_login():
     with TestClient(app, raise_server_exceptions=False) as client:
         resp = client.get("/", follow_redirects=False)
         assert resp.status_code == 302
-        assert "/login" in resp.headers.get("location", "")
+        assert "/landing" in resp.headers.get("location", "")
 
 
 def test_login_page_loads():
@@ -173,7 +179,7 @@ def test_login_nonexistent_email():
 
 
 def test_logout():
-    """Login then POST /api/logout clears cookie, GET / redirects to /login."""
+    """Login then POST /api/logout clears cookie, GET / redirects to /landing."""
     with TestClient(app, raise_server_exceptions=False) as client:
         reg_resp = _register(client, "logout@example.com", "password1234")
         assert reg_resp.status_code == 200
@@ -189,7 +195,7 @@ def test_logout():
         # After logout, visiting / without auth should redirect
         home_resp = client.get("/", follow_redirects=False)
         assert home_resp.status_code == 302
-        assert "/login" in home_resp.headers.get("location", "")
+        assert "/landing" in home_resp.headers.get("location", "")
 
 
 def test_usage_authenticated():
