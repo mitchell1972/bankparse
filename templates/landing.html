@@ -1062,6 +1062,11 @@
         document.getElementById('checkoutModal').style.display = 'none';
     }
 
+    function getCsrfToken() {
+        const match = document.cookie.match(/(?:^|;\s*)bp_csrf=([^;]*)/);
+        return match ? decodeURIComponent(match[1]) : '';
+    }
+
     async function submitCheckout() {
         const emailInput = document.getElementById('checkoutEmail');
         const errorEl = document.getElementById('checkoutError');
@@ -1081,7 +1086,10 @@
         try {
             const res = await fetch('/api/create-checkout', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-Token': getCsrfToken(),
+                },
                 body: JSON.stringify({ plan: selectedPlan, email }),
             });
             const data = await res.json();
