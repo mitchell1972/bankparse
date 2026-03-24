@@ -862,7 +862,7 @@
                     <li>Auto-insights &amp; reports</li>
                     <li class="no">AI Chat</li>
                 </ul>
-                <button onclick="startCheckout('starter')" class="btn-price btn-outline">Get Starter</button>
+                <a href="/login?plan=starter" class="btn-price btn-outline">Get Starter</a>
             </div>
             <!-- Pro -->
             <div class="price-card popular">
@@ -879,7 +879,7 @@
                     <li>Auto-insights &amp; reports</li>
                     <li class="no">AI Chat</li>
                 </ul>
-                <button onclick="startCheckout('pro')" class="btn-price btn-primary">Get Pro</button>
+                <a href="/login?plan=pro" class="btn-price btn-primary">Get Pro</a>
             </div>
             <!-- Business -->
             <div class="price-card">
@@ -895,7 +895,7 @@
                     <li>Auto-insights &amp; reports</li>
                     <li>AI Chat (50/day)</li>
                 </ul>
-                <button onclick="startCheckout('business')" class="btn-price btn-accent">Get Business</button>
+                <a href="/login?plan=business" class="btn-price btn-accent">Get Business</a>
             </div>
             <!-- Enterprise -->
             <div class="price-card" style="border-color: var(--accent);">
@@ -912,7 +912,7 @@
                     <li>Auto-insights &amp; reports</li>
                     <li>AI Chat (unlimited)</li>
                 </ul>
-                <button onclick="startCheckout('enterprise')" class="btn-price btn-accent">Get Enterprise</button>
+                <a href="/login?plan=enterprise" class="btn-price btn-accent">Get Enterprise</a>
             </div>
         </div>
     </div>
@@ -1047,100 +1047,8 @@
         });
     });
 
-    // --- Checkout flow ---
-    let selectedPlan = '';
 
-    function startCheckout(plan) {
-        selectedPlan = plan;
-        document.getElementById('checkoutModal').style.display = 'flex';
-        document.getElementById('checkoutEmail').value = '';
-        document.getElementById('checkoutError').style.display = 'none';
-        document.getElementById('checkoutEmail').focus();
-    }
-
-    function closeCheckout() {
-        document.getElementById('checkoutModal').style.display = 'none';
-    }
-
-    function getCsrfToken() {
-        const match = document.cookie.match(/(?:^|;\s*)bp_csrf=([^;]*)/);
-        return match ? decodeURIComponent(match[1]) : '';
-    }
-
-    async function submitCheckout() {
-        const emailInput = document.getElementById('checkoutEmail');
-        const errorEl = document.getElementById('checkoutError');
-        const btn = document.getElementById('checkoutBtn');
-        const email = emailInput.value.trim().toLowerCase();
-
-        if (!email || !email.includes('@') || !email.includes('.')) {
-            errorEl.textContent = 'Please enter a valid email address.';
-            errorEl.style.display = 'block';
-            emailInput.focus();
-            return;
-        }
-        errorEl.style.display = 'none';
-        btn.textContent = 'Redirecting to Stripe...';
-        btn.disabled = true;
-
-        try {
-            const res = await fetch('/api/create-checkout', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-Token': getCsrfToken(),
-                },
-                body: JSON.stringify({ plan: selectedPlan, email }),
-            });
-            const data = await res.json();
-            if (!res.ok) {
-                errorEl.textContent = data.detail || 'Something went wrong. Please try again.';
-                errorEl.style.display = 'block';
-                btn.textContent = 'Continue to Payment';
-                btn.disabled = false;
-                return;
-            }
-            if (data.checkout_url) {
-                window.location.href = data.checkout_url;
-            }
-        } catch (e) {
-            errorEl.textContent = 'Could not connect to payment service. Please try again.';
-            errorEl.style.display = 'block';
-            btn.textContent = 'Continue to Payment';
-            btn.disabled = false;
-        }
-    }
-
-    // Close modal on backdrop click
-    document.getElementById('checkoutModal').addEventListener('click', function(e) {
-        if (e.target === this) closeCheckout();
-    });
-
-    // Submit on Enter key
-    document.getElementById('checkoutEmail').addEventListener('keydown', function(e) {
-        if (e.key === 'Enter') submitCheckout();
-    });
 </script>
-
-<!-- Checkout Email Modal -->
-<div id="checkoutModal" style="display:none; position:fixed; inset:0; z-index:9999; background:rgba(0,0,0,0.5); align-items:center; justify-content:center;">
-    <div style="background:white; border-radius:12px; padding:2rem; max-width:420px; width:90%; box-shadow:0 20px 60px rgba(0,0,0,0.3);">
-        <h3 style="margin-bottom:0.25rem; color:#1B4F72; font-size:1.3rem;">Complete your subscription</h3>
-        <p style="color:#7F8C8D; font-size:0.9rem; margin-bottom:1.25rem;">Enter your email to continue to secure payment.</p>
-        <input type="email" id="checkoutEmail" placeholder="your@email.com"
-            style="width:100%; padding:0.75rem 1rem; border:2px solid #E5E7EB; border-radius:8px; font-size:1rem; outline:none; margin-bottom:0.5rem;"
-            onfocus="this.style.borderColor='#2E86C1'" onblur="this.style.borderColor='#E5E7EB'" />
-        <p id="checkoutError" style="color:#E74C3C; font-size:0.8rem; margin-bottom:0.5rem; display:none;"></p>
-        <button id="checkoutBtn" onclick="submitCheckout()"
-            style="width:100%; padding:0.75rem; background:#1B4F72; color:white; border:none; border-radius:8px; font-size:1rem; font-weight:600; cursor:pointer; margin-bottom:0.75rem;">
-            Continue to Payment
-        </button>
-        <button onclick="closeCheckout()"
-            style="width:100%; padding:0.5rem; background:none; border:none; color:#7F8C8D; cursor:pointer; font-size:0.9rem;">
-            Cancel
-        </button>
-    </div>
-</div>
 
 </body>
 </html>
