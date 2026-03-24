@@ -36,7 +36,7 @@ def set_csrf_cookie(response, token: str):
         value=token,
         max_age=CSRF_MAX_AGE,
         httponly=False,
-        samesite="lax",
+        samesite="strict",
         secure=IS_PRODUCTION,
     )
     return response

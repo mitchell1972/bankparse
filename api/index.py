@@ -107,6 +107,15 @@ app = FastAPI(title="BankScan AI", version="2.3.0")
 from csrf import CSRFMiddleware
 app.add_middleware(CSRFMiddleware)
 
+ALLOWED_ORIGINS_REDIRECT = os.environ.get("ALLOWED_REDIRECT_ORIGINS", "https://bankscanai.com,http://localhost:8000").split(",")
+
+def get_safe_origin(request: Request) -> str:
+    origin = request.headers.get("origin", "")
+    for allowed in ALLOWED_ORIGINS_REDIRECT:
+        if origin == allowed.strip():
+            return origin
+    return ALLOWED_ORIGINS_REDIRECT[0].strip()
+
 
 # ==========================================================================
 # Page Routes
@@ -141,6 +150,11 @@ async def landing():
 @app.post("/api/register")
 async def register(request: Request):
     """Create a new user account."""
+    # Rate limiting
+    client_ip = request.client.host if request.client else "unknown"
+    if not check_rate_limit(f"{client_ip}:/api/register", limit=5, window_seconds=60):
+        raise HTTPException(status_code=429, detail="Rate limit exceeded. Please try again later.")
+
     body = await request.json()
     email = body.get("email", "").strip().lower()
     password = body.get("password", "")
@@ -171,6 +185,11 @@ async def register(request: Request):
 @app.post("/api/login")
 async def login(request: Request):
     """Sign in with email and password."""
+    # Rate limiting
+    client_ip = request.client.host if request.client else "unknown"
+    if not check_rate_limit(f"{client_ip}:/api/login", limit=10, window_seconds=60):
+        raise HTTPException(status_code=429, detail="Rate limit exceeded. Please try again later.")
+
     body = await request.json()
     email = body.get("email", "").strip().lower()
     password = body.get("password", "")
@@ -477,7 +496,8 @@ async def parse_receipt_endpoint(request: Request, file: UploadFile = File(...))
     except HTTPException:
         raise
     except ImportError as e:
-        raise HTTPException(status_code=501, detail=str(e))
+        logger.exception("Missing dependency for receipt parsing: %s", e)
+        raise HTTPException(status_code=501, detail="A required parsing dependency is not available.")
     except Exception:
         raise HTTPException(status_code=500, detail="An internal error occurred.")
     finally:
@@ -578,7 +598,8 @@ async def parse_receipts_bulk_endpoint(request: Request, files: List[UploadFile]
     except HTTPException:
         raise
     except ImportError as e:
-        raise HTTPException(status_code=501, detail=str(e))
+        logger.exception("Missing dependency for bulk receipt parsing: %s", e)
+        raise HTTPException(status_code=501, detail="A required parsing dependency is not available.")
     except Exception as e:
         logger.exception("Bulk receipt parsing error: %s", e)
         raise HTTPException(status_code=500, detail="An internal error occurred.")
@@ -740,7 +761,7 @@ async def create_checkout_session(request: Request):
         # Link stripe customer to user record
         update_user(user["id"], stripe_customer_id=customer_id)
 
-        origin = request.headers.get("origin", "https://bankscanai.com")
+        origin = get_safe_origin(request)
         session = stripe.checkout.Session.create(
             mode="subscription",
             customer=customer_id,
@@ -757,9 +778,8 @@ async def create_checkout_session(request: Request):
     except HTTPException:
         raise
     except Exception as e:
-        import logging
-        logging.getLogger("bankparse").exception("Checkout error")
-        raise HTTPException(status_code=500, detail=f"Checkout error: {str(e)}")
+        logger.exception("Checkout error: %s", e)
+        raise HTTPException(status_code=500, detail="An error occurred while creating the checkout session. Please try again.")
 
 
 @app.get("/api/verify-session")
@@ -859,14 +879,15 @@ async def manage_billing(request: Request):
         raise HTTPException(status_code=400, detail="No subscription found. You need to subscribe first.")
 
     try:
-        origin = request.headers.get("origin", "https://bankscanai.com")
+        origin = get_safe_origin(request)
         portal_session = stripe.billing_portal.Session.create(
             customer=stripe_customer_id,
             return_url=f"{origin}/",
         )
         return JSONResponse({"portal_url": portal_session.url})
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Billing error: {str(e)}")
+        logger.exception("Billing portal error: %s", e)
+        raise HTTPException(status_code=500, detail="An error occurred while accessing the billing portal. Please try again.")
 
 
 @app.get("/api/config")

@@ -85,6 +85,15 @@ OUTPUT_DIR.mkdir(exist_ok=True)
 if IS_PRODUCTION and SECRET_KEY == "bankparse-dev-secret-change-me":
     raise RuntimeError("FATAL: SECRET_KEY must be set to a secure random value in production. Generate one with: python -c \"import secrets; print(secrets.token_hex(32))\"")
 
+ALLOWED_ORIGINS_REDIRECT = os.environ.get("ALLOWED_REDIRECT_ORIGINS", "https://bankscanai.com,http://localhost:8000").split(",")
+
+def get_safe_origin(request: Request) -> str:
+    origin = request.headers.get("origin", "")
+    for allowed in ALLOWED_ORIGINS_REDIRECT:
+        if origin == allowed.strip():
+            return origin
+    return ALLOWED_ORIGINS_REDIRECT[0].strip()
+
 # Output file max age (1 hour)
 OUTPUT_MAX_AGE = 3600
 
@@ -123,7 +132,7 @@ app.add_middleware(
     allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["GET", "POST"],
-    allow_headers=["*"],
+    allow_headers=["content-type", "x-csrf-token"],
 )
 
 from csrf import CSRFMiddleware
@@ -529,10 +538,11 @@ async def parse_receipt_endpoint(request: Request, file: UploadFile = File(...))
     except HTTPException:
         raise
     except ImportError as e:
-        raise HTTPException(status_code=501, detail=str(e))
+        logger.exception("Receipt parsing import error: %s", e)
+        raise HTTPException(status_code=501, detail="A required dependency is not available. Please try again later.")
     except Exception as e:
         logger.exception("Receipt parsing error: %s", e)
-        raise HTTPException(status_code=500, detail=f"Receipt parsing error: {str(e)}")
+        raise HTTPException(status_code=500, detail="An internal error occurred. Please try again.")
     finally:
         if upload_path.exists():
             upload_path.unlink()
@@ -633,7 +643,7 @@ async def parse_receipts_bulk_endpoint(request: Request, files: list[UploadFile]
         raise
     except Exception as e:
         logger.exception("Bulk receipt parsing error: %s", e)
-        raise HTTPException(status_code=500, detail=f"Bulk receipt parsing error: {str(e)}")
+        raise HTTPException(status_code=500, detail="An internal error occurred. Please try again.")
     finally:
         for path in upload_paths:
             p = Path(path)
@@ -715,7 +725,7 @@ async def parse_statements_bulk_endpoint(request: Request, files: list[UploadFil
         raise
     except Exception as e:
         logger.exception("Bulk statement parsing error: %s", e)
-        raise HTTPException(status_code=500, detail=f"Bulk statement parsing error: {str(e)}")
+        raise HTTPException(status_code=500, detail="An internal error occurred. Please try again.")
     finally:
         for path in upload_paths:
             p = Path(path)
@@ -922,7 +932,7 @@ async def create_checkout_session(request: Request):
         # Link stripe customer to user record
         update_user(user["id"], stripe_customer_id=customer_id)
 
-        origin = request.headers.get("origin", "http://localhost:8000")
+        origin = get_safe_origin(request)
         session = stripe.checkout.Session.create(
             mode="subscription",
             customer=customer_id,
@@ -940,7 +950,7 @@ async def create_checkout_session(request: Request):
         raise
     except Exception as e:
         logger.exception("Checkout error")
-        raise HTTPException(status_code=500, detail=f"Checkout error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Checkout failed. Please try again.")
 
 
 @app.get("/api/verify-session")
@@ -1040,14 +1050,15 @@ async def manage_billing(request: Request):
         raise HTTPException(status_code=400, detail="No subscription found. You need to subscribe first.")
 
     try:
-        origin = request.headers.get("origin", "https://bankscanai.com")
+        origin = get_safe_origin(request)
         portal_session = stripe.billing_portal.Session.create(
             customer=stripe_customer_id,
             return_url=f"{origin}/",
         )
         return JSONResponse({"portal_url": portal_session.url})
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Billing error: {str(e)}")
+        logger.exception("Billing portal error: %s", e)
+        raise HTTPException(status_code=500, detail="Billing request failed. Please try again.")
 
 
 @app.get("/api/config")
