@@ -1143,7 +1143,7 @@ Sitemap: https://bankscanai.com/sitemap.xml"""
 @app.get("/sitemap.xml", response_class=PlainTextResponse)
 async def sitemap():
     return """<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemapns.org/schemas/sitemap/0.9">
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url><loc>https://bankscanai.com/landing</loc><priority>1.0</priority><changefreq>weekly</changefreq></url>
   <url><loc>https://bankscanai.com/login</loc><priority>0.5</priority><changefreq>monthly</changefreq></url>
 </urlset>"""
