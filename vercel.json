@@ -19,6 +19,20 @@
       "dest": "api/debug.py"
     },
     {
+      "src": "/blog/(.*)/(og-image|hero-image|infographic)",
+      "dest": "api/index.py",
+      "headers": {
+        "Cache-Control": "public, max-age=604800, s-maxage=604800, immutable"
+      }
+    },
+    {
+      "src": "/blog/(.*)",
+      "dest": "api/index.py",
+      "headers": {
+        "Cache-Control": "public, max-age=86400, s-maxage=86400"
+      }
+    },
+    {
       "src": "/(.*)",
       "dest": "api/index.py"
     }
