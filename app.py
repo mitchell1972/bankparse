@@ -1105,7 +1105,9 @@ async def blog_index(request: Request):
         {"slug": slug, **data}
         for slug, data in sorted(BLOG_POSTS.items(), key=lambda x: x[1]["date"], reverse=True)
     ]
-    return templates.TemplateResponse("blog/index.html", {"request": request, "posts": posts})
+    response = templates.TemplateResponse("blog/index.html", {"request": request, "posts": posts})
+    response.headers["Cache-Control"] = "public, max-age=3600, s-maxage=3600"
+    return response
 
 
 @app.get("/blog/{slug}", response_class=HTMLResponse)
@@ -1114,7 +1116,208 @@ async def blog_post(request: Request, slug: str):
     if slug not in BLOG_POSTS:
         raise HTTPException(status_code=404, detail="Blog post not found")
     post = BLOG_POSTS[slug]
-    return templates.TemplateResponse(post["template"], {"request": request, "post": post, "slug": slug})
+    response = templates.TemplateResponse(post["template"], {"request": request, "post": post, "slug": slug})
+    response.headers["Cache-Control"] = "public, max-age=86400, s-maxage=86400"
+    return response
+
+
+def _generate_blog_image(slug: str, image_type: str) -> bytes:
+    """Generate raster PNG blog images using Pillow for Google Image Search indexing."""
+    from PIL import Image, ImageDraw, ImageFont
+    import io
+
+    post = BLOG_POSTS[slug]
+
+    # Try to load a TTF font, fall back to default
+    try:
+        font_lg = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 42)
+        font_md = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 22)
+        font_sm = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 18)
+        font_xs = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 14)
+        font_label = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 16)
+        font_num = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 32)
+        font_step = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 24)
+    except (OSError, IOError):
+        font_lg = ImageFont.load_default()
+        font_md = font_sm = font_xs = font_label = font_num = font_step = font_lg
+
+    PRIMARY = (27, 79, 114)
+    PRIMARY_DARK = (21, 67, 96)
+    ACCENT = (39, 174, 96)
+    WHITE = (255, 255, 255)
+    LIGHT_BG = (240, 244, 248)
+    BORDER = (213, 219, 222)
+    TEXT = (44, 62, 80)
+    TEXT_LIGHT = (93, 109, 126)
+    RED = (231, 76, 60)
+
+    if image_type == "og":
+        # --- OG Image: 1200x630 branded card ---
+        img = Image.new("RGB", (1200, 630), PRIMARY)
+        draw = ImageDraw.Draw(img)
+        # Gradient effect via overlapping rectangles
+        for i in range(630):
+            r = int(PRIMARY[0] + (PRIMARY_DARK[0] - PRIMARY[0]) * i / 630)
+            g = int(PRIMARY[1] + (PRIMARY_DARK[1] - PRIMARY[1]) * i / 630)
+            b = int(PRIMARY[2] + (PRIMARY_DARK[2] - PRIMARY[2]) * i / 630)
+            draw.line([(0, i), (1200, i)], fill=(r, g, b))
+        # Border frame
+        draw.rounded_rectangle([40, 40, 1160, 590], radius=16, outline=(255, 255, 255, 25), width=2)
+        # Title text - word wrap
+        title = post["title"]
+        words = title.split()
+        lines, current = [], ""
+        for w in words:
+            test = f"{current} {w}".strip()
+            bbox = draw.textbbox((0, 0), test, font=font_lg)
+            if bbox[2] - bbox[0] > 1040:
+                lines.append(current)
+                current = w
+            else:
+                current = test
+        if current:
+            lines.append(current)
+        y = 200
+        for line in lines:
+            draw.text((60, y), line, fill=WHITE, font=font_lg)
+            y += 56
+        # Meta line
+        draw.text((60, y + 20), f"{post['date']}  |  {post['author']}", fill=(255, 255, 255, 150), font=font_sm)
+        # Brand
+        draw.text((60, 550), "BankScan", fill=WHITE, font=font_md)
+        bbox = draw.textbbox((60, 550), "BankScan", font=font_md)
+        draw.text((bbox[2], 550), "AI", fill=ACCENT, font=font_md)
+        draw.text((1140, 558), "bankscanai.com", fill=(180, 200, 220), font=font_xs, anchor="ra")
+
+    elif image_type == "hero":
+        # --- Hero: 760x280 PDF -> AI -> Excel workflow ---
+        img = Image.new("RGB", (760, 280), LIGHT_BG)
+        draw = ImageDraw.Draw(img)
+        draw.rounded_rectangle([0, 0, 759, 279], radius=12, outline=BORDER, width=1)
+
+        # PDF document
+        draw.rounded_rectangle([50, 45, 180, 205], radius=8, fill=WHITE, outline=BORDER)
+        draw.rounded_rectangle([65, 65, 120, 82], radius=3, fill=RED)
+        draw.text((75, 66), "PDF", fill=WHITE, font=font_xs)
+        for i, y in enumerate(range(92, 185, 14)):
+            w = [90, 75, 85, 60, 90, 70][i % 6]
+            draw.rounded_rectangle([65, y, 65 + w, y + 6], radius=2, fill=BORDER)
+        draw.text((115, 215), "Bank Statement", fill=TEXT_LIGHT, font=font_xs, anchor="mt")
+
+        # Arrow 1
+        draw.line([(200, 125), (270, 125)], fill=PRIMARY, width=2)
+        draw.polygon([(270, 118), (285, 125), (270, 132)], fill=PRIMARY)
+
+        # AI brain circle
+        draw.ellipse([325, 65, 435, 175], fill=(27, 79, 114, 25), outline=PRIMARY, width=2)
+        draw.ellipse([345, 85, 415, 155], fill=PRIMARY)
+        draw.text((380, 110), "AI", fill=WHITE, font=font_step, anchor="mt")
+        draw.text((380, 190), "BankScan AI", fill=TEXT_LIGHT, font=font_xs, anchor="mt")
+        draw.text((380, 208), "Extracts  |  Categorises  |  Validates", fill=TEXT_LIGHT, font=ImageFont.load_default(), anchor="mt")
+
+        # Arrow 2
+        draw.line([(455, 125), (525, 125)], fill=ACCENT, width=2)
+        draw.polygon([(525, 118), (540, 125), (525, 132)], fill=ACCENT)
+
+        # Excel document
+        draw.rounded_rectangle([565, 45, 700, 205], radius=8, fill=WHITE, outline=BORDER)
+        draw.rounded_rectangle([580, 65, 635, 82], radius=3, fill=ACCENT)
+        draw.text((590, 66), "XLSX", fill=WHITE, font=font_xs)
+        # Table grid
+        for y in [92, 115, 138, 161]:
+            draw.line([(580, y), (685, y)], fill=BORDER, width=1)
+        for x in [610, 645]:
+            draw.line([(x, 92), (x, 175)], fill=BORDER, width=1)
+        # Checkmarks
+        for cx in [595, 627, 662]:
+            for cy in [100, 123, 146]:
+                draw.text((cx, cy), "\u2713", fill=ACCENT, font=font_xs)
+        draw.text((632, 215), "Clean Spreadsheet", fill=TEXT_LIGHT, font=font_xs, anchor="mt")
+
+        # Bottom badge
+        draw.rounded_rectangle([300, 240, 460, 268], radius=14, fill=(39, 174, 96, 30), outline=ACCENT)
+        draw.text((380, 248), "Under 30 seconds", fill=ACCENT, font=font_label, anchor="mt")
+
+    elif image_type == "infographic":
+        # --- Infographic: 700x200 four-step process ---
+        img = Image.new("RGB", (700, 200), LIGHT_BG)
+        draw = ImageDraw.Draw(img)
+        draw.rounded_rectangle([0, 0, 699, 199], radius=10, outline=BORDER, width=1)
+
+        steps = [
+            ("1", "Upload PDF", "Any UK bank", "statement", PRIMARY),
+            ("2", "AI Extracts", "Dates, amounts,", "descriptions", (46, 134, 193)),
+            ("3", "Review", "Check flagged", "items only", ACCENT),
+            ("4", "Export", "Xero, Sage,", "FreeAgent", ACCENT),
+        ]
+        for i, (num, title, line1, line2, color) in enumerate(steps):
+            x_start = 18 + i * 170
+            # Card
+            draw.rounded_rectangle([x_start, 20, x_start + 148, 135], radius=8, fill=WHITE, outline=BORDER)
+            # Number circle
+            cx = x_start + 74
+            draw.ellipse([cx - 18, 30, cx + 18, 66], fill=(*color, 25), outline=color, width=1)
+            draw.text((cx, 42), num, fill=color, font=font_label, anchor="mt")
+            # Step text
+            draw.text((cx, 78), title, fill=TEXT, font=font_label, anchor="mt")
+            draw.text((cx, 98), line1, fill=TEXT_LIGHT, font=ImageFont.load_default(), anchor="mt")
+            draw.text((cx, 112), line2, fill=TEXT_LIGHT, font=ImageFont.load_default(), anchor="mt")
+            # Arrow between steps
+            if i < 3:
+                ax = x_start + 156
+                draw.text((ax, 70), "\u2192", fill=color, font=font_md)
+
+        # Bottom label
+        draw.text((350, 162), "Entire workflow completes in under 60 seconds", fill=PRIMARY, font=font_label, anchor="mt")
+    else:
+        raise ValueError(f"Unknown image type: {image_type}")
+
+    buf = io.BytesIO()
+    img.save(buf, format="PNG", optimize=True)
+    buf.seek(0)
+    return buf.getvalue()
+
+
+@app.get("/blog/{slug}/og-image")
+async def blog_og_image(slug: str):
+    """Generate a PNG Open Graph image for social sharing and Google Image Search."""
+    if slug not in BLOG_POSTS:
+        raise HTTPException(status_code=404, detail="Blog post not found")
+    from starlette.responses import Response
+    png_bytes = _generate_blog_image(slug, "og")
+    return Response(
+        content=png_bytes,
+        media_type="image/png",
+        headers={"Cache-Control": "public, max-age=604800, s-maxage=604800"},
+    )
+
+
+@app.get("/blog/{slug}/hero-image")
+async def blog_hero_image(slug: str):
+    """Generate a PNG hero image for the blog post (PDF -> AI -> Excel workflow)."""
+    if slug not in BLOG_POSTS:
+        raise HTTPException(status_code=404, detail="Blog post not found")
+    from starlette.responses import Response
+    png_bytes = _generate_blog_image(slug, "hero")
+    return Response(
+        content=png_bytes,
+        media_type="image/png",
+        headers={"Cache-Control": "public, max-age=604800, s-maxage=604800"},
+    )
+
+
+@app.get("/blog/{slug}/infographic")
+async def blog_infographic(slug: str):
+    """Generate a PNG infographic image (4-step AI bookkeeping workflow)."""
+    if slug not in BLOG_POSTS:
+        raise HTTPException(status_code=404, detail="Blog post not found")
+    from starlette.responses import Response
+    png_bytes = _generate_blog_image(slug, "infographic")
+    return Response(
+        content=png_bytes,
+        media_type="image/png",
+        headers={"Cache-Control": "public, max-age=604800, s-maxage=604800"},
+    )
 
 
 @app.get("/robots.txt", response_class=PlainTextResponse)
@@ -1136,11 +1339,92 @@ async def sitemap():
         '<url><loc>https://bankscanai.com/blog</loc><priority>0.8</priority><changefreq>weekly</changefreq></url>',
     ]
     for slug, post in BLOG_POSTS.items():
-        urls.append(f'<url><loc>https://bankscanai.com/blog/{slug}</loc><priority>0.7</priority><changefreq>monthly</changefreq></url>')
+        urls.append(
+            f'<url><loc>https://bankscanai.com/blog/{slug}</loc><lastmod>{post["date"]}</lastmod><priority>0.7</priority><changefreq>monthly</changefreq>'
+            f'<image:image><image:loc>https://bankscanai.com/blog/{slug}/hero-image</image:loc><image:title>{post["title"]}</image:title></image:image>'
+            f'<image:image><image:loc>https://bankscanai.com/blog/{slug}/og-image</image:loc><image:title>{post["title"]} - Social Preview</image:title></image:image>'
+            f'</url>'
+        )
     return f"""<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
   {"".join(urls)}
 </urlset>"""
+
+
+@app.post("/api/web-vitals")
+async def web_vitals(request: Request):
+    """Collect Core Web Vitals metrics from real users (LCP, CLS, INP, FCP, TTFB)."""
+    try:
+        body = await request.body()
+        data = json.loads(body)
+        metric = data.get("name", "unknown")
+        value = data.get("value", 0)
+        rating = data.get("rating", "unknown")
+        page = data.get("page", "/")
+        logging.info(f"[WebVitals] {metric}={value} rating={rating} page={page}")
+    except Exception:
+        pass
+    return JSONResponse({"ok": True}, status_code=204)
+
+
+INDEXNOW_KEY = "bankscanai2026seokey"
+
+
+@app.get(f"/{INDEXNOW_KEY}.txt", response_class=PlainTextResponse)
+async def indexnow_key_file():
+    """Serve the IndexNow API key verification file."""
+    return INDEXNOW_KEY
+
+
+@app.post("/api/indexnow")
+async def submit_indexnow(request: Request):
+    """Submit URLs to search engines via IndexNow (Bing, Yandex, DuckDuckGo, Naver).
+    POST body: {"urls": ["/blog/ai-transforming-bookkeeping-accounting-firms"]}
+    """
+    import urllib.request
+    try:
+        body = await request.json()
+        paths = body.get("urls", [])
+    except Exception:
+        paths = [f"/blog/{slug}" for slug in BLOG_POSTS]
+
+    full_urls = [
+        f"https://bankscanai.com{p}" if p.startswith("/") else p
+        for p in paths
+    ]
+
+    payload = json.dumps({
+        "host": "bankscanai.com",
+        "key": INDEXNOW_KEY,
+        "keyLocation": f"https://bankscanai.com/{INDEXNOW_KEY}.txt",
+        "urlList": full_urls,
+    }).encode()
+
+    results = {}
+    for engine, endpoint in [
+        ("bing", "https://www.bing.com/indexnow"),
+        ("yandex", "https://yandex.com/indexnow"),
+    ]:
+        try:
+            req = urllib.request.Request(
+                endpoint,
+                data=payload,
+                headers={"Content-Type": "application/json; charset=utf-8"},
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                results[engine] = {"status": resp.status, "ok": resp.status in (200, 202)}
+        except urllib.error.HTTPError as e:
+            results[engine] = {"status": e.code, "ok": e.code in (200, 202)}
+        except Exception as e:
+            results[engine] = {"status": 0, "ok": False, "error": str(e)}
+
+    results["google"] = {
+        "note": "Google does not support IndexNow. Submit via Google Search Console > URL Inspection > Request Indexing.",
+        "search_console_url": "https://search.google.com/search-console",
+    }
+    results["urls_submitted"] = full_urls
+    return results
 
 
 @app.get("/api/health")
