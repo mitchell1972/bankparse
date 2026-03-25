@@ -98,6 +98,15 @@ LANDING_HTML = LANDING_PATH.read_text() if LANDING_PATH.exists() else TEMPLATE_H
 LOGIN_PATH = Path(__file__).parent.parent / "templates" / "login.html"
 LOGIN_HTML = LOGIN_PATH.read_text() if LOGIN_PATH.exists() else ""
 
+# Blog templates
+BLOG_DIR = Path(__file__).parent.parent / "templates" / "blog"
+BLOG_INDEX_HTML = (BLOG_DIR / "index.html").read_text() if (BLOG_DIR / "index.html").exists() else ""
+BLOG_TEMPLATES = {}
+if BLOG_DIR.exists():
+    for f in BLOG_DIR.glob("*.html"):
+        if f.name != "index.html":
+            BLOG_TEMPLATES[f.stem] = f.read_text()
+
 # Vercel defaults ENVIRONMENT to "production"; validate SECRET_KEY accordingly
 if IS_PRODUCTION and SECRET_KEY == "bankparse-dev-secret-change-me":
     raise RuntimeError("FATAL: SECRET_KEY must be set to a secure random value in production. Generate one with: python -c \"import secrets; print(secrets.token_hex(32))\"")
@@ -1130,11 +1139,36 @@ async def chat(request: Request):
         raise HTTPException(status_code=500, detail="An error occurred while processing your question. Please try again.")
 
 
+BLOG_POSTS = {
+    "ai-transforming-bookkeeping-accounting-firms": {
+        "title": "How AI Is Transforming Bookkeeping for UK Accounting Firms in 2026",
+        "date": "2026-03-25",
+    },
+    "convert-bank-statement-pdf-to-excel": {
+        "title": "How to Convert a Bank Statement PDF to Excel (5 Methods Compared)",
+        "date": "2026-03-25",
+    },
+}
+
+
+@app.get("/blog", response_class=HTMLResponse)
+async def blog_index():
+    return HTMLResponse(BLOG_INDEX_HTML)
+
+
+@app.get("/blog/{slug}", response_class=HTMLResponse)
+async def blog_post(slug: str):
+    if slug not in BLOG_TEMPLATES:
+        raise HTTPException(status_code=404, detail="Blog post not found")
+    return HTMLResponse(BLOG_TEMPLATES[slug])
+
+
 @app.get("/robots.txt", response_class=PlainTextResponse)
 async def robots():
     return """User-agent: *
 Allow: /landing
 Allow: /login
+Allow: /blog
 Disallow: /api/
 Disallow: /downloads/
 Sitemap: https://bankscanai.com/sitemap.xml"""
@@ -1142,10 +1176,16 @@ Sitemap: https://bankscanai.com/sitemap.xml"""
 
 @app.get("/sitemap.xml", response_class=PlainTextResponse)
 async def sitemap():
-    return """<?xml version="1.0" encoding="UTF-8"?>
+    urls = [
+        '<url><loc>https://bankscanai.com/landing</loc><priority>1.0</priority><changefreq>weekly</changefreq></url>',
+        '<url><loc>https://bankscanai.com/login</loc><priority>0.5</priority><changefreq>monthly</changefreq></url>',
+        '<url><loc>https://bankscanai.com/blog</loc><priority>0.8</priority><changefreq>weekly</changefreq></url>',
+    ]
+    for slug in BLOG_POSTS:
+        urls.append(f'<url><loc>https://bankscanai.com/blog/{slug}</loc><priority>0.7</priority><changefreq>monthly</changefreq></url>')
+    return f"""<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <url><loc>https://bankscanai.com/landing</loc><priority>1.0</priority><changefreq>weekly</changefreq></url>
-  <url><loc>https://bankscanai.com/login</loc><priority>0.5</priority><changefreq>monthly</changefreq></url>
+  {"".join(urls)}
 </urlset>"""
 
 
