@@ -21,7 +21,7 @@ CSRF_HEADER = "X-CSRF-Token"
 CSRF_MAX_AGE = 60 * 60 * 24 * 30  # 30 days — matches session cookie
 
 # Paths that skip CSRF validation (they use their own auth mechanism)
-CSRF_EXEMPT_PATHS = {"/api/stripe-webhook"}
+CSRF_EXEMPT_PATHS = {"/api/stripe-webhook", "/api/web-vitals", "/api/indexnow"}
 
 
 def generate_csrf_token() -> str:
