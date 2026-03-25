@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Blog &mdash; BankScan AI | Tips for UK Accountants &amp; Bookkeepers</title>
+    <meta name="description" content="Practical guides and tips for UK accountants and bookkeepers. Learn how to convert bank statements to Excel, automate data entry, and save hours every week.">
+    <meta name="robots" content="index, follow">
+    <link rel="canonical" href="https://bankscanai.com/blog">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://bankscanai.com/blog">
+    <meta property="og:title" content="Blog &mdash; BankScan AI">
+    <meta property="og:description" content="Practical guides and tips for UK accountants and bookkeepers.">
+    <meta property="og:site_name" content="BankScan AI">
+    <meta property="og:locale" content="en_GB">
+    <style>
+        :root {
+            --primary: #1B4F72;
+            --primary-light: #2E86C1;
+            --accent: #27AE60;
+            --bg: #FAFBFC;
+            --bg-alt: #F0F4F8;
+            --text: #2C3E50;
+            --text-light: #5D6D7E;
+            --white: #FFFFFF;
+            --border: #D5DBDE;
+            --shadow: 0 2px 16px rgba(27, 79, 114, 0.08);
+            --radius: 12px;
+            --radius-sm: 8px;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            color: var(--text); background: var(--bg); line-height: 1.6; -webkit-font-smoothing: antialiased;
+        }
+        .header {
+            position: sticky; top: 0; z-index: 100;
+            background: rgba(255,255,255,0.95); backdrop-filter: blur(12px);
+            border-bottom: 1px solid var(--border);
+        }
+        .header-inner {
+            max-width: 1140px; margin: 0 auto; padding: 0 24px;
+            display: flex; align-items: center; justify-content: space-between; height: 64px;
+        }
+        .logo { font-size: 1.35rem; font-weight: 700; color: var(--primary); text-decoration: none; letter-spacing: -0.5px; }
+        .logo span { color: var(--accent); }
+        .nav { display: flex; gap: 28px; align-items: center; }
+        .nav a { text-decoration: none; color: var(--text-light); font-size: 0.9rem; font-weight: 500; transition: color 0.2s; }
+        .nav a:hover { color: var(--primary); }
+        .nav-cta {
+            background: var(--accent) !important; color: var(--white) !important;
+            padding: 8px 20px; border-radius: 6px; font-weight: 600 !important;
+        }
+        .nav-cta:hover { background: #219a52 !important; }
+        .hero-blog {
+            background: linear-gradient(135deg, var(--primary) 0%, #154360 100%);
+            color: var(--white); padding: 60px 24px; text-align: center;
+        }
+        .hero-blog h1 { font-size: 2.2rem; font-weight: 700; margin-bottom: 12px; }
+        .hero-blog p { font-size: 1.1rem; opacity: 0.85; max-width: 600px; margin: 0 auto; }
+        .container { max-width: 800px; margin: 0 auto; padding: 48px 24px; }
+        .post-card {
+            background: var(--white); border: 1px solid var(--border); border-radius: var(--radius);
+            padding: 28px; margin-bottom: 24px; transition: box-shadow 0.2s;
+        }
+        .post-card:hover { box-shadow: var(--shadow); }
+        .post-card a { text-decoration: none; color: inherit; }
+        .post-card h2 { font-size: 1.35rem; color: var(--primary); margin-bottom: 8px; line-height: 1.3; }
+        .post-card p { color: var(--text-light); font-size: 0.95rem; margin-bottom: 12px; }
+        .post-meta { font-size: 0.8rem; color: var(--text-light); opacity: 0.7; }
+        .footer {
+            background: var(--primary); color: rgba(255,255,255,0.7); padding: 40px 24px; text-align: center; font-size: 0.85rem;
+        }
+        .footer a { color: rgba(255,255,255,0.9); text-decoration: none; }
+        @media (max-width: 600px) {
+            .hero-blog h1 { font-size: 1.6rem; }
+            .nav { gap: 16px; }
+        }
+    </style>
+</head>
+<body>
+
+<header class="header">
+    <div class="header-inner">
+        <a href="/landing" class="logo">BankScan<span>AI</span></a>
+        <nav class="nav">
+            <a href="/landing">Home</a>
+            <a href="/blog" style="color: var(--primary); font-weight: 600;">Blog</a>
+            <a href="/login" class="nav-cta">Try Free</a>
+        </nav>
+    </div>
+</header>
+
+<section class="hero-blog">
+    <h1>BankScan AI Blog</h1>
+    <p>Practical guides and tips for UK accountants and bookkeepers to save time on bank statement processing.</p>
+</section>
+
+<div class="container">
+    {% for post in posts %}
+    <div class="post-card">
+        <a href="/blog/{{ post.slug }}">
+            <h2>{{ post.title }}</h2>
+            <p>{{ post.description }}</p>
+            <span class="post-meta">{{ post.date }} &middot; {{ post.author }}</span>
+        </a>
+    </div>
+    {% endfor %}
+
+    {% if not posts %}
+    <p style="text-align: center; color: var(--text-light); padding: 48px 0;">Articles coming soon. Check back shortly!</p>
+    {% endif %}
+</div>
+
+<footer class="footer">
+    <p>&copy; 2025 Mitoba Computer Systems LTD. All rights reserved. | <a href="/landing">Home</a> | <a href="/blog">Blog</a></p>
+</footer>
+
+</body>
+</html>

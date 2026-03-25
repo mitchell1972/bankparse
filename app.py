@@ -1074,11 +1074,55 @@ async def get_config():
     })
 
 
+# ==========================================================================
+# Blog Routes
+# ==========================================================================
+
+BLOG_POSTS = {
+    "ai-transforming-bookkeeping-accounting-firms": {
+        "title": "How AI Is Transforming Bookkeeping for UK Accounting Firms in 2026",
+        "description": "Discover how AI-powered bookkeeping automation is helping UK accounting firms save hours on bank statement processing, reconciliation, and data entry.",
+        "date": "2026-03-25",
+        "author": "BankScan AI Team",
+        "template": "blog/ai-transforming-bookkeeping-accounting-firms.html",
+        "keywords": "AI bookkeeping, accounting automation UK, automate bank statement processing, AI accounting firms, bookkeeping automation",
+    },
+    "convert-bank-statement-pdf-to-excel": {
+        "title": "How to Convert a Bank Statement PDF to Excel (5 Methods Compared)",
+        "description": "Compare 5 methods to convert bank statement PDFs to Excel spreadsheets. From manual copy-paste to AI-powered tools like BankScan AI for UK accountants.",
+        "date": "2026-03-25",
+        "author": "BankScan AI Team",
+        "template": "blog/convert-bank-statement-pdf-to-excel.html",
+        "keywords": "convert bank statement to excel, bank statement PDF to Excel, bank statement to spreadsheet, UK bank statement converter",
+    },
+}
+
+
+@app.get("/blog", response_class=HTMLResponse)
+async def blog_index(request: Request):
+    """Blog listing page."""
+    posts = [
+        {"slug": slug, **data}
+        for slug, data in sorted(BLOG_POSTS.items(), key=lambda x: x[1]["date"], reverse=True)
+    ]
+    return templates.TemplateResponse("blog/index.html", {"request": request, "posts": posts})
+
+
+@app.get("/blog/{slug}", response_class=HTMLResponse)
+async def blog_post(request: Request, slug: str):
+    """Individual blog post page."""
+    if slug not in BLOG_POSTS:
+        raise HTTPException(status_code=404, detail="Blog post not found")
+    post = BLOG_POSTS[slug]
+    return templates.TemplateResponse(post["template"], {"request": request, "post": post, "slug": slug})
+
+
 @app.get("/robots.txt", response_class=PlainTextResponse)
 async def robots():
     return """User-agent: *
 Allow: /landing
 Allow: /login
+Allow: /blog
 Disallow: /api/
 Disallow: /downloads/
 Sitemap: https://bankscanai.com/sitemap.xml"""
@@ -1086,10 +1130,16 @@ Sitemap: https://bankscanai.com/sitemap.xml"""
 
 @app.get("/sitemap.xml", response_class=PlainTextResponse)
 async def sitemap():
-    return """<?xml version="1.0" encoding="UTF-8"?>
+    urls = [
+        '<url><loc>https://bankscanai.com/landing</loc><priority>1.0</priority><changefreq>weekly</changefreq></url>',
+        '<url><loc>https://bankscanai.com/login</loc><priority>0.5</priority><changefreq>monthly</changefreq></url>',
+        '<url><loc>https://bankscanai.com/blog</loc><priority>0.8</priority><changefreq>weekly</changefreq></url>',
+    ]
+    for slug, post in BLOG_POSTS.items():
+        urls.append(f'<url><loc>https://bankscanai.com/blog/{slug}</loc><priority>0.7</priority><changefreq>monthly</changefreq></url>')
+    return f"""<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <url><loc>https://bankscanai.com/landing</loc><priority>1.0</priority><changefreq>weekly</changefreq></url>
-  <url><loc>https://bankscanai.com/login</loc><priority>0.5</priority><changefreq>monthly</changefreq></url>
+  {"".join(urls)}
 </urlset>"""
 
 
