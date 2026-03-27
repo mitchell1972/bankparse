@@ -14,6 +14,9 @@ from email_campaigns import (
     init_campaign_tables, verify_admin_key, create_campaign,
     get_campaign, list_campaigns, get_recipients, send_campaign,
     get_campaign_stats, CAMPAIGN_TEMPLATES,
+    unsubscribe_email, is_unsubscribed, resubscribe_email,
+    get_unsubscribe_url, verify_unsubscribe_token,
+    _make_unsubscribe_token, _build_message, _html_to_plain,
 )
 
 
@@ -24,10 +27,12 @@ def setup_db():
     # Clean up test data
     database._execute("DELETE FROM campaign_sends")
     database._execute("DELETE FROM email_campaigns")
+    database._execute("DELETE FROM email_unsubscribes")
     database._execute("DELETE FROM users")
     yield
     database._execute("DELETE FROM campaign_sends")
     database._execute("DELETE FROM email_campaigns")
+    database._execute("DELETE FROM email_unsubscribes")
     database._execute("DELETE FROM users")
 
 
@@ -161,3 +166,90 @@ def test_campaign_not_found():
 def test_campaign_stats_not_found():
     result = get_campaign_stats(99999)
     assert result.get("error") == "Campaign not found"
+
+
+# --- Unsubscribe tests ---
+
+def test_unsubscribe_and_resubscribe():
+    assert is_unsubscribed("unsub@test.com") is False
+    unsubscribe_email("unsub@test.com")
+    assert is_unsubscribed("unsub@test.com") is True
+    resubscribe_email("unsub@test.com")
+    assert is_unsubscribed("unsub@test.com") is False
+
+
+def test_unsubscribe_token_verification():
+    email = "verify@test.com"
+    token = _make_unsubscribe_token(email)
+    assert verify_unsubscribe_token(email, token) is True
+    assert verify_unsubscribe_token(email, "bad-token") is False
+    assert verify_unsubscribe_token("other@test.com", token) is False
+
+
+def test_unsubscribe_url_contains_token():
+    url = get_unsubscribe_url("user@test.com")
+    assert "user@test.com" in url
+    assert "token=" in url
+
+
+def test_unsubscribed_users_excluded_from_recipients():
+    _create_test_user("keep@test.com")
+    _create_test_user("remove@test.com")
+    unsubscribe_email("remove@test.com")
+    recipients = get_recipients("all")
+    emails = [r["email"] for r in recipients]
+    assert "keep@test.com" in emails
+    assert "remove@test.com" not in emails
+
+
+def test_unsubscribed_users_skipped_during_send():
+    _create_test_user("active@test.com")
+    _create_test_user("unsub@test.com")
+    unsubscribe_email("unsub@test.com")
+    cid = create_campaign("Test", "Subject", "<p>Body</p>", segment="all")
+    result = send_campaign(cid)
+    assert result["sent"] == 1
+    assert result["total"] == 1
+
+
+def test_double_unsubscribe_no_error():
+    unsubscribe_email("user@test.com")
+    unsubscribe_email("user@test.com")  # Should not raise
+    assert is_unsubscribed("user@test.com") is True
+
+
+# --- Anti-spam header tests ---
+
+def test_build_message_has_required_headers():
+    msg = _build_message("to@test.com", "Test Subject", "<p>Hello</p>", "Hello")
+    assert msg["Message-ID"] is not None
+    assert msg["Date"] is not None
+    assert msg["List-Unsubscribe"] is not None
+    assert msg["List-Unsubscribe-Post"] == "List-Unsubscribe=One-Click"
+    assert msg["Precedence"] == "bulk"
+    assert "BankScan" in msg["From"]
+    assert msg["To"] is not None
+
+
+def test_build_message_has_plain_and_html():
+    msg = _build_message("to@test.com", "Test", "<p>Hi</p>", "Hi")
+    payloads = msg.get_payload()
+    assert len(payloads) == 2
+    assert payloads[0].get_content_type() == "text/plain"
+    assert payloads[1].get_content_type() == "text/html"
+
+
+def test_build_message_includes_unsubscribe_in_body():
+    msg = _build_message("to@test.com", "Test", "<p>Hi</p>", "Hi")
+    html_part = msg.get_payload()[1].get_payload(decode=True).decode()
+    text_part = msg.get_payload()[0].get_payload(decode=True).decode()
+    assert "unsubscribe" in html_part.lower()
+    assert "unsubscribe" in text_part.lower()
+
+
+def test_html_to_plain():
+    html = '<p>Hello <a href="https://example.com">World</a></p><ul><li>Item 1</li><li>Item 2</li></ul>'
+    text = _html_to_plain(html)
+    assert "Hello" in text
+    assert "example.com" in text
+    assert "Item 1" in text

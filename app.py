@@ -48,6 +48,7 @@ from email_campaigns import (
     create_campaign, get_campaign, list_campaigns,
     send_campaign, send_test_email, get_campaign_stats,
     get_recipients, CAMPAIGN_TEMPLATES,
+    verify_unsubscribe_token, unsubscribe_email, list_unsubscribes,
 )
 
 from core import (
@@ -1544,6 +1545,30 @@ async def api_campaign_stats(campaign_id: int, request: Request):
     if result.get("error"):
         raise HTTPException(status_code=404, detail=result["error"])
     return result
+
+
+@app.get("/api/campaigns/unsubscribe")
+async def api_unsubscribe(email: str = "", token: str = ""):
+    """One-click unsubscribe endpoint. No auth required (token-verified)."""
+    if not email or not token:
+        raise HTTPException(status_code=400, detail="Missing email or token")
+    if not verify_unsubscribe_token(email, token):
+        raise HTTPException(status_code=403, detail="Invalid unsubscribe link")
+    unsubscribe_email(email)
+    return HTMLResponse(
+        '<div style="font-family: -apple-system, sans-serif; max-width: 480px; margin: 4rem auto; text-align: center;">'
+        '<h2 style="color: #1B4F72;">Unsubscribed</h2>'
+        '<p>You have been unsubscribed from BankScan AI marketing emails.</p>'
+        '<p style="color: #666;">You will still receive transactional emails (like verification codes).</p>'
+        '</div>'
+    )
+
+
+@app.get("/api/campaigns/unsubscribes")
+async def api_list_unsubscribes(request: Request):
+    """List all unsubscribed emails (admin only)."""
+    _check_campaign_admin(request)
+    return {"unsubscribes": list_unsubscribes()}
 
 
 @app.get("/api/health")
