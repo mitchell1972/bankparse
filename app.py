@@ -43,6 +43,12 @@ from database import (
     get_monthly_receipts, increment_monthly_receipts,
 )
 from otp import generate_otp, send_otp_email
+from email_campaigns import (
+    init_campaign_tables, verify_admin_key,
+    create_campaign, get_campaign, list_campaigns,
+    send_campaign, send_test_email, get_campaign_stats,
+    get_recipients, CAMPAIGN_TEMPLATES,
+)
 
 from core import (
     # Constants
@@ -1425,6 +1431,119 @@ async def submit_indexnow(request: Request):
     }
     results["urls_submitted"] = full_urls
     return results
+
+
+# ==========================================================================
+# Email Campaign API (admin-only, protected by CAMPAIGN_ADMIN_KEY)
+# ==========================================================================
+
+def _check_campaign_admin(request: Request):
+    """Verify admin key from header or query param."""
+    key = request.headers.get("x-campaign-key", "") or request.query_params.get("key", "")
+    if not verify_admin_key(key):
+        raise HTTPException(status_code=403, detail="Invalid or missing campaign admin key")
+
+
+@app.get("/api/campaigns")
+async def api_list_campaigns(request: Request):
+    """List all campaigns."""
+    _check_campaign_admin(request)
+    return {"campaigns": list_campaigns()}
+
+
+@app.get("/api/campaigns/templates")
+async def api_campaign_templates(request: Request):
+    """List available pre-built campaign templates."""
+    _check_campaign_admin(request)
+    return {"templates": {k: {"name": v["name"], "subject": v["subject"]} for k, v in CAMPAIGN_TEMPLATES.items()}}
+
+
+@app.get("/api/campaigns/recipients")
+async def api_campaign_recipients(request: Request, segment: str = "all"):
+    """Preview recipients for a given segment."""
+    _check_campaign_admin(request)
+    recipients = get_recipients(segment)
+    return {
+        "segment": segment,
+        "count": len(recipients),
+        "recipients": [{"email": r["email"], "subscription_status": r.get("subscription_status")} for r in recipients],
+    }
+
+
+@app.post("/api/campaigns")
+async def api_create_campaign(request: Request):
+    """Create a new campaign. Body: {name, subject, body_html, body_text?, segment?, template?}"""
+    _check_campaign_admin(request)
+    data = await request.json()
+
+    # If using a template, merge template defaults
+    template_key = data.get("template")
+    if template_key and template_key in CAMPAIGN_TEMPLATES:
+        tmpl = CAMPAIGN_TEMPLATES[template_key]
+        data.setdefault("name", tmpl["name"])
+        data.setdefault("subject", tmpl["subject"])
+        data.setdefault("body_html", tmpl["body_html"])
+        data.setdefault("body_text", tmpl.get("body_text", ""))
+
+    name = data.get("name", "")
+    subject = data.get("subject", "")
+    body_html = data.get("body_html", "")
+    if not name or not subject or not body_html:
+        raise HTTPException(status_code=400, detail="name, subject, and body_html are required")
+
+    campaign_id = create_campaign(
+        name=name,
+        subject=subject,
+        body_html=body_html,
+        body_text=data.get("body_text", ""),
+        segment=data.get("segment", "all"),
+    )
+    return {"campaign_id": campaign_id, "status": "draft"}
+
+
+@app.get("/api/campaigns/{campaign_id}")
+async def api_get_campaign(campaign_id: int, request: Request):
+    """Get campaign details."""
+    _check_campaign_admin(request)
+    campaign = get_campaign(campaign_id)
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    return campaign
+
+
+@app.post("/api/campaigns/{campaign_id}/test")
+async def api_test_campaign(campaign_id: int, request: Request):
+    """Send a test email. Body: {email: "test@example.com"}"""
+    _check_campaign_admin(request)
+    data = await request.json()
+    test_email = data.get("email", "")
+    if not test_email:
+        raise HTTPException(status_code=400, detail="email is required")
+
+    result = send_test_email(campaign_id, test_email)
+    if result.get("error"):
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result
+
+
+@app.post("/api/campaigns/{campaign_id}/send")
+async def api_send_campaign(campaign_id: int, request: Request):
+    """Send campaign to all recipients in its segment."""
+    _check_campaign_admin(request)
+    result = send_campaign(campaign_id)
+    if result.get("error"):
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result
+
+
+@app.get("/api/campaigns/{campaign_id}/stats")
+async def api_campaign_stats(campaign_id: int, request: Request):
+    """Get send statistics for a campaign."""
+    _check_campaign_admin(request)
+    result = get_campaign_stats(campaign_id)
+    if result.get("error"):
+        raise HTTPException(status_code=404, detail=result["error"])
+    return result
 
 
 @app.get("/api/health")

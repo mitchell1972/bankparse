@@ -1,0 +1,163 @@
+"""Tests for the email campaign module."""
+
+import os
+import sys
+import pytest
+
+# Ensure campaign admin key is set for tests
+os.environ.setdefault("CAMPAIGN_ADMIN_KEY", "test-campaign-key-123")
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import database
+from email_campaigns import (
+    init_campaign_tables, verify_admin_key, create_campaign,
+    get_campaign, list_campaigns, get_recipients, send_campaign,
+    get_campaign_stats, CAMPAIGN_TEMPLATES,
+)
+
+
+@pytest.fixture(autouse=True)
+def setup_db():
+    database.init_db()
+    init_campaign_tables()
+    # Clean up test data
+    database._execute("DELETE FROM campaign_sends")
+    database._execute("DELETE FROM email_campaigns")
+    database._execute("DELETE FROM users")
+    yield
+    database._execute("DELETE FROM campaign_sends")
+    database._execute("DELETE FROM email_campaigns")
+    database._execute("DELETE FROM users")
+
+
+def _create_test_user(email, subscription_status=None, statements=0, receipts=0):
+    from core import hash_password
+    user_id = database.create_user(email, hash_password("testpass123"))
+    if subscription_status:
+        database.update_user(user_id, subscription_status=subscription_status)
+    if statements > 0:
+        for _ in range(statements):
+            database.increment_user_usage(user_id, "statement")
+    if receipts > 0:
+        for _ in range(receipts):
+            database.increment_user_usage(user_id, "receipt")
+    return user_id
+
+
+def test_verify_admin_key():
+    assert verify_admin_key("test-campaign-key-123") is True
+    assert verify_admin_key("wrong-key") is False
+    assert verify_admin_key("") is False
+
+
+def test_create_and_get_campaign():
+    cid = create_campaign(
+        name="Test Campaign",
+        subject="Hello!",
+        body_html="<p>Hello world</p>",
+        body_text="Hello world",
+        segment="all",
+    )
+    assert cid > 0
+
+    campaign = get_campaign(cid)
+    assert campaign is not None
+    assert campaign["name"] == "Test Campaign"
+    assert campaign["subject"] == "Hello!"
+    assert campaign["status"] == "draft"
+    assert campaign["segment"] == "all"
+
+
+def test_list_campaigns():
+    create_campaign("C1", "Subject 1", "<p>Body 1</p>")
+    create_campaign("C2", "Subject 2", "<p>Body 2</p>")
+    campaigns = list_campaigns()
+    assert len(campaigns) >= 2
+
+
+def test_get_recipients_all():
+    _create_test_user("user1@test.com")
+    _create_test_user("user2@test.com")
+    recipients = get_recipients("all")
+    assert len(recipients) == 2
+
+
+def test_get_recipients_free():
+    _create_test_user("free@test.com")
+    _create_test_user("paid@test.com", subscription_status="active")
+    free = get_recipients("free")
+    assert len(free) == 1
+    assert free[0]["email"] == "free@test.com"
+
+
+def test_get_recipients_paid():
+    _create_test_user("free@test.com")
+    _create_test_user("paid@test.com", subscription_status="active")
+    paid = get_recipients("paid")
+    assert len(paid) == 1
+    assert paid[0]["email"] == "paid@test.com"
+
+
+def test_get_recipients_inactive():
+    _create_test_user("inactive@test.com")
+    _create_test_user("active@test.com", statements=3)
+    inactive = get_recipients("inactive")
+    assert len(inactive) == 1
+    assert inactive[0]["email"] == "inactive@test.com"
+
+
+def test_get_recipients_active():
+    _create_test_user("inactive@test.com")
+    _create_test_user("active@test.com", statements=3)
+    active = get_recipients("active")
+    assert len(active) == 1
+    assert active[0]["email"] == "active@test.com"
+
+
+def test_send_campaign_no_smtp():
+    """Campaign sends succeed when SMTP is not configured (dry run)."""
+    _create_test_user("user@test.com")
+    cid = create_campaign("Test", "Subject", "<p>Body</p>", segment="all")
+    result = send_campaign(cid)
+    assert result["sent"] == 1
+    assert result["failed"] == 0
+
+
+def test_send_campaign_already_sent():
+    _create_test_user("user@test.com")
+    cid = create_campaign("Test", "Subject", "<p>Body</p>", segment="all")
+    send_campaign(cid)
+    result = send_campaign(cid)
+    assert result.get("error") == "Campaign already sent"
+
+
+def test_campaign_stats():
+    _create_test_user("user1@test.com")
+    _create_test_user("user2@test.com")
+    cid = create_campaign("Stats Test", "Subject", "<p>Body</p>", segment="all")
+    send_campaign(cid)
+    stats = get_campaign_stats(cid)
+    assert stats["sent"] == 2
+    assert stats["failed"] == 0
+
+
+def test_campaign_templates_exist():
+    assert "welcome" in CAMPAIGN_TEMPLATES
+    assert "upgrade" in CAMPAIGN_TEMPLATES
+    assert "feature_update" in CAMPAIGN_TEMPLATES
+    assert "re_engage" in CAMPAIGN_TEMPLATES
+    for key, tmpl in CAMPAIGN_TEMPLATES.items():
+        assert "name" in tmpl
+        assert "subject" in tmpl
+        assert "body_html" in tmpl
+
+
+def test_campaign_not_found():
+    result = get_campaign(99999)
+    assert result is None
+
+
+def test_campaign_stats_not_found():
+    result = get_campaign_stats(99999)
+    assert result.get("error") == "Campaign not found"

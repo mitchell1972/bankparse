@@ -390,3 +390,13 @@ def remove_output_file_record(filename: str):
 
 # Initialize on import
 init_db()
+
+# Initialize campaign tables (imported lazily to avoid circular imports)
+def _init_campaigns():
+    try:
+        from email_campaigns import init_campaign_tables
+        init_campaign_tables()
+    except Exception:
+        pass
+
+_init_campaigns()
