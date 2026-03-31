@@ -1158,13 +1158,36 @@ BLOG_POSTS = {
         "date": "2026-03-25",
         "author": "BankScan AI Team",
     },
+    "convert-hsbc-statement-to-excel-guide": {
+        "title": "How to Convert HSBC Bank Statements to Excel (2026 Guide)",
+        "date": "2026-03-31",
+        "author": "BankScan AI Team",
+    },
+    "import-bank-statements-into-xero": {
+        "title": "How to Import Bank Statements into Xero (Step-by-Step for UK Accountants)",
+        "date": "2026-03-31",
+        "author": "BankScan AI Team",
+    },
+    "bank-statement-conversion-guide-accountants": {
+        "title": "The UK Accountant's Complete Guide to Bank Statement Conversion (2026)",
+        "date": "2026-03-31",
+        "author": "BankScan AI Team",
+    },
 }
 
 
 @app.get("/blog", response_class=HTMLResponse)
 async def blog_index():
-    from starlette.responses import Response
-    resp = HTMLResponse(BLOG_INDEX_HTML)
+    from jinja2 import Environment, BaseLoader
+    env = Environment(loader=BaseLoader())
+    tmpl = env.from_string(BLOG_INDEX_HTML)
+    posts = [
+        {"slug": slug, "title": post["title"], "date": post["date"], "author": post["author"],
+         "description": post["title"]}
+        for slug, post in sorted(BLOG_POSTS.items(), key=lambda x: x[1]["date"], reverse=True)
+    ]
+    html = tmpl.render(posts=posts)
+    resp = HTMLResponse(html)
     resp.headers["Cache-Control"] = "public, max-age=3600, s-maxage=3600"
     return resp
 
