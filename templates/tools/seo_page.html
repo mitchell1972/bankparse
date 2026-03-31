@@ -308,7 +308,7 @@
         {% endif %}
 
         {% if page.get('detail_paragraph') %}
-        <h2>About {{ page.bank.name }} Statements</h2>
+        <h2>{% if page.get('bank') %}About {{ page.bank.name }} Statements{% elif page.get('software') %}About {{ page.software }} Integration{% elif page.get('profession') %}Built for {{ page.profession }}{% else %}More Details{% endif %}</h2>
         <p>{{ page.detail_paragraph }}</p>
         {% endif %}
 
