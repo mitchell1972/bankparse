@@ -43,6 +43,7 @@ from database import (
     get_monthly_receipts, increment_monthly_receipts,
 )
 from otp import generate_otp, send_otp_email
+from seo_pages import SEO_PAGES
 
 from core import (
     # Constants
@@ -1320,12 +1321,79 @@ async def blog_infographic(slug: str):
     )
 
 
+# ==========================================================================
+# Programmatic SEO — /tools routes
+# ==========================================================================
+
+@app.get("/tools", response_class=HTMLResponse)
+async def tools_index(request: Request):
+    """Tools directory page — lists all programmatic SEO pages by category."""
+    bank_pages = [(s, p) for s, p in sorted(SEO_PAGES.items()) if p["type"] == "bank"]
+    profession_pages = [(s, p) for s, p in sorted(SEO_PAGES.items()) if p["type"] == "profession"]
+    receipt_pages = [(s, p) for s, p in sorted(SEO_PAGES.items()) if p["type"] == "receipt"]
+    format_pages = [(s, p) for s, p in sorted(SEO_PAGES.items()) if p["type"] == "bank_format"]
+    software_pages = [(s, p) for s, p in sorted(SEO_PAGES.items()) if p["type"] == "software"]
+    use_case_pages = [(s, p) for s, p in sorted(SEO_PAGES.items()) if p["type"] == "use_case"]
+    combo_pages = [(s, p) for s, p in sorted(SEO_PAGES.items()) if p["type"] == "bank_profession"]
+    bank_software_pages = [(s, p) for s, p in sorted(SEO_PAGES.items()) if p["type"] == "bank_software"]
+    bank_usecase_pages = [(s, p) for s, p in sorted(SEO_PAGES.items()) if p["type"] == "bank_usecase"]
+    sw_prof_pages = [(s, p) for s, p in sorted(SEO_PAGES.items()) if p["type"] == "software_profession"]
+    prof_uc_pages = [(s, p) for s, p in sorted(SEO_PAGES.items()) if p["type"] == "profession_usecase"]
+    sw_uc_pages = [(s, p) for s, p in sorted(SEO_PAGES.items()) if p["type"] == "software_usecase"]
+    bank_prof_fmt_pages = [(s, p) for s, p in sorted(SEO_PAGES.items()) if p["type"] == "bank_profession_format"]
+    prof_fmt_pages = [(s, p) for s, p in sorted(SEO_PAGES.items()) if p["type"] == "profession_format"]
+    response = templates.TemplateResponse("tools/index.html", {
+        "request": request,
+        "bank_pages": bank_pages,
+        "profession_pages": profession_pages,
+        "receipt_pages": receipt_pages,
+        "format_pages": format_pages,
+        "software_pages": software_pages,
+        "use_case_pages": use_case_pages,
+        "combo_pages": combo_pages,
+        "bank_software_pages": bank_software_pages,
+        "bank_usecase_pages": bank_usecase_pages,
+        "sw_prof_pages": sw_prof_pages,
+        "prof_uc_pages": prof_uc_pages,
+        "sw_uc_pages": sw_uc_pages,
+        "bank_prof_fmt_pages": bank_prof_fmt_pages,
+        "prof_fmt_pages": prof_fmt_pages,
+    })
+    response.headers["Cache-Control"] = "public, max-age=86400, s-maxage=86400"
+    return response
+
+
+@app.get("/tools/{slug}", response_class=HTMLResponse)
+async def tools_seo_page(request: Request, slug: str):
+    """Individual programmatic SEO page."""
+    if slug not in SEO_PAGES:
+        raise HTTPException(status_code=404, detail="Tool page not found")
+    page = SEO_PAGES[slug]
+
+    # Build related pages: same type, max 3, excluding self
+    related_pages = [
+        {"slug": s, **p}
+        for s, p in SEO_PAGES.items()
+        if p["type"] == page["type"] and s != slug
+    ][:3]
+
+    response = templates.TemplateResponse("tools/seo_page.html", {
+        "request": request,
+        "page": page,
+        "slug": slug,
+        "related_pages": related_pages,
+    })
+    response.headers["Cache-Control"] = "public, max-age=86400, s-maxage=86400"
+    return response
+
+
 @app.get("/robots.txt", response_class=PlainTextResponse)
 async def robots():
     return """User-agent: *
 Allow: /landing
 Allow: /login
 Allow: /blog
+Allow: /tools
 Disallow: /api/
 Disallow: /downloads/
 Sitemap: https://bankscanai.com/sitemap.xml"""
@@ -1344,6 +1412,12 @@ async def sitemap():
             f'<image:image><image:loc>https://bankscanai.com/blog/{slug}/hero-image</image:loc><image:title>{post["title"]}</image:title></image:image>'
             f'<image:image><image:loc>https://bankscanai.com/blog/{slug}/og-image</image:loc><image:title>{post["title"]} - Social Preview</image:title></image:image>'
             f'</url>'
+        )
+    # Programmatic SEO tool pages
+    urls.append('<url><loc>https://bankscanai.com/tools</loc><priority>0.8</priority><changefreq>weekly</changefreq></url>')
+    for slug in SEO_PAGES:
+        urls.append(
+            f'<url><loc>https://bankscanai.com/tools/{slug}</loc><priority>0.6</priority><changefreq>monthly</changefreq></url>'
         )
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
@@ -1386,7 +1460,7 @@ async def submit_indexnow(request: Request):
         body = await request.json()
         paths = body.get("urls", [])
     except Exception:
-        paths = [f"/blog/{slug}" for slug in BLOG_POSTS]
+        paths = [f"/blog/{slug}" for slug in BLOG_POSTS] + [f"/tools/{slug}" for slug in SEO_PAGES]
 
     full_urls = [
         f"https://bankscanai.com{p}" if p.startswith("/") else p
