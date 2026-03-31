@@ -98,6 +98,14 @@ LANDING_HTML = LANDING_PATH.read_text() if LANDING_PATH.exists() else TEMPLATE_H
 LOGIN_PATH = Path(__file__).parent.parent / "templates" / "login.html"
 LOGIN_HTML = LOGIN_PATH.read_text() if LOGIN_PATH.exists() else ""
 
+# Jinja2 for tools templates
+from jinja2 import Environment, FileSystemLoader
+TOOLS_TEMPLATE_DIR = Path(__file__).parent.parent / "templates" / "tools"
+_jinja_env = Environment(loader=FileSystemLoader(str(TOOLS_TEMPLATE_DIR)))
+
+# SEO pages (pre-built at import time)
+from seo_pages import SEO_PAGES
+
 # Blog templates
 BLOG_DIR = Path(__file__).parent.parent / "templates" / "blog"
 BLOG_INDEX_HTML = (BLOG_DIR / "index.html").read_text() if (BLOG_DIR / "index.html").exists() else ""
@@ -1170,6 +1178,57 @@ async def blog_post(slug: str):
     return resp
 
 
+# ==========================================================================
+# Tools / Programmatic SEO Routes
+# ==========================================================================
+
+@app.get("/tools", response_class=HTMLResponse)
+async def tools_index():
+    """Tools directory page — lists all programmatic SEO pages by category."""
+    bank_pages = [(s, p) for s, p in sorted(SEO_PAGES.items()) if p["type"] == "bank"]
+    profession_pages = [(s, p) for s, p in sorted(SEO_PAGES.items()) if p["type"] == "profession"]
+    receipt_pages = [(s, p) for s, p in sorted(SEO_PAGES.items()) if p["type"] == "receipt"]
+    format_pages = [(s, p) for s, p in sorted(SEO_PAGES.items()) if p["type"] == "bank_format"]
+    software_pages = [(s, p) for s, p in sorted(SEO_PAGES.items()) if p["type"] == "software"]
+    use_case_pages = [(s, p) for s, p in sorted(SEO_PAGES.items()) if p["type"] == "use_case"]
+    combo_pages = [(s, p) for s, p in sorted(SEO_PAGES.items()) if p["type"] == "bank_profession"]
+    bank_software_pages = [(s, p) for s, p in sorted(SEO_PAGES.items()) if p["type"] == "bank_software"]
+    bank_usecase_pages = [(s, p) for s, p in sorted(SEO_PAGES.items()) if p["type"] == "bank_usecase"]
+    sw_prof_pages = [(s, p) for s, p in sorted(SEO_PAGES.items()) if p["type"] == "software_profession"]
+    prof_uc_pages = [(s, p) for s, p in sorted(SEO_PAGES.items()) if p["type"] == "profession_usecase"]
+    sw_uc_pages = [(s, p) for s, p in sorted(SEO_PAGES.items()) if p["type"] == "software_usecase"]
+    bank_prof_fmt_pages = [(s, p) for s, p in sorted(SEO_PAGES.items()) if p["type"] == "bank_profession_format"]
+    prof_fmt_pages = [(s, p) for s, p in sorted(SEO_PAGES.items()) if p["type"] == "profession_format"]
+    tmpl = _jinja_env.get_template("index.html")
+    html = tmpl.render(
+        bank_pages=bank_pages, profession_pages=profession_pages,
+        receipt_pages=receipt_pages, format_pages=format_pages,
+        software_pages=software_pages, use_case_pages=use_case_pages,
+        combo_pages=combo_pages, bank_software_pages=bank_software_pages,
+        bank_usecase_pages=bank_usecase_pages, sw_prof_pages=sw_prof_pages,
+        prof_uc_pages=prof_uc_pages, sw_uc_pages=sw_uc_pages,
+        bank_prof_fmt_pages=bank_prof_fmt_pages, prof_fmt_pages=prof_fmt_pages,
+    )
+    resp = HTMLResponse(html)
+    resp.headers["Cache-Control"] = "public, max-age=86400, s-maxage=86400"
+    return resp
+
+
+@app.get("/tools/{slug}", response_class=HTMLResponse)
+async def tools_seo_page(slug: str):
+    """Individual programmatic SEO page."""
+    if slug not in SEO_PAGES:
+        raise HTTPException(status_code=404, detail="Tool page not found")
+    page = SEO_PAGES[slug]
+    same_type = [(s, p) for s, p in SEO_PAGES.items() if p["type"] == page["type"] and s != slug]
+    related = same_type[:3]
+    tmpl = _jinja_env.get_template("seo_page.html")
+    html = tmpl.render(page=page, slug=slug, related=related)
+    resp = HTMLResponse(html)
+    resp.headers["Cache-Control"] = "public, max-age=86400, s-maxage=86400"
+    return resp
+
+
 def _generate_blog_image(slug: str, image_type: str) -> bytes:
     """Generate raster PNG blog images using Pillow for Google Image Search indexing."""
     from PIL import Image, ImageDraw, ImageFont
@@ -1395,6 +1454,7 @@ async def robots():
 Allow: /landing
 Allow: /login
 Allow: /blog
+Allow: /tools
 Disallow: /api/
 Disallow: /downloads/
 Sitemap: https://bankscanai.com/sitemap.xml"""
@@ -1414,6 +1474,10 @@ async def sitemap():
             f'<image:image><image:loc>https://bankscanai.com/blog/{slug}/og-image</image:loc><image:title>{post["title"]} - Social Preview</image:title></image:image>'
             f'</url>'
         )
+    # Tools pages
+    urls.append('<url><loc>https://bankscanai.com/tools</loc><priority>0.8</priority><changefreq>weekly</changefreq></url>')
+    for slug in SEO_PAGES:
+        urls.append(f'<url><loc>https://bankscanai.com/tools/{slug}</loc><priority>0.6</priority><changefreq>monthly</changefreq></url>')
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
   {"".join(urls)}
