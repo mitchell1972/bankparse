@@ -1243,10 +1243,13 @@ async def tools_seo_page(slug: str):
     if slug not in SEO_PAGES:
         raise HTTPException(status_code=404, detail="Tool page not found")
     page = SEO_PAGES[slug]
-    same_type = [(s, p) for s, p in SEO_PAGES.items() if p["type"] == page["type"] and s != slug]
-    related = same_type[:3]
+    related_pages = [
+        {"slug": s, **p}
+        for s, p in SEO_PAGES.items()
+        if p["type"] == page["type"] and s != slug
+    ][:3]
     tmpl = _jinja_env.get_template("seo_page.html")
-    html = tmpl.render(page=page, slug=slug, related=related)
+    html = tmpl.render(page=page, slug=slug, related_pages=related_pages)
     resp = HTMLResponse(html)
     resp.headers["Cache-Control"] = "public, max-age=86400, s-maxage=86400"
     return resp
