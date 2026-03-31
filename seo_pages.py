@@ -856,7 +856,12 @@ def _generate_bank_pages():
                 {"title": "AI parses every transaction", "desc": f"Our AI engine reads your {bank['name']} statement and extracts dates, descriptions, amounts, and running balances with high accuracy."},
                 {"title": "Download your Excel file", "desc": "Get a formatted .xlsx spreadsheet with all transactions neatly organised. Ready to import into your accounting software."},
             ],
-            "detail_paragraph": bank["statement_notes"],
+            "detail_paragraph": (
+                f"{bank['statement_notes']} "
+                f"BankScan AI has been specifically trained on {bank['full_name']} statement layouts across all supported formats ({', '.join(bank['formats'])}), "
+                f"so it correctly handles the column alignment, date parsing, and transaction description extraction that generic PDF tools get wrong. "
+                f"Whether you are processing a single month or bulk-converting a year of {bank['name']} statements, every transaction is captured with over 99% accuracy."
+            ),
             "faqs": [
                 {"q": f"What {bank['name']} statement formats does BankScan AI support?", "a": f"BankScan AI supports {bank['name']} statements in {', '.join(bank['formats'])} format. Whether your client has downloaded the statement from online banking or scanned a paper copy, our AI engine can handle it."},
                 {"q": f"How accurate is the {bank['name']} statement conversion?", "a": f"BankScan AI achieves over 99% accuracy on {bank['name']} statements. Our AI is specifically trained on UK bank statement formats and understands {bank['name']}'s layout, date formats, and transaction descriptions."},
@@ -883,6 +888,11 @@ def _generate_profession_pages():
             "profession_slug": prof_slug,
             "intro": prof["pain_point"],
             "solution": prof["benefit"],
+            "detail_paragraph": (
+                f"For {prof['name'].lower()}, the core workflow challenge is not just reading bank statements — it is turning unstructured PDF data into actionable, "
+                f"organised records quickly enough to stay on top of deadlines. {prof['pain_point']} "
+                f"BankScan AI eliminates this bottleneck by handling the data extraction automatically, so {prof['name'].lower()} can focus on analysis, client advice, and compliance rather than manual data entry."
+            ),
             "steps": [
                 {"title": "Upload any bank statement PDF", "desc": "Supports all major UK banks — HSBC, Barclays, Lloyds, NatWest, Monzo, Santander, Revolut, and more."},
                 {"title": "AI extracts every transaction", "desc": "Our AI reads the PDF and pulls out dates, descriptions, amounts, and balances with over 99% accuracy."},
@@ -976,6 +986,11 @@ def _generate_software_pages():
             "software_slug": sw_slug,
             "intro": f"{sw['description']} But importing bank statements from PDF into {sw['name']} requires converting them to {sw['import_format']} first — and that's where BankScan AI comes in.",
             "solution": sw["import_notes"],
+            "detail_paragraph": (
+                f"Importing bank transactions into {sw['name']} typically involves downloading a {sw['import_format']} file from your bank's online portal — but many clients provide paper statements or PDF downloads that {sw['name']} cannot read directly. "
+                f"{sw['import_notes']} "
+                f"This means you spend less time reformatting spreadsheets and more time on the reconciliation and advisory work that actually matters to your clients."
+            ),
             "steps": [
                 {"title": "Upload your bank statement PDF", "desc": "Drag and drop any UK bank statement PDF into BankScan AI. Supports HSBC, Barclays, Lloyds, NatWest, Monzo, and 15+ more banks."},
                 {"title": "AI converts to the right format", "desc": f"Our AI extracts every transaction and formats the output as {sw['import_format']} — ready for {sw['name']}'s import feature."},
