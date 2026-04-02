@@ -1,7 +1,8 @@
 """
 PDF Bank Statement Parser
 Extracts transaction data from PDF bank statements using pdfplumber.
-Handles multiple common UK bank statement formats including HSBC.
+Handles multiple common UK and US bank statement formats including HSBC,
+Chase, Bank of America, Wells Fargo, and Citi.
 """
 
 import re
@@ -10,8 +11,9 @@ from typing import Optional
 import pdfplumber
 
 
-# Common date formats found in UK bank statements
-DATE_PATTERNS = [
+# Date formats — UK patterns first, US patterns second.
+# The detect_date_format() function auto-detects which locale to use.
+UK_DATE_PATTERNS = [
     (r"\d{2}/\d{2}/\d{4}", "%d/%m/%Y"),
     (r"\d{2}-\d{2}-\d{4}", "%d-%m-%Y"),
     (r"\d{2}\s\w{3}\s\d{4}", "%d %b %Y"),
@@ -20,8 +22,22 @@ DATE_PATTERNS = [
     (r"\d{2}/\d{2}/\d{2}", "%d/%m/%y"),
 ]
 
-# Regex for money amounts (UK format)
-MONEY_PATTERN = re.compile(r"[-]?\£?\s?[\d,]+\.\d{2}")
+US_DATE_PATTERNS = [
+    (r"\d{2}/\d{2}/\d{4}", "%m/%d/%Y"),
+    (r"\d{2}-\d{2}-\d{4}", "%m-%d-%Y"),
+    (r"\d{2}/\d{2}/\d{2}", "%m/%d/%y"),
+    (r"\d{2}/\d{2}", None),  # MM/DD short form (needs year from context)
+    (r"\w{3,9}\s+\d{1,2},?\s+\d{4}", None),  # "January 1, 2024" or "Jul 14, 2008"
+    (r"\d{1,2}/\d{1,2}", None),  # M/DD short form
+    (r"\d{4}-\d{2}-\d{2}", "%Y-%m-%d"),
+    (r"\d{2}\s\w{3}\s\d{4}", "%d %b %Y"),
+]
+
+# Combined default (UK first for backward compat)
+DATE_PATTERNS = UK_DATE_PATTERNS
+
+# Regex for money amounts (UK and US formats — matches £, $, or bare amounts)
+MONEY_PATTERN = re.compile(r"[-]?[£$]?\s?[\d,]+\.\d{2}")
 
 # HSBC payment type codes
 HSBC_PAYMENT_TYPES = {
@@ -80,14 +96,37 @@ HSBC_SKIP_PATTERNS = [
 ]
 
 
-def parse_date(text: str) -> Optional[str]:
-    """Try to extract a date from text using common bank statement formats."""
+def parse_date(text: str, locale: str = "uk", context_year: int = None) -> Optional[str]:
+    """Try to extract a date from text using common bank statement formats.
+    locale: 'uk' or 'us' — determines date parsing order.
+    context_year: fallback year for short-form dates like '07/02'.
+    """
     text = text.strip()
-    for pattern, fmt in DATE_PATTERNS:
+    patterns = US_DATE_PATTERNS if locale == "us" else UK_DATE_PATTERNS
+
+    for pattern, fmt in patterns:
         match = re.search(pattern, text)
         if match:
+            date_str = match.group()
             try:
-                dt = datetime.strptime(match.group(), fmt)
+                if fmt is None:
+                    # Handle "January 1, 2024" or "Jul 14, 2008" style
+                    for long_fmt in ["%B %d, %Y", "%B %d %Y", "%b %d, %Y", "%b %d %Y"]:
+                        try:
+                            dt = datetime.strptime(date_str.replace(",", ","), long_fmt)
+                            if 2000 <= dt.year <= 2040:
+                                return dt.strftime("%Y-%m-%d")
+                        except ValueError:
+                            continue
+                    # Handle short MM/DD with context year
+                    if context_year and re.match(r"^\d{1,2}/\d{1,2}$", date_str):
+                        try:
+                            dt = datetime.strptime(f"{date_str}/{context_year}", "%m/%d/%Y")
+                            return dt.strftime("%Y-%m-%d")
+                        except ValueError:
+                            pass
+                    continue
+                dt = datetime.strptime(date_str, fmt)
                 # Sanity check: bank statements should be recent
                 if dt.year < 2000 or dt.year > 2040:
                     continue
@@ -97,9 +136,33 @@ def parse_date(text: str) -> Optional[str]:
     return None
 
 
+def detect_date_format(full_text: str) -> str:
+    """Auto-detect whether a statement uses US or UK date format.
+    Returns 'us' or 'uk'."""
+    lower = full_text.lower()
+    # Explicit US bank markers
+    us_markers = [
+        "chase", "jpmorgan", "bank of america", "wells fargo", "citibank",
+        "citi ", "capital one", "us bank", "pnc bank", "td bank",
+        "fifth third", "regions bank", "truist", "ally bank",
+        "usaa", "navy federal", "baton rouge", "wilmington, de",
+        "tampa, fl", "sioux falls", "1-800-", "1-888-", "1-877-",
+        "checking summary", "savings summary", "routing number",
+    ]
+    if any(marker in lower for marker in us_markers):
+        return "us"
+    # Check for US-style dates like "January 1, 2024" or "07/02"
+    if re.search(r"(January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},?\s+\d{4}", full_text):
+        return "us"
+    # Check for dollar signs
+    if "$" in full_text and "£" not in full_text:
+        return "us"
+    return "uk"
+
+
 def clean_amount(text: str) -> Optional[float]:
     """Convert a money string to a float. Handles parenthetical negatives."""
-    text = text.strip().replace("£", "").replace(",", "").replace(" ", "")
+    text = text.strip().replace("£", "").replace("$", "").replace(",", "").replace(" ", "")
     # Handle parenthetical negatives: (100.00) → -100.00
     if text.startswith("(") and text.endswith(")"):
         text = "-" + text[1:-1]
@@ -361,7 +424,276 @@ def extract_hsbc_transactions(all_text: str) -> list[dict]:
     return transactions
 
 
-def extract_transactions_from_table(table: list[list]) -> list[dict]:
+# ==========================================================================
+# US Bank Statement Parsers
+# ==========================================================================
+
+# Skip patterns for US bank statements
+US_SKIP_PATTERNS = [
+    re.compile(r"(CHECKING|SAVINGS)\s*SUMMARY", re.IGNORECASE),
+    re.compile(r"(Beginning|Ending)\s*Balance", re.IGNORECASE),
+    re.compile(r"(Deposits|Withdrawals)\s*and\s*(Additions|Subtractions)", re.IGNORECASE),
+    re.compile(r"^(Total|Page)\s+\d", re.IGNORECASE),
+    re.compile(r"Customer Service|WebSite|www\.", re.IGNORECASE),
+    re.compile(r"Account\s*(Number|Summary|number)", re.IGNORECASE),
+    re.compile(r"^(INSTANCES|AMOUNT)$", re.IGNORECASE),
+    re.compile(r"^Downloaded from", re.IGNORECASE),
+    re.compile(r"^(DATE|DESCRIPTION|AMOUNT|BALANCE|DEPOSITS|CHECKS PAID)$", re.IGNORECASE),
+    re.compile(r"(Hearing Impaired|Para Espanol|International Calls)", re.IGNORECASE),
+    re.compile(r"(overdraft protection|minimum payment|late payment)", re.IGNORECASE),
+    re.compile(r"Service Center|Baton Rouge|P\.?\s*O\.?\s*Box", re.IGNORECASE),
+    re.compile(r"^\d+\s+of\s+\d+$", re.IGNORECASE),  # "1 of 4"
+    re.compile(r"^(PULL|SPEC|CYCLE|DELIVERY|TYPE|IMAGE|BC):", re.IGNORECASE),
+    re.compile(r"PULL:.*CYCLE:.*SPEC:", re.IGNORECASE),
+    re.compile(r"(Daily Balance|DAILY ENDING BALANCE|Average Balance|Interest\s*Charged|Interest\s*Rate)", re.IGNORECASE),
+    re.compile(r"SERVICE (CHARGE|FEE) (SUMMARY|CALCULATION)", re.IGNORECASE),
+    re.compile(r"(NUMBER OF|TRANSACTIONS FOR|Transaction Total|Net Service Fee|Total Service Fee|Excessive Transaction)", re.IGNORECASE),
+    re.compile(r"(Checks Paid.*Debits|Deposits.*Credits|Deposited Items)\s+\d", re.IGNORECASE),
+    re.compile(r"(This Page Intentionally Left Blank)", re.IGNORECASE),
+    re.compile(r"^(CHECK NUMBER|PAID AMOUNT)", re.IGNORECASE),
+    re.compile(r"(If you see a description|not the original|not able to return)", re.IGNORECASE),
+    re.compile(r"(An image of this check|may be available)", re.IGNORECASE),
+    re.compile(r"(Manage your account|Mobile:|Download the)", re.IGNORECASE),
+    re.compile(r"(REWARDS SUMMARY|Previous points|Points earned|Points available)", re.IGNORECASE),
+    re.compile(r"(Payment Due Date|Credit Limit|Available Credit|Cash Access)", re.IGNORECASE),
+    re.compile(r"(YOUR ACCOUNT MESSAGES|ACCOUNT SUMMARY)", re.IGNORECASE),
+    re.compile(r"(Previous Balance|New Balance|Past Due Amount|Balance over)", re.IGNORECASE),
+    re.compile(r"(Fees Charged|Interest Charged|Cash Advances|Balance Transfers)", re.IGNORECASE),
+    re.compile(r"(Opening/Closing Date|Payment, Credits|Purchases \+)", re.IGNORECASE),
+]
+
+
+def is_us_statement(full_text: str) -> bool:
+    """Detect if the text is from a US bank statement."""
+    return detect_date_format(full_text) == "us"
+
+
+def _extract_context_year(full_text: str) -> Optional[int]:
+    """Extract a year from statement header text for context."""
+    # Look for "July 1, 2008 through July 31, 2008" or "January 2019"
+    m = re.search(r"(January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{0,2},?\s*(\d{4})", full_text)
+    if m:
+        return int(m.group(2))
+    # Look for year like "2016" or "2019" near the top
+    m = re.search(r"\b(20\d{2})\b", full_text[:500])
+    if m:
+        return int(m.group(1))
+    return None
+
+
+def extract_us_transactions(all_text: str) -> list[dict]:
+    """Parse US bank statement text (Chase, BofA, JPMorgan, Wells Fargo, etc.)."""
+    transactions = []
+    lines = all_text.split("\n")
+    context_year = _extract_context_year(all_text)
+
+    # Detect if this is a Chase credit card (has different format)
+    is_credit_card = bool(re.search(r"(credit limit|previous balance|new balance.*\$)", all_text, re.IGNORECASE))
+
+    # Track which section we're in (deposits, withdrawals, checks, etc.)
+    current_section = None
+
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+
+        # Skip header/metadata lines
+        if any(p.search(line) for p in US_SKIP_PATTERNS):
+            continue
+
+        # Detect section headers — must NOT be followed by amounts (to avoid matching summary lines)
+        # e.g., "DEPOSITS AND ADDITIONS" is a header, but "Deposits and Additions 10 125,883.63" is a summary
+        section_match = re.match(
+            r"^(DEPOSITS AND ADDITIONS|CHECKS PAID|OTHER WITHDRAWALS[\w\s,&]*|"
+            r"ELECTRONIC WITHDRAWALS|ATM WITHDRAWALS|"
+            r"Deposits and other additions|Withdrawals and other subtractions|"
+            r"Service fees|TRANSACTION DETAIL|"
+            r"PURCHASE|PAYMENT AND OTHER CREDITS|FEES|"
+            r"DAILY ENDING BALANCE|SERVICE CHARGE SUMMARY|SERVICE FEE CALCULATION)\s*$",
+            line, re.IGNORECASE
+        )
+        if section_match:
+            section_text = section_match.group(1).lower()
+            if any(kw in section_text for kw in ["daily", "service charge", "service fee", "balance summary"]):
+                current_section = "skip"
+            elif any(kw in section_text for kw in ["deposit", "addition", "credit"]):
+                current_section = "credit"
+            else:
+                current_section = "debit"
+            continue
+
+        # Skip lines in non-transaction sections
+        if current_section == "skip":
+            continue
+
+        # Skip "Total" summary lines
+        if re.match(r"^Total\s+(Deposits|Withdrawals|Checks|Service)", line, re.IGNORECASE):
+            continue
+
+        # Skip daily balance lines: "07/02 $98,727.40 07/21 129,173.36"
+        if re.match(r"^\d{1,2}/\d{1,2}\s+\$?[\d,]+\.\d{2}\s+\d{1,2}/\d{1,2}\s+[\d,]+\.\d{2}", line):
+            continue
+        # Skip single-line balance entries after section header
+        if re.match(r"^\d{1,2}/\d{1,2}\s+[\d,]+\.\d{2}$", line):
+            continue
+
+        # Try to parse transaction lines
+        # Format 1: "MM/DD Description $Amount" or "MM/DD Description Amount"
+        tx_match = re.match(
+            r"^(\d{1,2}/\d{1,2}(?:/\d{2,4})?)\s+(.+?)\s+\$?([\d,]+\.\d{2})\s*$",
+            line
+        )
+        if tx_match:
+            date_str = tx_match.group(1)
+            desc = tx_match.group(2).strip()
+            amount_str = tx_match.group(3)
+
+            date_val = parse_date(date_str, locale="us", context_year=context_year)
+            amount = clean_amount(amount_str)
+            if date_val and amount is not None:
+                # Determine direction from section or description
+                is_debit = current_section == "debit"
+                if not current_section:
+                    # Guess from description keywords
+                    desc_lower = desc.lower()
+                    is_debit = any(kw in desc_lower for kw in [
+                        "withdrawal", "withdrwl", "payment", "purchase",
+                        "check", "fee", "debit", "atm",
+                    ])
+
+                final_amount = -abs(amount) if is_debit else abs(amount)
+                tx = {
+                    "date": date_val,
+                    "description": desc,
+                    "amount": final_amount,
+                    "debit": abs(amount) if is_debit else None,
+                    "credit": abs(amount) if not is_debit else None,
+                    "balance": None,
+                    "type": "debit" if is_debit else "credit",
+                }
+                transactions.append(tx)
+                continue
+
+        # Format 2: BofA-style "CHECKCARD MMDD Description STATE Amount"
+        bofa_match = re.match(
+            r"^(CHECKCARD|CHECK CARD|ACH|WIRE|ATM|PREAUTHORIZED)\s+(\d{4})\s+(.+?)\s+([\d,]+\.\d{2})\s*$",
+            line, re.IGNORECASE
+        )
+        if bofa_match and context_year:
+            tx_type = bofa_match.group(1)
+            mmdd = bofa_match.group(2)
+            desc = bofa_match.group(3).strip()
+            amount_str = bofa_match.group(4)
+
+            month = mmdd[:2]
+            day = mmdd[2:]
+            date_val = parse_date(f"{month}/{day}", locale="us", context_year=context_year)
+            amount = clean_amount(amount_str)
+            if date_val and amount is not None:
+                is_debit = current_section == "debit" or tx_type.upper() in ("CHECKCARD", "CHECK CARD", "ATM", "WIRE")
+                final_amount = -abs(amount) if is_debit else abs(amount)
+                tx = {
+                    "date": date_val,
+                    "description": f"{tx_type}: {desc}",
+                    "amount": final_amount,
+                    "debit": abs(amount) if is_debit else None,
+                    "credit": abs(amount) if not is_debit else None,
+                    "balance": None,
+                    "type": "debit" if is_debit else "credit",
+                }
+                transactions.append(tx)
+                continue
+
+        # Format 3: BofA detailed — lines starting with date description then amount on next area
+        bofa_detail = re.match(
+            r"^(\d{2}/\d{2}/\d{2,4})\s+(.+?)\s+(-?[\d,]+\.\d{2})\s*$",
+            line
+        )
+        if bofa_detail:
+            date_str = bofa_detail.group(1)
+            desc = bofa_detail.group(2).strip()
+            amount_str = bofa_detail.group(3)
+
+            date_val = parse_date(date_str, locale="us", context_year=context_year)
+            amount = clean_amount(amount_str)
+            if date_val and amount is not None:
+                is_debit = current_section == "debit" or amount < 0
+                if not current_section and amount > 0:
+                    desc_lower = desc.lower()
+                    is_debit = any(kw in desc_lower for kw in [
+                        "withdrawal", "withdrwl", "payment", "purchase",
+                        "check", "fee", "debit", "atm", "checkcard",
+                    ])
+                final_amount = -abs(amount) if is_debit else abs(amount)
+                tx = {
+                    "date": date_val,
+                    "description": desc,
+                    "amount": final_amount,
+                    "debit": abs(amount) if is_debit else None,
+                    "credit": abs(amount) if not is_debit else None,
+                    "balance": None,
+                    "type": "debit" if is_debit else "credit",
+                }
+                transactions.append(tx)
+                continue
+
+        # Format 4: Check format "XXXX ^ MM/DD $Amount"
+        check_match = re.match(
+            r"^(XXXX|\d{4})\s*\^?\s*(\d{1,2}/\d{1,2}(?:/\d{2,4})?)\s+\$?([\d,]+\.\d{2})\s*$",
+            line
+        )
+        if check_match and context_year:
+            check_num = check_match.group(1)
+            date_str = check_match.group(2)
+            amount_str = check_match.group(3)
+
+            date_val = parse_date(date_str, locale="us", context_year=context_year)
+            amount = clean_amount(amount_str)
+            if date_val and amount is not None:
+                tx = {
+                    "date": date_val,
+                    "description": f"Check #{check_num}",
+                    "amount": -abs(amount),
+                    "debit": abs(amount),
+                    "credit": None,
+                    "balance": None,
+                    "type": "debit",
+                }
+                transactions.append(tx)
+                continue
+
+        # Format 5: Simple "Date Description $Amount" with dollar sign
+        dollar_match = re.match(
+            r"^(\d{1,2}/\d{1,2}(?:/\d{2,4})?)\s+(.+?)\s+\$([\d,]+\.\d{2})\s*$",
+            line
+        )
+        if dollar_match:
+            date_str = dollar_match.group(1)
+            desc = dollar_match.group(2).strip()
+            amount_str = dollar_match.group(3)
+
+            date_val = parse_date(date_str, locale="us", context_year=context_year)
+            amount = clean_amount(amount_str)
+            if date_val and amount is not None:
+                is_debit = current_section == "debit"
+                final_amount = -abs(amount) if is_debit else abs(amount)
+                tx = {
+                    "date": date_val,
+                    "description": desc,
+                    "amount": final_amount,
+                    "debit": abs(amount) if is_debit else None,
+                    "credit": abs(amount) if not is_debit else None,
+                    "balance": None,
+                    "type": "debit" if is_debit else "credit",
+                }
+                transactions.append(tx)
+                continue
+
+    return transactions
+
+
+def extract_transactions_from_table(table: list[list], locale: str = "uk") -> list[dict]:
     """Extract transactions from a pdfplumber table."""
     transactions = []
 
@@ -396,7 +728,7 @@ def extract_transactions_from_table(table: list[list]) -> list[dict]:
     if date_col is None:
         # Assume first column with dates is date, next is description
         for i, cell in enumerate(table[1] if len(table) > 1 else []):
-            if cell and parse_date(str(cell)):
+            if cell and parse_date(str(cell), locale=locale):
                 date_col = i
                 break
 
@@ -410,7 +742,7 @@ def extract_transactions_from_table(table: list[list]) -> list[dict]:
         if not row or all(cell is None or str(cell).strip() == "" for cell in row):
             continue
 
-        date_val = parse_date(str(row[date_col])) if date_col < len(row) and row[date_col] else None
+        date_val = parse_date(str(row[date_col]), locale=locale) if date_col < len(row) and row[date_col] else None
         if not date_val:
             continue  # Skip rows without a valid date
 
@@ -464,7 +796,7 @@ def extract_transactions_from_table(table: list[list]) -> list[dict]:
     return transactions
 
 
-def extract_transactions_from_text(text: str) -> list[dict]:
+def extract_transactions_from_text(text: str, locale: str = "uk") -> list[dict]:
     """Fallback: extract transactions from raw text when tables aren't detected."""
     transactions = []
     lines = text.split("\n")
@@ -474,7 +806,7 @@ def extract_transactions_from_text(text: str) -> list[dict]:
         if not line:
             continue
 
-        date_val = parse_date(line)
+        date_val = parse_date(line, locale=locale)
         if not date_val:
             continue
 
@@ -512,11 +844,13 @@ def parse_pdf(file_path: str) -> dict:
     """
     Main entry point: parse a PDF bank statement and return structured data.
     Returns dict with 'transactions' list, 'summary', and 'metadata'.
+    Auto-detects UK vs US format.
     """
     all_transactions = []
     metadata = {
         "pages": 0,
         "method": "unknown",
+        "locale": "unknown",
     }
 
     with pdfplumber.open(file_path) as pdf:
@@ -529,24 +863,47 @@ def parse_pdf(file_path: str) -> dict:
             if text:
                 full_text += text + "\n"
 
-        # Check for HSBC format
+        # Auto-detect locale
+        locale = detect_date_format(full_text)
+        metadata["locale"] = locale
+
+        # Check for HSBC format (UK)
         if is_hsbc_statement(full_text):
             metadata["method"] = "hsbc_text"
             all_transactions = extract_hsbc_transactions(full_text)
+
+        # Check for US bank format
+        elif is_us_statement(full_text):
+            metadata["method"] = "us_text"
+            all_transactions = extract_us_transactions(full_text)
+
+            # If US text parser didn't find much, try table extraction
+            if len(all_transactions) < 3:
+                for page in pdf.pages:
+                    tables = page.extract_tables()
+                    if tables:
+                        for table in tables:
+                            txs = extract_transactions_from_table(table, locale="us")
+                            if txs:
+                                all_transactions = txs
+                                metadata["method"] = "us_table"
+                                break
+                    if metadata["method"] == "us_table":
+                        break
         else:
-            # Try table extraction first (most reliable)
+            # UK/generic: try table extraction first (most reliable)
             for page in pdf.pages:
                 tables = page.extract_tables()
                 if tables:
                     metadata["method"] = "table"
                     for table in tables:
-                        txs = extract_transactions_from_table(table)
+                        txs = extract_transactions_from_table(table, locale=locale)
                         all_transactions.extend(txs)
 
             # Fallback to text extraction
             if not all_transactions and full_text:
                 metadata["method"] = "text"
-                all_transactions = extract_transactions_from_text(full_text)
+                all_transactions = extract_transactions_from_text(full_text, locale=locale)
 
     # Sort by date
     all_transactions.sort(key=lambda x: x["date"])

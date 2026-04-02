@@ -19,28 +19,28 @@ PLANS = {
     "starter": {
         "name": "BankScan AI Starter",
         "description": "120 statements/mo, 500 receipts/mo, bulk upload (5 files), AI parsing, auto-insights, pre-built reports.",
-        "price_gbp": 799,  # £7.99 in pence
+        "price_usd": 999,  # $9.99 in cents
         "stripe_price_id": "price_1TECfoLniIk7TL9BGPes3d0Q",
         "lookup_key": "bankscan_starter_monthly",
     },
     "pro": {
         "name": "BankScan AI Pro",
         "description": "300 statements/mo, 1,500 receipts/mo, bulk upload (20 files), AI parsing, auto-insights, pre-built reports.",
-        "price_gbp": 2499,  # £24.99 in pence
+        "price_usd": 2499,  # $24.99 in cents
         "stripe_price_id": "price_1TECfoLniIk7TL9BA79kuFas",
         "lookup_key": "bankscan_pro_monthly",
     },
     "business": {
         "name": "BankScan AI Business",
         "description": "840 statements/mo, 5,000 receipts/mo, bulk upload (50 files), AI parsing, auto-insights, reports, AI Chat (50/day).",
-        "price_gbp": 5999,  # £59.99 in pence
+        "price_usd": 5999,  # $59.99 in cents
         "stripe_price_id": "price_1TECfoLniIk7TL9BYNENKkva",
         "lookup_key": "bankscan_business_monthly",
     },
     "enterprise": {
         "name": "BankScan AI Enterprise",
         "description": "Unlimited statements & receipts, bulk upload (100 files), AI parsing, auto-insights, reports, unlimited AI Chat.",
-        "price_gbp": 14900,  # £149 in pence
+        "price_usd": 14900,  # $149 in cents
         "stripe_price_id": "price_1TECfpLniIk7TL9Bvd78vTgy",
         "lookup_key": "bankscan_enterprise_monthly",
     },
@@ -79,8 +79,8 @@ def create_products_and_prices():
         else:
             price = stripe.Price.create(
                 product=product.id,
-                unit_amount=plan["price_gbp"],
-                currency="gbp",
+                unit_amount=plan["price_usd"],
+                currency="usd",
                 recurring={"interval": "month"},
                 lookup_key=plan["lookup_key"],
             )

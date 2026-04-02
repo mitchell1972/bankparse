@@ -752,7 +752,7 @@
             <div class="paywall-plans">
                 <div class="plan-card">
                     <div class="plan-name">Starter</div>
-                    <div class="plan-price">&pound;7.99 <span>/month</span></div>
+                    <div class="plan-price">$9.99 <span>/month</span></div>
                     <p style="font-size:0.75rem; color:var(--muted); margin-bottom:0.5rem;">5-10 clients</p>
                     <ul>
                         <li class="yes">120 statements/month</li>
@@ -766,7 +766,7 @@
                 </div>
                 <div class="plan-card popular">
                     <div class="plan-name">Pro</div>
-                    <div class="plan-price">&pound;24.99 <span>/month</span></div>
+                    <div class="plan-price">$24.99 <span>/month</span></div>
                     <p style="font-size:0.75rem; color:var(--muted); margin-bottom:0.5rem;">11-25 clients</p>
                     <ul>
                         <li class="yes">300 statements/month</li>
@@ -780,7 +780,7 @@
                 </div>
                 <div class="plan-card">
                     <div class="plan-name">Business</div>
-                    <div class="plan-price">&pound;59.99 <span>/month</span></div>
+                    <div class="plan-price">$59.99 <span>/month</span></div>
                     <p style="font-size:0.75rem; color:var(--muted); margin-bottom:0.5rem;">26-70 clients</p>
                     <ul>
                         <li class="yes">840 statements/month</li>
@@ -794,7 +794,7 @@
                 </div>
                 <div class="plan-card best-value">
                     <div class="plan-name">Enterprise</div>
-                    <div class="plan-price">&pound;149 <span>/month</span></div>
+                    <div class="plan-price">$149 <span>/month</span></div>
                     <p style="font-size:0.75rem; color:var(--muted); margin-bottom:0.5rem;">71-1,000 clients</p>
                     <ul>
                         <li class="yes">Unlimited statements</li>
@@ -894,15 +894,15 @@
                     <div class="label">Transactions</div>
                 </div>
                 <div class="stat credit">
-                    <div class="value" id="statCredits">£0.00</div>
+                    <div class="value" id="statCredits">$0.00</div>
                     <div class="label">Money In</div>
                 </div>
                 <div class="stat debit">
-                    <div class="value" id="statDebits">£0.00</div>
+                    <div class="value" id="statDebits">$0.00</div>
                     <div class="label">Money Out</div>
                 </div>
                 <div class="stat">
-                    <div class="value" id="statNet">£0.00</div>
+                    <div class="value" id="statNet">$0.00</div>
                     <div class="label">Net</div>
                 </div>
             </div>
@@ -949,7 +949,7 @@
                     <div class="label">Items</div>
                 </div>
                 <div class="stat debit">
-                    <div class="value" id="receiptTotal">£0.00</div>
+                    <div class="value" id="receiptTotal">$0.00</div>
                     <div class="label">Total</div>
                 </div>
             </div>
@@ -996,7 +996,7 @@
                     <div class="label">Items Found</div>
                 </div>
                 <div class="stat debit">
-                    <div class="value" id="bulkGrandTotal">£0.00</div>
+                    <div class="value" id="bulkGrandTotal">$0.00</div>
                     <div class="label">Grand Total</div>
                 </div>
             </div>
@@ -1055,18 +1055,18 @@
                     <div class="label">Transactions</div>
                 </div>
                 <div class="stat debit">
-                    <div class="value" id="bulkNet">£0.00</div>
+                    <div class="value" id="bulkNet">$0.00</div>
                     <div class="label">Net</div>
                 </div>
             </div>
 
             <div class="stat-grid" style="grid-template-columns: 1fr 1fr; margin-bottom: 1rem;">
                 <div class="stat credit">
-                    <div class="value" id="bulkCredits">£0.00</div>
+                    <div class="value" id="bulkCredits">$0.00</div>
                     <div class="label">Total Credits</div>
                 </div>
                 <div class="stat debit">
-                    <div class="value" id="bulkDebits">£0.00</div>
+                    <div class="value" id="bulkDebits">$0.00</div>
                     <div class="label">Total Debits</div>
                 </div>
             </div>
@@ -1543,7 +1543,7 @@
     }
 
     function formatCurrency(amount) {
-        return '£' + Math.abs(amount).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        return '$' + Math.abs(amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     }
 
     const IMAGE_EXTS = ['png','jpg','jpeg','tiff','tif','bmp','webp','heic','heif'];

@@ -4,10 +4,10 @@
 # Sets Vercel environment variables for the 4-tier pricing.
 #
 # Stripe prices are already created:
-#   Starter:    price_1TECfoLniIk7TL9BGPes3d0Q  (£7.99/mo)
-#   Pro:        price_1TECfoLniIk7TL9BA79kuFas  (£24.99/mo)
-#   Business:   price_1TECfoLniIk7TL9BYNENKkva  (£59.99/mo)
-#   Enterprise: price_1TECfpLniIk7TL9Bvd78vTgy  (£149/mo)
+#   Starter:    price_1TECfoLniIk7TL9BGPes3d0Q  ($9.99/mo)
+#   Pro:        price_1TECfoLniIk7TL9BA79kuFas  ($24.99/mo)
+#   Business:   price_1TECfoLniIk7TL9BYNENKkva  ($59.99/mo)
+#   Enterprise: price_1TECfpLniIk7TL9Bvd78vTgy  ($149/mo)
 #
 # Usage:
 #   export STRIPE_SECRET_KEY=sk_test_xxx   (from dashboard.stripe.com/apikeys)
@@ -42,10 +42,10 @@ echo "============================================================"
 echo "  BANKSCAN AI — STRIPE PRICING"
 echo "============================================================"
 echo ""
-echo "  Starter:    $STARTER_PRICE (£7.99/mo — 120 statements, 500 receipts)"
-echo "  Pro:        $PRO_PRICE (£24.99/mo — 300 statements, 1,500 receipts)"
-echo "  Business:   $BIZ_PRICE (£59.99/mo — 840 statements, 5,000 receipts)"
-echo "  Enterprise: $ENT_PRICE (£149/mo — unlimited)"
+echo "  Starter:    $STARTER_PRICE (\$9.99/mo — 120 statements, 500 receipts)"
+echo "  Pro:        $PRO_PRICE (\$24.99/mo — 300 statements, 1,500 receipts)"
+echo "  Business:   $BIZ_PRICE (\$59.99/mo — 840 statements, 5,000 receipts)"
+echo "  Enterprise: $ENT_PRICE (\$149/mo — unlimited)"
 echo ""
 
 # Set Vercel env vars
