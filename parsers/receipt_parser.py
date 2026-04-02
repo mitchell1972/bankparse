@@ -212,6 +212,17 @@ def parse_receipt_text(text: str) -> dict:
     if "total" not in totals and items:
         totals["total"] = round(sum(i["total_price"] for i in items), 2)
 
+    # Auto-detect currency
+    dollar_count = text.count("$")
+    pound_count = text.count("£")
+    euro_count = text.count("€")
+    if dollar_count > pound_count and dollar_count > euro_count:
+        currency = "USD"
+    elif euro_count > pound_count:
+        currency = "EUR"
+    else:
+        currency = "GBP"
+
     return {
         "items": items,
         "totals": totals,
@@ -219,7 +230,7 @@ def parse_receipt_text(text: str) -> dict:
             "store_name": store_name,
             "date": receipt_date,  # None if no date found; callers should handle gracefully
             "item_count": len(items),
-            "currency": "GBP",
+            "currency": currency,
         },
     }
 
