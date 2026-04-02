@@ -323,3 +323,39 @@ def test_config_endpoint(client):
     data = response.json()
     assert "plans" in data
     assert "stripe_publishable_key" in data
+
+
+# ── Admin users endpoint tests ────────────────────────────────────────
+
+def test_admin_users_unauthenticated(client):
+    """Should reject unauthenticated requests."""
+    response = client.get("/api/admin/users")
+    assert response.status_code == 401
+
+
+def test_admin_users_non_admin(client):
+    """Should reject non-admin authenticated users."""
+    with patch("app.get_current_user", return_value={"id": 99, "email": "regular@example.com"}):
+        response = client.get("/api/admin/users")
+        assert response.status_code == 403
+
+
+def test_admin_users_returns_all_users(client):
+    """Admin should see all registered users."""
+    mock_users = [
+        {"id": 1, "email": "a@example.com", "subscription_status": "active", "stripe_customer_id": "cus_1", "created_at": 1700000000},
+        {"id": 2, "email": "b@example.com", "subscription_status": None, "stripe_customer_id": None, "created_at": 1700000001},
+        {"id": 3, "email": "c@example.com", "subscription_status": None, "stripe_customer_id": None, "created_at": 1700000002},
+    ]
+
+    with patch("app.get_current_user", return_value={"id": 1, "email": "mitchell_agoma@yahoo.co.uk"}), \
+         patch("app._fetchall_dicts", return_value=mock_users):
+        response = client.get("/api/admin/users")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["total_users"] == 3
+        assert len(data["users"]) == 3
+        user = data["users"][0]
+        assert "email" in user
+        assert "subscription_status" in user
+        assert "created_at" in user

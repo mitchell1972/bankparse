@@ -1087,6 +1087,28 @@ async def admin_subscribers(request: Request):
     })
 
 
+@app.get("/api/admin/users")
+async def admin_users(request: Request):
+    """Admin-only endpoint to list all registered users."""
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required.")
+
+    email = (user.get("email") or "").lower()
+    if email not in UNLIMITED_EMAILS:
+        raise HTTPException(status_code=403, detail="Admin access required.")
+
+    users = _fetchall_dicts(
+        "SELECT id, email, subscription_status, stripe_customer_id, created_at "
+        "FROM users ORDER BY created_at DESC"
+    )
+
+    return JSONResponse({
+        "total_users": len(users),
+        "users": users,
+    })
+
+
 @app.get("/api/config")
 async def get_config():
     return JSONResponse({
