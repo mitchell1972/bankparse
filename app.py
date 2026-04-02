@@ -163,7 +163,7 @@ async def login_page(request: Request):
     user = get_current_user(request)
     if user:
         return RedirectResponse(url="/", status_code=302)
-    return templates.TemplateResponse("login.html", {"request": request})
+    return templates.TemplateResponse(request, "login.html")
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -171,12 +171,12 @@ async def home(request: Request):
     user = get_current_user(request)
     if not user:
         return RedirectResponse(url="/landing", status_code=302)
-    return templates.TemplateResponse("index.html", {"request": request})
+    return templates.TemplateResponse(request, "index.html")
 
 
 @app.get("/landing", response_class=HTMLResponse)
 async def landing(request: Request):
-    return templates.TemplateResponse("landing.html", {"request": request})
+    return templates.TemplateResponse(request, "landing.html")
 
 
 # ==========================================================================
@@ -1131,7 +1131,7 @@ async def blog_index(request: Request):
         {"slug": slug, **data}
         for slug, data in sorted(BLOG_POSTS.items(), key=lambda x: x[1]["date"], reverse=True)
     ]
-    response = templates.TemplateResponse("blog/index.html", {"request": request, "posts": posts})
+    response = templates.TemplateResponse(request, "blog/index.html", {"posts": posts})
     response.headers["Cache-Control"] = "public, max-age=3600, s-maxage=3600"
     return response
 
@@ -1142,7 +1142,7 @@ async def blog_post(request: Request, slug: str):
     if slug not in BLOG_POSTS:
         raise HTTPException(status_code=404, detail="Blog post not found")
     post = BLOG_POSTS[slug]
-    response = templates.TemplateResponse(post["template"], {"request": request, "post": post, "slug": slug})
+    response = templates.TemplateResponse(request, post["template"], {"post": post, "slug": slug})
     response.headers["Cache-Control"] = "public, max-age=86400, s-maxage=86400"
     return response
 
@@ -1367,8 +1367,7 @@ async def tools_index(request: Request):
     sw_uc_pages = [(s, p) for s, p in sorted(SEO_PAGES.items()) if p["type"] == "software_usecase"]
     bank_prof_fmt_pages = [(s, p) for s, p in sorted(SEO_PAGES.items()) if p["type"] == "bank_profession_format"]
     prof_fmt_pages = [(s, p) for s, p in sorted(SEO_PAGES.items()) if p["type"] == "profession_format"]
-    response = templates.TemplateResponse("tools/index.html", {
-        "request": request,
+    response = templates.TemplateResponse(request, "tools/index.html", {
         "bank_pages": bank_pages,
         "profession_pages": profession_pages,
         "receipt_pages": receipt_pages,
@@ -1402,8 +1401,7 @@ async def tools_seo_page(request: Request, slug: str):
         if p["type"] == page["type"] and s != slug
     ][:3]
 
-    response = templates.TemplateResponse("tools/seo_page.html", {
-        "request": request,
+    response = templates.TemplateResponse(request, "tools/seo_page.html", {
         "page": page,
         "slug": slug,
         "related_pages": related_pages,
