@@ -98,6 +98,8 @@ LANDING_PATH = Path(__file__).parent.parent / "templates" / "landing.html"
 LANDING_HTML = LANDING_PATH.read_text() if LANDING_PATH.exists() else TEMPLATE_HTML
 LOGIN_PATH = Path(__file__).parent.parent / "templates" / "login.html"
 LOGIN_HTML = LOGIN_PATH.read_text() if LOGIN_PATH.exists() else ""
+ADMIN_PATH = Path(__file__).parent.parent / "templates" / "admin.html"
+ADMIN_HTML = ADMIN_PATH.read_text() if ADMIN_PATH.exists() else ""
 
 # Jinja2 for tools templates
 from jinja2 import Environment, FileSystemLoader
@@ -159,6 +161,18 @@ async def home(request: Request):
 @app.get("/landing", response_class=HTMLResponse)
 async def landing():
     return HTMLResponse(LANDING_HTML)
+
+
+@app.get("/admin", response_class=HTMLResponse)
+async def admin_page(request: Request):
+    """Admin dashboard — restricted to UNLIMITED_EMAILS."""
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+    email = (user.get("email") or "").lower()
+    if email not in UNLIMITED_EMAILS:
+        return RedirectResponse(url="/", status_code=302)
+    return HTMLResponse(ADMIN_HTML)
 
 
 # ==========================================================================

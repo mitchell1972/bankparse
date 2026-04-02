@@ -359,3 +359,28 @@ def test_admin_users_returns_all_users(client):
         assert "email" in user
         assert "subscription_status" in user
         assert "created_at" in user
+
+
+# ── Admin page route tests ────────────────────────────────────────────
+
+def test_admin_page_unauthenticated(client):
+    """Should redirect to login when not authenticated."""
+    response = client.get("/admin", follow_redirects=False)
+    assert response.status_code == 302
+    assert "/login" in response.headers["location"]
+
+
+def test_admin_page_non_admin(client):
+    """Should redirect to home for non-admin users."""
+    with patch("app.get_current_user", return_value={"id": 99, "email": "regular@example.com"}):
+        response = client.get("/admin", follow_redirects=False)
+        assert response.status_code == 302
+        assert response.headers["location"] == "/"
+
+
+def test_admin_page_renders_for_admin(client):
+    """Should render the admin dashboard for admin users."""
+    with patch("app.get_current_user", return_value={"id": 1, "email": "mitchell_agoma@yahoo.co.uk"}):
+        response = client.get("/admin")
+        assert response.status_code == 200
+        assert "Admin Dashboard" in response.text

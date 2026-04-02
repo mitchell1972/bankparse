@@ -179,6 +179,18 @@ async def landing(request: Request):
     return templates.TemplateResponse("landing.html", {"request": request})
 
 
+@app.get("/admin", response_class=HTMLResponse)
+async def admin_page(request: Request):
+    """Admin dashboard — restricted to UNLIMITED_EMAILS."""
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+    email = (user.get("email") or "").lower()
+    if email not in UNLIMITED_EMAILS:
+        return RedirectResponse(url="/", status_code=302)
+    return templates.TemplateResponse("admin.html", {"request": request})
+
+
 # ==========================================================================
 # Auth API — register, login, logout
 # ==========================================================================

@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BankScan AI — Admin Dashboard</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        :root {
+            --primary: #1B4F72;
+            --primary-light: #2E86C1;
+            --accent: #27AE60;
+            --danger: #E74C3C;
+            --bg: #F8F9FA;
+            --card: #FFFFFF;
+            --text: #2C3E50;
+            --muted: #7F8C8D;
+            --border: #E5E7EB;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+        }
+
+        .header {
+            background: linear-gradient(135deg, var(--primary), var(--primary-light));
+            color: white;
+            padding: 2rem 1rem;
+            text-align: center;
+            position: relative;
+        }
+        .header h1 { font-size: 2rem; margin-bottom: 0.5rem; }
+        .header p { opacity: 0.9; font-size: 1.05rem; }
+        .header-nav {
+            position: absolute; top: 1rem; right: 1rem;
+            display: flex; align-items: center; gap: 0.5rem;
+        }
+        .header-nav a, .header-nav button {
+            background: rgba(255,255,255,0.2);
+            border: 1px solid rgba(255,255,255,0.4);
+            color: white;
+            padding: 0.4rem 1rem;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            text-decoration: none;
+        }
+        .header-nav a:hover, .header-nav button:hover {
+            background: rgba(255,255,255,0.3);
+        }
+
+        .container {
+            max-width: 960px;
+            margin: -1rem auto 2rem;
+            padding: 0 1rem;
+        }
+
+        .card {
+            background: var(--card);
+            border-radius: 12px;
+            box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+            padding: 2rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .stats-row {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+            flex-wrap: wrap;
+        }
+        .stat-card {
+            flex: 1;
+            min-width: 140px;
+            background: var(--card);
+            border-radius: 12px;
+            box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+            padding: 1.5rem;
+            text-align: center;
+        }
+        .stat-card .stat-value {
+            font-size: 2.2rem;
+            font-weight: 700;
+            color: var(--primary);
+        }
+        .stat-card .stat-label {
+            font-size: 0.85rem;
+            color: var(--muted);
+            margin-top: 0.25rem;
+        }
+        .stat-card.accent .stat-value { color: var(--accent); }
+        .stat-card.danger .stat-value { color: var(--danger); }
+
+        .tab-bar {
+            display: flex;
+            background: var(--bg);
+            border-radius: 10px;
+            padding: 4px;
+            margin-bottom: 1.5rem;
+        }
+        .tab-bar button {
+            flex: 1;
+            padding: 0.6rem;
+            border: none;
+            background: transparent;
+            border-radius: 8px;
+            font-size: 0.95rem;
+            cursor: pointer;
+            color: var(--muted);
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+        .tab-bar button.active {
+            background: white;
+            color: var(--primary);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        }
+
+        .search-box {
+            width: 100%;
+            padding: 0.7rem 1rem;
+            border: 2px solid var(--border);
+            border-radius: 8px;
+            font-size: 0.95rem;
+            margin-bottom: 1rem;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        .search-box:focus { border-color: var(--primary-light); }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9rem;
+        }
+        th {
+            text-align: left;
+            padding: 0.75rem 0.5rem;
+            border-bottom: 2px solid var(--border);
+            color: var(--muted);
+            font-weight: 600;
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            cursor: pointer;
+            user-select: none;
+        }
+        th:hover { color: var(--primary); }
+        th .sort-arrow { font-size: 0.7rem; margin-left: 4px; }
+        td {
+            padding: 0.65rem 0.5rem;
+            border-bottom: 1px solid var(--border);
+        }
+        tr:hover td { background: #F0F7FC; }
+
+        .status-badge {
+            display: inline-block;
+            padding: 0.2rem 0.6rem;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+        .status-active { background: #D5F5E3; color: #1E8449; }
+        .status-trialing { background: #D6EAF8; color: #2471A3; }
+        .status-cancelled { background: #FADBD8; color: #C0392B; }
+        .status-past_due { background: #FDEBD0; color: #D68910; }
+        .status-free { background: #EAECEE; color: #5D6D7E; }
+
+        .empty-state {
+            text-align: center;
+            padding: 3rem;
+            color: var(--muted);
+        }
+
+        .loading {
+            text-align: center;
+            padding: 3rem;
+            color: var(--muted);
+        }
+        .loading::after {
+            content: '';
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 2px solid var(--border);
+            border-top-color: var(--primary);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin-left: 0.5rem;
+            vertical-align: middle;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .export-btn {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 0.5rem 1.2rem;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            cursor: pointer;
+            float: right;
+            margin-bottom: 1rem;
+        }
+        .export-btn:hover { background: var(--primary-light); }
+
+        @media (max-width: 600px) {
+            .stats-row { flex-direction: column; }
+            table { font-size: 0.8rem; }
+            td, th { padding: 0.5rem 0.3rem; }
+            .container { padding: 0 0.5rem; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <div class="header-nav">
+        <a href="/">Back to App</a>
+        <button onclick="logout()">Logout</button>
+    </div>
+    <h1>Admin Dashboard</h1>
+    <p>BankScan AI user and subscriber overview</p>
+</div>
+
+<div class="container">
+    <div id="loadingState" class="loading">Loading dashboard data</div>
+
+    <div id="dashboard" style="display:none;">
+        <div class="stats-row" id="statsRow"></div>
+
+        <div class="card">
+            <div class="tab-bar">
+                <button class="active" onclick="switchTab('all')">All Users</button>
+                <button onclick="switchTab('subscribers')">Subscribers</button>
+                <button onclick="switchTab('free')">Free Users</button>
+            </div>
+
+            <input type="text" class="search-box" id="searchBox" placeholder="Search by email...">
+
+            <button class="export-btn" onclick="exportCSV()">Export CSV</button>
+            <div style="clear:both;"></div>
+
+            <div id="tableContainer"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let allUsers = [];
+    let subscribers = [];
+    let currentTab = 'all';
+    let sortCol = 'created_at';
+    let sortAsc = false;
+
+    async function loadData() {
+        try {
+            const res = await fetch('/api/admin/users');
+            if (res.status === 401) { window.location.href = '/login'; return; }
+            if (res.status === 403) { document.getElementById('loadingState').textContent = 'Admin access required.'; return; }
+            const data = await res.json();
+            allUsers = data.users || [];
+            subscribers = allUsers.filter(u => u.subscription_status === 'active' || u.subscription_status === 'trialing');
+
+            renderStats();
+            renderTable();
+
+            document.getElementById('loadingState').style.display = 'none';
+            document.getElementById('dashboard').style.display = 'block';
+        } catch (err) {
+            document.getElementById('loadingState').textContent = 'Failed to load data.';
+        }
+    }
+
+    function renderStats() {
+        const freeCount = allUsers.filter(u => !u.subscription_status || u.subscription_status === 'cancelled').length;
+        const activeCount = subscribers.length;
+        const now = Date.now() / 1000;
+        const recentCount = allUsers.filter(u => u.created_at && (now - u.created_at) < 7 * 86400).length;
+
+        document.getElementById('statsRow').innerHTML = `
+            <div class="stat-card">
+                <div class="stat-value">${allUsers.length}</div>
+                <div class="stat-label">Total Users</div>
+            </div>
+            <div class="stat-card accent">
+                <div class="stat-value">${activeCount}</div>
+                <div class="stat-label">Active Subscribers</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">${freeCount}</div>
+                <div class="stat-label">Free Users</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">${recentCount}</div>
+                <div class="stat-label">Signed Up (7d)</div>
+            </div>
+        `;
+    }
+
+    function getFilteredUsers() {
+        const query = document.getElementById('searchBox').value.toLowerCase();
+        let list = currentTab === 'subscribers'
+            ? subscribers
+            : currentTab === 'free'
+                ? allUsers.filter(u => !u.subscription_status || u.subscription_status === 'cancelled')
+                : allUsers;
+        if (query) list = list.filter(u => (u.email || '').toLowerCase().includes(query));
+
+        list.sort((a, b) => {
+            let va = a[sortCol], vb = b[sortCol];
+            if (va == null) va = '';
+            if (vb == null) vb = '';
+            if (typeof va === 'string') va = va.toLowerCase();
+            if (typeof vb === 'string') vb = vb.toLowerCase();
+            if (va < vb) return sortAsc ? -1 : 1;
+            if (va > vb) return sortAsc ? 1 : -1;
+            return 0;
+        });
+        return list;
+    }
+
+    function renderTable() {
+        const users = getFilteredUsers();
+        if (users.length === 0) {
+            document.getElementById('tableContainer').innerHTML = '<div class="empty-state">No users found.</div>';
+            return;
+        }
+
+        const arrow = col => col === sortCol ? `<span class="sort-arrow">${sortAsc ? '&#9650;' : '&#9660;'}</span>` : '';
+
+        let html = `<table>
+            <thead><tr>
+                <th onclick="sortBy('id')"># ${arrow('id')}</th>
+                <th onclick="sortBy('email')">Email ${arrow('email')}</th>
+                <th onclick="sortBy('subscription_status')">Status ${arrow('subscription_status')}</th>
+                <th onclick="sortBy('created_at')">Signed Up ${arrow('created_at')}</th>
+            </tr></thead><tbody>`;
+
+        for (const u of users) {
+            const status = u.subscription_status || 'free';
+            const date = u.created_at ? new Date(u.created_at * 1000).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '-';
+            html += `<tr>
+                <td>${u.id}</td>
+                <td>${escapeHtml(u.email)}</td>
+                <td><span class="status-badge status-${status}">${status}</span></td>
+                <td>${date}</td>
+            </tr>`;
+        }
+        html += '</tbody></table>';
+        document.getElementById('tableContainer').innerHTML = html;
+    }
+
+    function switchTab(tab) {
+        currentTab = tab;
+        document.querySelectorAll('.tab-bar button').forEach((btn, i) => {
+            btn.classList.toggle('active', ['all','subscribers','free'][i] === tab);
+        });
+        renderTable();
+    }
+
+    function sortBy(col) {
+        if (sortCol === col) { sortAsc = !sortAsc; }
+        else { sortCol = col; sortAsc = true; }
+        renderTable();
+    }
+
+    function exportCSV() {
+        const users = getFilteredUsers();
+        let csv = 'ID,Email,Status,Signed Up\n';
+        for (const u of users) {
+            const date = u.created_at ? new Date(u.created_at * 1000).toISOString().split('T')[0] : '';
+            csv += `${u.id},"${u.email}",${u.subscription_status || 'free'},${date}\n`;
+        }
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'bankscan_users.csv';
+        a.click();
+    }
+
+    function escapeHtml(str) {
+        const d = document.createElement('div');
+        d.textContent = str || '';
+        return d.innerHTML;
+    }
+
+    function logout() {
+        fetch('/api/logout', { method: 'POST' }).then(() => window.location.href = '/login');
+    }
+
+    document.getElementById('searchBox').addEventListener('input', renderTable);
+    loadData();
+</script>
+</body>
+</html>
