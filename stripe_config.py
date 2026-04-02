@@ -3,11 +3,11 @@ BankParse — Stripe Configuration
 Run this once to create products and prices in your Stripe account:
     python stripe_config.py
 
-Current Stripe Price IDs (already created):
-    Starter:    price_1TECfoLniIk7TL9BGPes3d0Q
-    Pro:        price_1TECfoLniIk7TL9BA79kuFas
-    Business:   price_1TECfoLniIk7TL9BYNENKkva
-    Enterprise: price_1TECfpLniIk7TL9Bvd78vTgy
+Current Stripe Price IDs (USD, already created):
+    Starter:    price_1THsjkLniIk7TL9BZuCd5LZ0
+    Pro:        price_1THsjmLniIk7TL9BkgiXW5c3
+    Business:   price_1THsjnLniIk7TL9Bh0dDiHL5
+    Enterprise: price_1THsjoLniIk7TL9BZ3GEHfUu
 """
 
 import os
@@ -20,28 +20,28 @@ PLANS = {
         "name": "BankScan AI Starter",
         "description": "120 statements/mo, 500 receipts/mo, bulk upload (5 files), AI parsing, auto-insights, pre-built reports.",
         "price_usd": 999,  # $9.99 in cents
-        "stripe_price_id": "price_1TECfoLniIk7TL9BGPes3d0Q",
+        "stripe_price_id": "price_1THsjkLniIk7TL9BZuCd5LZ0",
         "lookup_key": "bankscan_starter_monthly",
     },
     "pro": {
         "name": "BankScan AI Pro",
         "description": "300 statements/mo, 1,500 receipts/mo, bulk upload (20 files), AI parsing, auto-insights, pre-built reports.",
         "price_usd": 2499,  # $24.99 in cents
-        "stripe_price_id": "price_1TECfoLniIk7TL9BA79kuFas",
+        "stripe_price_id": "price_1THsjmLniIk7TL9BkgiXW5c3",
         "lookup_key": "bankscan_pro_monthly",
     },
     "business": {
         "name": "BankScan AI Business",
         "description": "840 statements/mo, 5,000 receipts/mo, bulk upload (50 files), AI parsing, auto-insights, reports, AI Chat (50/day).",
         "price_usd": 5999,  # $59.99 in cents
-        "stripe_price_id": "price_1TECfoLniIk7TL9BYNENKkva",
+        "stripe_price_id": "price_1THsjnLniIk7TL9Bh0dDiHL5",
         "lookup_key": "bankscan_business_monthly",
     },
     "enterprise": {
         "name": "BankScan AI Enterprise",
         "description": "Unlimited statements & receipts, bulk upload (100 files), AI parsing, auto-insights, reports, unlimited AI Chat.",
         "price_usd": 14900,  # $149 in cents
-        "stripe_price_id": "price_1TECfpLniIk7TL9Bvd78vTgy",
+        "stripe_price_id": "price_1THsjoLniIk7TL9BZ3GEHfUu",
         "lookup_key": "bankscan_enterprise_monthly",
     },
 }
@@ -87,10 +87,10 @@ def create_products_and_prices():
             print(f"  Created price: {price.id} ({price.unit_amount / 100:.2f}/mo)")
 
     print("\nDone! Stripe Price IDs:")
-    print("  STRIPE_STARTER_PRICE_ID=price_1TECfoLniIk7TL9BGPes3d0Q")
-    print("  STRIPE_PRO_PRICE_ID=price_1TECfoLniIk7TL9BA79kuFas")
-    print("  STRIPE_BUSINESS_PRICE_ID=price_1TECfoLniIk7TL9BYNENKkva")
-    print("  STRIPE_ENTERPRISE_PRICE_ID=price_1TECfpLniIk7TL9Bvd78vTgy")
+    print("  STRIPE_STARTER_PRICE_ID=price_1THsjkLniIk7TL9BZuCd5LZ0")
+    print("  STRIPE_PRO_PRICE_ID=price_1THsjmLniIk7TL9BkgiXW5c3")
+    print("  STRIPE_BUSINESS_PRICE_ID=price_1THsjnLniIk7TL9Bh0dDiHL5")
+    print("  STRIPE_ENTERPRISE_PRICE_ID=price_1THsjoLniIk7TL9BZ3GEHfUu")
 
 
 if __name__ == "__main__":
