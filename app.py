@@ -750,13 +750,13 @@ def _format_chat_context(context_type: str, context_data: dict) -> str:
         summary = context_data.get("summary", {})
         lines.append(f"=== Bank Statement Summary ===")
         lines.append(f"Total transactions: {summary.get('total_transactions', 'N/A')}")
-        lines.append(f"Total credits (money in): £{summary.get('total_credits', 0):.2f}")
-        lines.append(f"Total debits (money out): £{summary.get('total_debits', 0):.2f}")
-        lines.append(f"Net: £{summary.get('net', 0):.2f}")
+        lines.append(f"Total credits (money in): ${summary.get('total_credits', 0):.2f}")
+        lines.append(f"Total debits (money out): ${summary.get('total_debits', 0):.2f}")
+        lines.append(f"Net: ${summary.get('net', 0):.2f}")
         lines.append("")
         lines.append("=== Transactions ===")
         for tx in context_data.get("transactions", []):
-            line = f"{tx.get('date', 'N/A')} | {tx.get('description', 'N/A')} | £{tx.get('amount', 0):.2f} | {tx.get('type', 'N/A')}"
+            line = f"{tx.get('date', 'N/A')} | {tx.get('description', 'N/A')} | ${tx.get('amount', 0):.2f} | {tx.get('type', 'N/A')}"
             lines.append(line)
 
     elif context_type == "receipt":
@@ -765,24 +765,24 @@ def _format_chat_context(context_type: str, context_data: dict) -> str:
         lines.append(f"=== Receipt from {meta.get('store_name', 'Unknown Store')} ===")
         if meta.get("date"):
             lines.append(f"Date: {meta['date']}")
-        lines.append(f"Total: £{totals.get('total', 0):.2f}")
+        lines.append(f"Total: ${totals.get('total', 0):.2f}")
         if totals.get("tax") is not None:
-            lines.append(f"Tax: £{totals['tax']:.2f}")
+            lines.append(f"Tax: ${totals['tax']:.2f}")
         lines.append("")
         lines.append("=== Items ===")
         for item in context_data.get("items", []):
-            line = f"{item.get('description', 'N/A')} | Qty: {item.get('quantity', 1)} | Unit: £{item.get('unit_price', 0):.2f} | Total: £{item.get('total_price', 0):.2f}"
+            line = f"{item.get('description', 'N/A')} | Qty: {item.get('quantity', 1)} | Unit: ${item.get('unit_price', 0):.2f} | Total: ${item.get('total_price', 0):.2f}"
             lines.append(line)
 
     elif context_type == "bulk_receipt":
         lines.append(f"=== Bulk Receipt Summary ===")
         lines.append(f"Receipts processed: {context_data.get('receipt_count', 0)}")
         lines.append(f"Total items: {context_data.get('total_items', 0)}")
-        lines.append(f"Grand total: £{context_data.get('grand_total', 0):.2f}")
+        lines.append(f"Grand total: ${context_data.get('grand_total', 0):.2f}")
         lines.append("")
         lines.append("=== All Items ===")
         for item in context_data.get("combined_items", []):
-            line = f"{item.get('store', 'N/A')} | {item.get('description', 'N/A')} | Qty: {item.get('quantity', 1)} | £{item.get('total_price', 0):.2f}"
+            line = f"{item.get('store', 'N/A')} | {item.get('description', 'N/A')} | Qty: {item.get('quantity', 1)} | ${item.get('total_price', 0):.2f}"
             lines.append(line)
 
     elif context_type == "bulk_statement":
@@ -790,14 +790,14 @@ def _format_chat_context(context_type: str, context_data: dict) -> str:
         lines.append(f"=== Combined Statements Summary ===")
         lines.append(f"Statements: {context_data.get('statement_count', 0)}")
         lines.append(f"Total transactions: {summary.get('total_transactions', 0)}")
-        lines.append(f"Total credits: £{summary.get('total_credits', 0):.2f}")
-        lines.append(f"Total debits: £{summary.get('total_debits', 0):.2f}")
-        lines.append(f"Net: £{summary.get('net', 0):.2f}")
+        lines.append(f"Total credits: ${summary.get('total_credits', 0):.2f}")
+        lines.append(f"Total debits: ${summary.get('total_debits', 0):.2f}")
+        lines.append(f"Net: ${summary.get('net', 0):.2f}")
         lines.append("")
         lines.append("=== All Transactions ===")
         for tx in context_data.get("all_transactions", []):
             source = tx.get("source", "")
-            line = f"{source} | {tx.get('date', 'N/A')} | {tx.get('description', 'N/A')} | £{tx.get('amount', 0):.2f} | {tx.get('type', 'N/A')}"
+            line = f"{source} | {tx.get('date', 'N/A')} | {tx.get('description', 'N/A')} | ${tx.get('amount', 0):.2f} | {tx.get('type', 'N/A')}"
             lines.append(line)
 
     else:
@@ -1092,10 +1092,10 @@ async def get_config():
     return JSONResponse({
         "stripe_publishable_key": STRIPE_PUBLISHABLE_KEY,
         "plans": {
-            "starter": {"price": "\u00a37.99/mo", "name": "BankScan AI Starter", "statements": 120, "receipts": 500, "clients": "5-10"},
-            "pro": {"price": "\u00a324.99/mo", "name": "BankScan AI Pro", "statements": 300, "receipts": 1500, "clients": "11-25"},
-            "business": {"price": "\u00a359.99/mo", "name": "BankScan AI Business", "statements": 840, "receipts": 5000, "clients": "26-70"},
-            "enterprise": {"price": "\u00a3149/mo", "name": "BankScan AI Enterprise", "statements": "Unlimited", "receipts": "Unlimited", "clients": "71-1,000"},
+            "starter": {"price": "$9.99/mo", "name": "BankScan AI Starter", "statements": 120, "receipts": 500, "clients": "5-10"},
+            "pro": {"price": "$24.99/mo", "name": "BankScan AI Pro", "statements": 300, "receipts": 1500, "clients": "11-25"},
+            "business": {"price": "$59.99/mo", "name": "BankScan AI Business", "statements": 840, "receipts": 5000, "clients": "26-70"},
+            "enterprise": {"price": "$149/mo", "name": "BankScan AI Enterprise", "statements": "Unlimited", "receipts": "Unlimited", "clients": "71-1,000"},
         },
     })
 
