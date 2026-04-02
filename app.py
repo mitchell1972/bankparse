@@ -41,6 +41,7 @@ from database import (
     get_monthly_scans, increment_monthly_scans,
     get_monthly_statements, increment_monthly_statements,
     get_monthly_receipts, increment_monthly_receipts,
+    _fetchall_dicts,
 )
 from otp import generate_otp, send_otp_email
 from seo_pages import SEO_PAGES
@@ -56,7 +57,7 @@ from core import (
     TIER_LIMITS,
     AUTH_COOKIE, AUTH_COOKIE_MAX_AGE,
     COOKIE_NAME, COOKIE_MAX_AGE,
-    SUBSCRIPTION_CACHE_TTL,
+    SUBSCRIPTION_CACHE_TTL, UNLIMITED_EMAILS,
     IMAGE_EXTENSIONS, RECEIPT_EXTENSIONS,
     # Auth helpers
     hash_password, verify_password,
@@ -1060,6 +1061,30 @@ async def manage_billing(request: Request):
     except Exception as e:
         logger.exception("Billing portal error: %s", e)
         raise HTTPException(status_code=500, detail="Billing request failed. Please try again.")
+
+
+@app.get("/api/admin/subscribers")
+async def admin_subscribers(request: Request):
+    """Admin-only endpoint to check subscriber count and details."""
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required.")
+
+    email = (user.get("email") or "").lower()
+    if email not in UNLIMITED_EMAILS:
+        raise HTTPException(status_code=403, detail="Admin access required.")
+
+    subscribers = _fetchall_dicts(
+        "SELECT id, email, subscription_status, stripe_customer_id, created_at "
+        "FROM users WHERE subscription_status IN ('active', 'trialing')"
+    )
+    total_users = _fetchall_dicts("SELECT COUNT(*) as count FROM users")
+
+    return JSONResponse({
+        "total_users": total_users[0]["count"] if total_users else 0,
+        "active_subscribers": len(subscribers),
+        "subscribers": subscribers,
+    })
 
 
 @app.get("/api/config")
