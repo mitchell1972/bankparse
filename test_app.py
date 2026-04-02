@@ -384,3 +384,62 @@ def test_admin_page_renders_for_admin(client):
         response = client.get("/admin")
         assert response.status_code == 200
         assert "Admin Dashboard" in response.text
+
+
+# ── Comprehensive admin access control tests ──────────────────────────
+
+def test_admin_page_blocked_for_similar_emails(client):
+    """Emails that look similar but are NOT the admin should be blocked."""
+    blocked_emails = [
+        "mitchell_agoma@yahoo.com",        # wrong TLD
+        "mitchell_agoma@gmail.com",        # different provider
+        "mitchell_agoma@yahoo.co.uk ",     # trailing space
+        " mitchell_agoma@yahoo.co.uk",     # leading space
+        "admin@bankscanai.com",            # site admin guess
+        "test@bankparse.com",              # test account
+        "mitchell@yahoo.co.uk",            # partial name match
+        "",                                # empty email
+    ]
+    for email in blocked_emails:
+        with patch("app.get_current_user", return_value={"id": 99, "email": email}):
+            response = client.get("/admin", follow_redirects=False)
+            assert response.status_code == 302, f"Expected redirect for '{email}', got {response.status_code}"
+            assert response.headers["location"] == "/", f"Expected redirect to / for '{email}'"
+
+
+def test_admin_api_blocked_for_similar_emails(client):
+    """The /api/admin/users endpoint should also block non-admin emails."""
+    blocked_emails = [
+        "mitchell_agoma@yahoo.com",
+        "admin@bankscanai.com",
+        "someone@example.com",
+        "",
+    ]
+    for email in blocked_emails:
+        with patch("app.get_current_user", return_value={"id": 99, "email": email}):
+            response = client.get("/api/admin/users")
+            assert response.status_code == 403, f"Expected 403 for '{email}', got {response.status_code}"
+
+
+def test_admin_api_subscribers_blocked_for_non_admin(client):
+    """The /api/admin/subscribers endpoint should also block non-admin emails."""
+    with patch("app.get_current_user", return_value={"id": 99, "email": "hacker@evil.com"}):
+        response = client.get("/api/admin/subscribers")
+        assert response.status_code == 403
+
+
+def test_admin_page_allowed_case_insensitive(client):
+    """Admin email check should be case-insensitive."""
+    with patch("app.get_current_user", return_value={"id": 1, "email": "Mitchell_Agoma@Yahoo.CO.UK"}):
+        response = client.get("/admin")
+        assert response.status_code == 200
+        assert "Admin Dashboard" in response.text
+
+
+def test_admin_api_allowed_case_insensitive(client):
+    """Admin API check should be case-insensitive."""
+    mock_users = [{"id": 1, "email": "a@b.com", "subscription_status": None, "stripe_customer_id": None, "created_at": 1700000000}]
+    with patch("app.get_current_user", return_value={"id": 1, "email": "MITCHELL_AGOMA@YAHOO.CO.UK"}), \
+         patch("app._fetchall_dicts", return_value=mock_users):
+        response = client.get("/api/admin/users")
+        assert response.status_code == 200
