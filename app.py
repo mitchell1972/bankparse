@@ -35,7 +35,7 @@ from database import (
     get_usage, save_usage, increment_usage,
     store_otp, verify_otp, cleanup_expired_otps,
     track_output_file, get_stale_output_files, remove_output_file_record,
-    create_user, get_user_by_email, update_user, increment_user_usage,
+    create_user, get_user_by_email, update_user, delete_user, increment_user_usage,
     get_user_by_stripe_customer,
     get_chat_usage, increment_chat_usage,
     get_monthly_scans, increment_monthly_scans,
@@ -1119,6 +1119,24 @@ async def admin_users(request: Request):
         "total_users": len(users),
         "users": users,
     })
+
+
+@app.delete("/api/admin/users/{user_id}")
+async def admin_delete_user(request: Request, user_id: int):
+    """Admin-only endpoint to delete a user."""
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required.")
+
+    email = (user.get("email") or "").lower()
+    if email not in UNLIMITED_EMAILS:
+        raise HTTPException(status_code=403, detail="Admin access required.")
+
+    if user_id == user["id"]:
+        raise HTTPException(status_code=400, detail="Cannot delete your own account.")
+
+    delete_user(user_id)
+    return JSONResponse({"ok": True})
 
 
 @app.get("/api/config")

@@ -443,3 +443,59 @@ def test_admin_api_allowed_case_insensitive(client):
          patch("app._fetchall_dicts", return_value=mock_users):
         response = client.get("/api/admin/users")
         assert response.status_code == 200
+
+
+# ── Admin delete user tests ───────────────────────────────────────────
+
+def _csrf_delete(client, url, **kwargs):
+    """Helper: GET a page to obtain a CSRF cookie, then DELETE with that token."""
+    get_res = client.get("/api/health")
+    csrf_token = get_res.cookies.get("bp_csrf", "")
+    return client.delete(
+        url,
+        cookies={"bp_csrf": csrf_token},
+        headers={"X-CSRF-Token": csrf_token},
+        **kwargs,
+    )
+
+
+def test_admin_delete_unauthenticated(client):
+    """Should reject unauthenticated delete requests."""
+    response = _csrf_delete(client, "/api/admin/users/99")
+    assert response.status_code == 401
+
+
+def test_admin_delete_non_admin(client):
+    """Non-admin users cannot delete."""
+    with patch("app.get_current_user", return_value={"id": 5, "email": "regular@example.com"}):
+        response = _csrf_delete(client, "/api/admin/users/99")
+        assert response.status_code == 403
+
+
+def test_admin_delete_cannot_delete_self(client):
+    """Admin cannot delete their own account."""
+    with patch("app.get_current_user", return_value={"id": 1, "email": "mitchell_agoma@yahoo.co.uk"}):
+        response = _csrf_delete(client, "/api/admin/users/1")
+        assert response.status_code == 400
+        assert "own account" in response.json()["detail"]
+
+
+def test_admin_delete_user_success(client):
+    """Admin can delete another user."""
+    with patch("app.get_current_user", return_value={"id": 1, "email": "mitchell_agoma@yahoo.co.uk"}), \
+         patch("app.delete_user") as mock_delete:
+        response = _csrf_delete(client, "/api/admin/users/99")
+        assert response.status_code == 200
+        assert response.json()["ok"] is True
+        mock_delete.assert_called_once_with(99)
+
+
+# ── Admin button visibility test ──────────────────────────────────────
+
+def test_admin_link_in_main_page(client):
+    """The main page should contain a hidden admin link element."""
+    with patch("app.get_current_user", return_value={"id": 1, "email": "mitchell_agoma@yahoo.co.uk"}):
+        response = client.get("/")
+        assert response.status_code == 200
+        assert 'id="headerAdminLink"' in response.text
+        assert 'href="/admin"' in response.text

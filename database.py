@@ -208,6 +208,10 @@ def update_user(user_id: int, **kwargs):
     _execute(f"UPDATE users SET {set_clause} WHERE id = ?", values)
 
 
+def delete_user(user_id: int):
+    _execute("DELETE FROM users WHERE id = ?", (user_id,))
+
+
 def increment_user_usage(user_id: int, mode: str):
     column = "statements_used" if mode == "statement" else "receipts_used"
     _execute(f"UPDATE users SET {column} = {column} + 1 WHERE id = ?", (user_id,))

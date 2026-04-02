@@ -195,6 +195,18 @@
         }
         @keyframes spin { to { transform: rotate(360deg); } }
 
+        .delete-btn {
+            background: none;
+            border: 1px solid var(--danger);
+            color: var(--danger);
+            padding: 0.25rem 0.6rem;
+            border-radius: 5px;
+            font-size: 0.75rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .delete-btn:hover { background: var(--danger); color: white; }
+
         .export-btn {
             background: var(--primary);
             color: white;
@@ -339,16 +351,19 @@
                 <th onclick="sortBy('email')">Email ${arrow('email')}</th>
                 <th onclick="sortBy('subscription_status')">Status ${arrow('subscription_status')}</th>
                 <th onclick="sortBy('created_at')">Signed Up ${arrow('created_at')}</th>
+                <th>Action</th>
             </tr></thead><tbody>`;
 
         for (const u of users) {
             const status = u.subscription_status || 'free';
             const date = u.created_at ? new Date(u.created_at * 1000).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '-';
-            html += `<tr>
+            const canDelete = status !== 'active' && status !== 'trialing';
+            html += `<tr id="row-${u.id}">
                 <td>${u.id}</td>
                 <td>${escapeHtml(u.email)}</td>
                 <td><span class="status-badge status-${status}">${status}</span></td>
                 <td>${date}</td>
+                <td>${canDelete ? `<button class="delete-btn" onclick="removeUser(${u.id}, '${escapeHtml(u.email)}')">Remove</button>` : ''}</td>
             </tr>`;
         }
         html += '</tbody></table>';
@@ -387,6 +402,32 @@
         const d = document.createElement('div');
         d.textContent = str || '';
         return d.innerHTML;
+    }
+
+    function getCsrfToken() {
+        const m = document.cookie.match(/(?:^|;\s*)bp_csrf=([^;]*)/);
+        return m ? decodeURIComponent(m[1]) : '';
+    }
+
+    async function removeUser(id, email) {
+        if (!confirm(`Remove user "${email}"? This cannot be undone.`)) return;
+        try {
+            const res = await fetch(`/api/admin/users/${id}`, {
+                method: 'DELETE',
+                headers: { 'X-CSRF-Token': getCsrfToken() },
+            });
+            if (!res.ok) {
+                const data = await res.json();
+                alert(data.detail || 'Failed to remove user.');
+                return;
+            }
+            allUsers = allUsers.filter(u => u.id !== id);
+            subscribers = allUsers.filter(u => u.subscription_status === 'active' || u.subscription_status === 'trialing');
+            renderStats();
+            renderTable();
+        } catch (e) {
+            alert('Failed to remove user.');
+        }
     }
 
     function logout() {

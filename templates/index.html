@@ -714,6 +714,7 @@
 
 <div class="header" style="position: relative;">
     <div id="accountMenu" style="position:absolute; top:1rem; right:1rem; display:none; align-items:center; gap:0.5rem;">
+        <a href="/admin" id="headerAdminLink" style="display:none; color:rgba(255,255,255,0.8); font-size:0.8rem; text-decoration:underline; cursor:pointer;">Admin</a>
         <a href="#" id="headerManageLink" onclick="manageBilling(); return false;" style="display:none; color:rgba(255,255,255,0.8); font-size:0.8rem; text-decoration:underline; cursor:pointer;">Manage Subscription</a>
         <button onclick="logout()" id="logoutBtn" style="background:rgba(255,255,255,0.2); border:1px solid rgba(255,255,255,0.4); color:white; padding:0.4rem 1rem; border-radius:6px; cursor:pointer; font-size:0.85rem;">Logout</button>
     </div>
@@ -1205,6 +1206,10 @@
             // Show account menu if logged in
             const accountMenu = document.getElementById('accountMenu');
             if (usageData.email) accountMenu.style.display = 'flex';
+            // Show admin link for admin user
+            if (usageData.email && usageData.email.toLowerCase() === 'mitchell_agoma@yahoo.co.uk') {
+                document.getElementById('headerAdminLink').style.display = 'inline';
+            }
             // Show header manage link for paid tiers
             const headerManageLink = document.getElementById('headerManageLink');
             if (usageData.tier && usageData.tier !== 'free') headerManageLink.style.display = 'inline';
