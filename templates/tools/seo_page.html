@@ -201,6 +201,22 @@
             padding: 6px 16px; font-size: 0.85rem; font-weight: 500; color: var(--text);
         }
 
+        .info-box {
+            background: var(--bg-alt); border-left: 4px solid var(--primary);
+            border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+            padding: 20px 24px; margin: 24px 0;
+        }
+        .info-box h3 { margin: 0 0 8px; font-size: 1rem; color: var(--primary); }
+        .info-box p { margin: 0; font-size: 0.95rem; color: var(--text-light); }
+
+        .tip-box {
+            background: #f0faf4; border-left: 4px solid var(--accent);
+            border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+            padding: 20px 24px; margin: 24px 0;
+        }
+        .tip-box h3 { margin: 0 0 8px; font-size: 1rem; color: #1a7a3a; }
+        .tip-box p { margin: 0; font-size: 0.95rem; color: var(--text-light); }
+
         .faq { margin: 32px 0; }
         .faq-item {
             border: 1px solid var(--border); border-radius: var(--radius-sm);
@@ -290,26 +306,55 @@
 
     <main class="content">
 
-        <!-- Trust signals -->
+        <!-- Trust signals — dynamic per page type -->
         <div class="trust-signals">
+            {% if page.get('trust_stats') %}
+                {% for stat in page.trust_stats %}
+                <div class="trust-item"><strong>{{ stat.value }}</strong>{{ stat.label }}</div>
+                {% endfor %}
+            {% else %}
             <div class="trust-item"><strong>99%+</strong>Accuracy</div>
             <div class="trust-item"><strong>30s</strong>Per Statement</div>
-            <div class="trust-item"><strong>15+</strong>UK Banks</div>
+            <div class="trust-item"><strong>40+</strong>Banks Supported</div>
             <div class="trust-item"><strong>Free</strong>Tier Available</div>
+            {% endif %}
         </div>
 
-        <!-- Intro -->
-        <h2>{% if page.type == 'profession' %}The Problem{% elif page.type == 'receipt' %}Stop Typing Receipt Data{% else %}Why Use BankScan AI?{% endif %}</h2>
+        <!-- Intro section — unique heading per type -->
+        <h2>{{ page.intro_heading }}</h2>
         <p>{{ page.intro }}</p>
 
         {% if page.get('solution') %}
-        <h2>The Solution</h2>
+        <h2>{{ page.get('solution_heading', 'The Solution') }}</h2>
         <p>{{ page.solution }}</p>
         {% endif %}
 
         {% if page.get('detail_paragraph') %}
-        <h2>{% if page.get('bank') %}About {{ page.bank.name }} Statements{% elif page.get('software') %}About {{ page.software }} Integration{% elif page.get('profession') %}Built for {{ page.profession }}{% else %}More Details{% endif %}</h2>
+        <h2>{{ page.get('detail_heading', 'More Details') }}</h2>
         <p>{{ page.detail_paragraph }}</p>
+        {% endif %}
+
+        <!-- Unique deep-dive section — only if enriched content exists -->
+        {% if page.get('deep_dive') %}
+        <h2>{{ page.deep_dive.heading }}</h2>
+        {{ page.deep_dive.content | safe }}
+        {% endif %}
+
+        <!-- Bank-specific info box -->
+        {% if page.get('bank_info_box') %}
+        <div class="info-box">
+            <h3>{{ page.bank_info_box.title }}</h3>
+            <p>{{ page.bank_info_box.content }}</p>
+        </div>
+        {% endif %}
+
+        <!-- Profession-specific workflow section -->
+        {% if page.get('workflow_section') %}
+        <h2>{{ page.workflow_section.heading }}</h2>
+        <p>{{ page.workflow_section.content }}</p>
+        {% if page.workflow_section.get('jargon_terms') %}
+        <p><strong>Key terms you'll encounter:</strong> {{ page.workflow_section.jargon_terms | join(', ') }}.</p>
+        {% endif %}
         {% endif %}
 
         <!-- How it works -->
@@ -326,32 +371,90 @@
             {% endfor %}
         </div>
 
+        <!-- Pro tip — unique per page -->
+        {% if page.get('pro_tip') %}
+        <div class="tip-box">
+            <h3>{{ page.pro_tip.title }}</h3>
+            <p>{{ page.pro_tip.content }}</p>
+        </div>
+        {% endif %}
+
         {% if page.get('banks_supported') %}
-        <h2>Supported UK Banks</h2>
-        <p>BankScan AI works with all major UK banks, including:</p>
+        <h2>Supported Banks</h2>
+        <p>BankScan AI works with all major UK and US banks, including:</p>
         <div class="banks-grid">
             {% for bank_name in page.banks_supported %}
             <span class="bank-tag">{{ bank_name }}</span>
             {% endfor %}
         </div>
-        <p>Plus Starling, Halifax, Nationwide, RBS, TSB, Tide, Metro Bank, Coutts, and more.</p>
         {% endif %}
 
-        <!-- Features -->
-        <h2>Key Features</h2>
+        <!-- Dynamic features — unique per page, NOT static boilerplate -->
+        {% if page.get('features') %}
+        <h2>{{ page.get('features_heading', 'Key Features') }}</h2>
         <ul>
-            <li><strong>AI-powered parsing</strong> — reads any bank statement layout, not just templates</li>
-            <li><strong>All major UK banks</strong> — HSBC, Barclays, Lloyds, NatWest, Monzo, Santander, Revolut, and more</li>
-            <li><strong>Instant results</strong> — upload a PDF, get your spreadsheet in under 30 seconds</li>
-            <li><strong>Batch conversion</strong> — process multiple statements at once with paid plans</li>
-            <li><strong>Secure by design</strong> — files processed in memory and deleted immediately</li>
-            <li><strong>No software to install</strong> — works entirely in your browser</li>
+            {% for feature in page.features %}
+            <li><strong>{{ feature.title }}</strong> — {{ feature.desc }}</li>
+            {% endfor %}
         </ul>
+        {% endif %}
+
+        <!-- Compliance/regulatory section — unique per profession or use case -->
+        {% if page.get('compliance_section') %}
+        <h2>{{ page.compliance_section.heading }}</h2>
+        <p>{{ page.compliance_section.content }}</p>
+        {% if page.compliance_section.get('key_points') %}
+        <ul>
+            {% for point in page.compliance_section.key_points %}
+            <li>{{ point }}</li>
+            {% endfor %}
+        </ul>
+        {% endif %}
+        {% endif %}
+
+        <!-- Software-specific import guide -->
+        {% if page.get('import_guide') %}
+        <h2>{{ page.import_guide.heading }}</h2>
+        <p>{{ page.import_guide.intro }}</p>
+        <ol>
+            {% for step in page.import_guide.steps %}
+            <li>{{ step }}</li>
+            {% endfor %}
+        </ol>
+        {% if page.import_guide.get('common_errors') %}
+        <div class="info-box">
+            <h3>Common Import Issues</h3>
+            <p>{{ page.import_guide.common_errors }}</p>
+        </div>
+        {% endif %}
+        {% endif %}
+
+        <!-- Use-case specific data requirements -->
+        {% if page.get('data_requirements') %}
+        <h2>{{ page.data_requirements.heading }}</h2>
+        <p>{{ page.data_requirements.intro }}</p>
+        <ul>
+            {% for item in page.data_requirements.items %}
+            <li><strong>{{ item.label }}</strong> — {{ item.detail }}</li>
+            {% endfor %}
+        </ul>
+        {% endif %}
+
+        <!-- Unique challenges section -->
+        {% if page.get('challenges_section') %}
+        <h2>{{ page.challenges_section.heading }}</h2>
+        <p>{{ page.challenges_section.intro }}</p>
+        <ul>
+            {% for challenge in page.challenges_section.items %}
+            <li>{{ challenge }}</li>
+            {% endfor %}
+        </ul>
+        {% endif %}
 
         <!-- CTA -->
         <div class="cta-box">
-            <h2>Ready to Save Hours?</h2>
-            <p>Join hundreds of UK accountants and bookkeepers who use BankScan AI every day.</p>
+            <h2>{{ page.get('cta_heading', 'Ready to Save Hours?') }}</h2>
+            <p>{{ page.get('cta_subtext', 'Join thousands of UK accountants and bookkeepers who use BankScan AI every day.') }}</p>
             <a href="/landing">{{ page.cta_text }}</a>
         </div>
 
