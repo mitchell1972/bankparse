@@ -117,15 +117,23 @@ def _login(client: TestClient, email: str, password: str):
 
 
 def _authenticated_client():
-    """Create a TestClient with a registered and authenticated user.
+    """Create a TestClient with a registered, authenticated, and
+    email-verified user. Verification is required before any AI parse,
+    so we flip the DB flag directly to avoid burning an OTP round-trip
+    in every file-upload test.
 
     Returns (client, csrf_token) inside a context-manager-ready TestClient.
     The caller must use the returned client directly (it is already entered).
     """
+    import database as _db
     client = TestClient(app, raise_server_exceptions=False)
     client.__enter__()
-    resp = _register(client, "testuser@example.com", "securepass123")
+    email = "testuser@example.com"
+    resp = _register(client, email, "securepass123")
     assert resp.status_code == 200, f"Registration failed: {resp.text}"
+    user = _db.get_user_by_email(email)
+    assert user is not None, "Registration did not create a user"
+    _db.mark_email_verified(user["id"])
     csrf = client.cookies.get("bp_csrf", "")
     return client, csrf
 
@@ -292,10 +300,13 @@ def test_parse_receipt_valid_pdf():
             client, csrf, "/api/parse-receipt",
             "receipt.pdf", pdf_content, "application/pdf",
         )
-        # Accept 200 (items found) or 422 (no items from minimal PDF) --
-        # the important thing is it does not return 400 or 500.
-        assert resp.status_code in (200, 422), (
-            f"Expected 200 or 422 but got {resp.status_code}: {resp.text}"
+        # AI-only parsing: without ANTHROPIC_API_KEY in the test env the
+        # route correctly returns 501 "AI parsing is not configured".
+        # In environments where Anthropic IS configured, 200 (items found)
+        # or 422 (no items from this minimal PDF) are both acceptable.
+        # The important thing is it does not 400/500 on a well-formed PDF.
+        assert resp.status_code in (200, 422, 501), (
+            f"Expected 200, 422, or 501 but got {resp.status_code}: {resp.text}"
         )
         if resp.status_code == 200:
             data = resp.json()

@@ -17,7 +17,10 @@ from fastapi.responses import JSONResponse
 from database import (
     get_user_by_id, update_user,
     get_monthly_scans, increment_monthly_scans,
+    get_monthly_ai_spend, get_user_today_spend, get_global_daily_ai_spend,
+    get_credit_balance, is_email_verified,
 )
+import ai_pricing
 
 # --- Optional Stripe import ---
 try:
@@ -49,21 +52,27 @@ if STRIPE_AVAILABLE and STRIPE_SECRET_KEY:
     stripe.api_key = STRIPE_SECRET_KEY
 
 # --- Tier limits ---
-# Statements and receipts tracked separately
-# Target clients: Starter 5-10, Pro 11-25, Business 26-70, Enterprise 71-1000
+# Free tier is file-count gated (1 statement + 1 receipt per calendar month).
+# Paid tiers are SPEND-gated — each tier gets ~40% of its subscription price
+# as a monthly AI budget in GBP (see ai_pricing.TIER_MONTHLY_AI_BUDGET_GBP).
+# Paid users can exceed the budget by pre-purchasing credit packs (one-time
+# Stripe checkouts that top up `ai_credit_balance_gbp`), after which each
+# overage parse deducts the exact Anthropic token cost.
 TIER_LIMITS = {
     "free": {
-        "monthly_statements": 1,
-        "monthly_receipts": 1,
+        "monthly_statements": ai_pricing.FREE_MONTHLY_STATEMENTS,
+        "monthly_receipts": ai_pricing.FREE_MONTHLY_RECEIPTS,
+        "monthly_ai_budget_gbp": ai_pricing.TIER_MONTHLY_AI_BUDGET_GBP["free"],
         "bulk_max_files": 0,
-        "ai_parsing": False,
+        "ai_parsing": True,   # AI-only parsing everywhere — even the 1 free use is AI
         "auto_insights": False,
         "pre_built_reports": False,
         "chat_per_day": 0,
     },
     "starter": {
-        "monthly_statements": 120,   # ~10 clients × 2 accounts × 6 months catch-up
-        "monthly_receipts": 500,     # ~10 clients × 50 receipts avg
+        "monthly_statements": None,  # no file-count cap — spend-capped instead
+        "monthly_receipts": None,
+        "monthly_ai_budget_gbp": ai_pricing.TIER_MONTHLY_AI_BUDGET_GBP["starter"],
         "bulk_max_files": 5,
         "ai_parsing": True,
         "auto_insights": True,
@@ -71,8 +80,9 @@ TIER_LIMITS = {
         "chat_per_day": 0,
     },
     "pro": {
-        "monthly_statements": 300,   # ~25 clients
-        "monthly_receipts": 1500,    # ~25 clients × 60 receipts avg
+        "monthly_statements": None,
+        "monthly_receipts": None,
+        "monthly_ai_budget_gbp": ai_pricing.TIER_MONTHLY_AI_BUDGET_GBP["pro"],
         "bulk_max_files": 20,
         "ai_parsing": True,
         "auto_insights": True,
@@ -80,8 +90,9 @@ TIER_LIMITS = {
         "chat_per_day": 0,
     },
     "business": {
-        "monthly_statements": 840,   # ~70 clients
-        "monthly_receipts": 5000,    # ~70 clients × 70 receipts avg
+        "monthly_statements": None,
+        "monthly_receipts": None,
+        "monthly_ai_budget_gbp": ai_pricing.TIER_MONTHLY_AI_BUDGET_GBP["business"],
         "bulk_max_files": 50,
         "ai_parsing": True,
         "auto_insights": True,
@@ -89,8 +100,9 @@ TIER_LIMITS = {
         "chat_per_day": 50,
     },
     "enterprise": {
-        "monthly_statements": None,  # unlimited
-        "monthly_receipts": None,    # unlimited
+        "monthly_statements": None,
+        "monthly_receipts": None,
+        "monthly_ai_budget_gbp": ai_pricing.TIER_MONTHLY_AI_BUDGET_GBP["enterprise"],
         "bulk_max_files": 100,
         "ai_parsing": True,
         "auto_insights": True,
@@ -100,8 +112,8 @@ TIER_LIMITS = {
 }
 
 # Legacy constants (kept for backward compat in case external code references them)
-FREE_STATEMENT_LIMIT = 1
-FREE_RECEIPT_LIMIT = 1
+FREE_STATEMENT_LIMIT = ai_pricing.FREE_MONTHLY_STATEMENTS
+FREE_RECEIPT_LIMIT = ai_pricing.FREE_MONTHLY_RECEIPTS
 
 # --- Test/admin accounts (bypass free tier limits) ---
 UNLIMITED_EMAILS = set(
@@ -299,28 +311,175 @@ def get_user_tier(user: dict) -> str:
     return "starter"
 
 
-def check_can_use(user: dict, mode: str) -> tuple[bool, str]:
-    """Check if user can use the service based on monthly limits.
+def check_can_use(user: dict, mode: str, num_pages: int = 1) -> tuple[bool, str, str, float]:
+    """Pre-flight gate for an AI parse request.
 
-    mode: 'statement' or 'receipt'
-    Returns (allowed, tier).
+    Checks, in order:
+      1. Email verification (required for any AI usage)
+      2. Global daily budget ceiling (all users, panic brake)
+      3. Per-user daily cap (panic brake for single abusive account)
+      4. Free-tier file-count cap (statements/receipts this month)
+      5. Paid-tier monthly spend budget — if exhausted, credit balance must
+         cover the pre-flight estimate.
+
+    ``mode`` is ``'statement'`` or ``'receipt'``. ``num_pages`` is the
+    estimated number of pages for this request (pessimistic: use the actual
+    PDF page count for statements, 1 for receipts).
+
+    Returns ``(allowed, tier, reason, estimated_cost_gbp)``:
+        - ``allowed`` — bool, True if the request should proceed
+        - ``tier`` — the user's tier ('free'/'starter'/.../'enterprise')
+        - ``reason`` — short machine-readable code; 'ok' if allowed, otherwise
+          one of: 'email_unverified', 'free_statements_cap',
+          'free_receipts_cap', 'monthly_budget_exhausted', 'user_daily_cap',
+          'global_daily_cap'
+        - ``estimated_cost_gbp`` — the pre-flight (pessimistic) cost for
+          this specific call
     """
     from database import get_monthly_statements, get_monthly_receipts
 
     tier = get_user_tier(user)
     limits = TIER_LIMITS[tier]
+    user_id = user["id"]
 
-    if mode == "statement":
-        limit = limits["monthly_statements"]
-        if limit is not None:
-            used = get_monthly_statements(user["id"])
-            if used >= limit:
-                return False, tier
-    elif mode == "receipt":
-        limit = limits["monthly_receipts"]
-        if limit is not None:
-            used = get_monthly_receipts(user["id"])
-            if used >= limit:
-                return False, tier
+    estimated_cost = ai_pricing.estimated_call_cost_gbp(mode, num_pages)
 
-    return True, tier
+    # 1. Email verification — applies to EVERY tier including free.
+    #    UNLIMITED_EMAILS (admin) bypass this.
+    email = (user.get("email") or "").lower()
+    if email not in UNLIMITED_EMAILS:
+        if not is_email_verified(user_id):
+            return False, tier, "email_unverified", estimated_cost
+
+    # 2. Global daily ceiling — hard fail across the whole service.
+    global_today = get_global_daily_ai_spend()
+    if global_today + estimated_cost > ai_pricing.AI_DAILY_BUDGET_GBP:
+        return False, tier, "global_daily_cap", estimated_cost
+
+    # 3. Per-user daily cap — single compromised/abusive account.
+    user_today = get_user_today_spend(user_id)
+    if user_today + estimated_cost > ai_pricing.AI_USER_DAILY_CAP_GBP:
+        return False, tier, "user_daily_cap", estimated_cost
+
+    # 4. Free tier: file-count cap (1 statement + 1 receipt per month).
+    #    Spend budget is £0 so the paid-tier check would always fail; we
+    #    short-circuit here for a better UX error code.
+    if tier == "free":
+        if mode == "statement":
+            if get_monthly_statements(user_id) >= ai_pricing.FREE_MONTHLY_STATEMENTS:
+                return False, tier, "free_statements_cap", estimated_cost
+        elif mode == "receipt":
+            if get_monthly_receipts(user_id) >= ai_pricing.FREE_MONTHLY_RECEIPTS:
+                return False, tier, "free_receipts_cap", estimated_cost
+        return True, tier, "ok", estimated_cost
+
+    # 5. Paid tier: spend-based budget check.
+    #    If monthly budget is exhausted, the user's credit balance must cover
+    #    the pre-flight estimate.
+    monthly_spend = get_monthly_ai_spend(user_id)
+    budget = limits["monthly_ai_budget_gbp"] or 0.0
+
+    if monthly_spend + estimated_cost <= budget:
+        return True, tier, "ok", estimated_cost
+
+    # Over budget — fall through to credit balance
+    credit_balance = get_credit_balance(user_id)
+    if credit_balance >= estimated_cost:
+        return True, tier, "ok", estimated_cost
+
+    return False, tier, "monthly_budget_exhausted", estimated_cost
+
+
+def record_ai_spend(
+    user_id: int,
+    mode: str,
+    model: str,
+    input_tokens: int,
+    output_tokens: int,
+    success: bool = True,
+) -> dict:
+    """Record a completed AI call's exact cost against the user.
+
+    Writes to ``ai_usage_log`` and updates the running monthly spend. If the
+    user's monthly budget is already exhausted the cost is deducted from
+    their credit balance instead (so the budget never "over-charges").
+
+    Returns a dict describing what happened::
+
+        {
+            "cost_gbp": 0.0042,
+            "billed_to": "budget" | "credit",
+            "input_tokens": 1234,
+            "output_tokens": 567,
+        }
+    """
+    from database import log_ai_usage, add_to_monthly_ai_spend, deduct_credit_balance
+
+    cost_gbp = ai_pricing.calculate_cost_gbp(model, input_tokens, output_tokens)
+    # Always log the call — the log is the source of truth for audit.
+    log_ai_usage(
+        user_id=user_id,
+        mode=mode,
+        model=model,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        cost_gbp=cost_gbp,
+        success=success,
+    )
+
+    if user_id is None:
+        return {"cost_gbp": cost_gbp, "billed_to": "none",
+                "input_tokens": input_tokens, "output_tokens": output_tokens}
+
+    # Decide where to bill: running monthly budget first, credit balance
+    # only when the budget would be exceeded. We compute this after the
+    # call because only here do we know the exact cost.
+    user = get_user_by_id(user_id)
+    if not user:
+        return {"cost_gbp": cost_gbp, "billed_to": "none",
+                "input_tokens": input_tokens, "output_tokens": output_tokens}
+
+    tier = get_user_tier(user)
+    limits = TIER_LIMITS[tier]
+    budget = limits["monthly_ai_budget_gbp"] or 0.0
+    monthly_spend = get_monthly_ai_spend(user_id)
+
+    billed_to = "budget"
+    if tier == "free":
+        # Free tier has no budget to deduct from — cost is recorded in the
+        # log only; the file-count cap is what gates usage.
+        billed_to = "free_cap"
+    elif monthly_spend + cost_gbp <= budget:
+        add_to_monthly_ai_spend(user_id, cost_gbp)
+        billed_to = "budget"
+    else:
+        # Budget exceeded → try credit balance. Any shortfall is absorbed by
+        # the budget column (we don't want a failed deduction to leave the
+        # call un-accounted).
+        if deduct_credit_balance(user_id, cost_gbp):
+            billed_to = "credit"
+        else:
+            # Should not happen because check_can_use gated this, but fall
+            # back to the running budget so the call is recorded somewhere.
+            add_to_monthly_ai_spend(user_id, cost_gbp)
+            billed_to = "budget_overflow"
+
+    return {
+        "cost_gbp": cost_gbp,
+        "billed_to": billed_to,
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+    }
+
+
+# Machine-readable reason codes returned to the frontend. These keys live
+# forever in the client JS — don't rename casually.
+QUOTA_REASON_MESSAGES = {
+    "ok": "OK",
+    "email_unverified": "EMAIL_VERIFICATION_REQUIRED",
+    "free_statements_cap": "FREE_LIMIT_REACHED",
+    "free_receipts_cap": "FREE_LIMIT_REACHED",
+    "monthly_budget_exhausted": "MONTHLY_BUDGET_EXHAUSTED",
+    "user_daily_cap": "DAILY_CAP_REACHED",
+    "global_daily_cap": "SERVICE_BUSY_TRY_TOMORROW",
+}

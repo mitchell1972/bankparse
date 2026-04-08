@@ -1,7 +1,11 @@
 """
-BankScan AI — AI-powered document parser using Claude Sonnet 4 vision.
-Replaces Tesseract OCR with Claude API for near-perfect extraction.
-Cost: ~3p per receipt, ~10p per bank statement page.
+BankScan AI — AI-powered document parser using Claude Haiku 4.5 vision.
+Every document (statement or receipt) is sent to Claude; each call records
+exact token usage so callers can bill the user the real Anthropic cost.
+
+Typical cost at Haiku 4.5 pricing ($1/MTok in, $5/MTok out):
+    receipt      ~0.2p GBP
+    statement    ~0.7p GBP per page
 """
 
 import os
@@ -11,6 +15,8 @@ import base64
 import logging
 from pathlib import Path
 from typing import Optional
+
+import ai_pricing
 
 logger = logging.getLogger("bankparse.ai_parser")
 
@@ -167,15 +173,19 @@ def _clean_json_response(text: str) -> str:
     return text.strip()
 
 
-def _call_vision(images: list[tuple[str, str]], prompt: str) -> str:
-    """Send one or more images to Claude Haiku and return the text response.
+def _call_vision(images: list[tuple[str, str]], prompt: str) -> tuple[str, dict]:
+    """Send one or more images to Claude Haiku and return the text response
+    along with usage metadata.
 
     Args:
         images: list of (base64_data, media_type) tuples
         prompt: the user prompt to send
 
     Returns:
-        The assistant's text response.
+        Tuple of (assistant_text, usage_dict). usage_dict has keys:
+            - model: the model ID used
+            - input_tokens: int
+            - output_tokens: int
     """
     content: list[dict] = []
     for b64_data, media_type in images:
@@ -195,27 +205,44 @@ def _call_vision(images: list[tuple[str, str]], prompt: str) -> str:
         max_tokens=4096,
         messages=[{"role": "user", "content": content}],
     )
-    return response.content[0].text
+
+    usage = {
+        "model": AI_MODEL,
+        "input_tokens": int(getattr(response.usage, "input_tokens", 0) or 0),
+        "output_tokens": int(getattr(response.usage, "output_tokens", 0) or 0),
+    }
+    return response.content[0].text, usage
 
 
-def _parse_json_response(raw: str, strict_prompt: str, images: list[tuple[str, str]]) -> dict:
+def _parse_json_response(raw: str, strict_prompt: str, images: list[tuple[str, str]]) -> tuple[dict, dict]:
     """Attempt to parse a JSON response.  If it fails, retry once with a
-    stricter prompt.  Returns the parsed dict or a dict containing an
-    ``error`` key."""
+    stricter prompt.
+
+    Returns a tuple of (parsed_dict_or_error, extra_usage_dict).
+    extra_usage_dict contains any *additional* token usage incurred by
+    the retry (zero if no retry happened). Keys: input_tokens, output_tokens.
+    """
     cleaned = _clean_json_response(raw)
+    empty_usage = {"input_tokens": 0, "output_tokens": 0}
     try:
-        return json.loads(cleaned)
+        return json.loads(cleaned), empty_usage
     except json.JSONDecodeError as first_err:
         logger.warning("First JSON parse failed (%s), retrying with strict prompt", first_err)
 
-    # Retry with stricter prompt
+    # Retry with stricter prompt — this call costs additional tokens
     try:
-        raw_retry = _call_vision(images, strict_prompt)
+        raw_retry, retry_usage = _call_vision(images, strict_prompt)
         cleaned_retry = _clean_json_response(raw_retry)
-        return json.loads(cleaned_retry)
-    except (json.JSONDecodeError, Exception) as retry_err:
+        return json.loads(cleaned_retry), {
+            "input_tokens": retry_usage.get("input_tokens", 0),
+            "output_tokens": retry_usage.get("output_tokens", 0),
+        }
+    except json.JSONDecodeError as retry_err:
         logger.error("Strict-prompt retry also failed: %s", retry_err)
-        return {"error": f"AI returned non-JSON after two attempts: {retry_err}"}
+        return {"error": f"AI returned non-JSON after two attempts: {retry_err}"}, empty_usage
+    except Exception as retry_err:
+        logger.error("Strict-prompt retry raised: %s", retry_err)
+        return {"error": f"AI retry raised exception: {retry_err}"}, empty_usage
 
 
 # ---------------------------------------------------------------------------
@@ -227,15 +254,20 @@ def parse_receipt_ai(file_path: str) -> dict:
 
     Accepts any image format supported by Pillow (including HEIC) or a
     single-page PDF.  Returns a dict compatible with the existing
-    ``receipt_parser`` output format::
+    ``receipt_parser`` output format, plus a nested ``ai_usage`` dict
+    inside ``metadata`` for billing::
 
         {
             "items": [{"description", "quantity", "unit_price", "total_price"}, ...],
             "totals": {"subtotal", "tax", "total", ...},
-            "metadata": {"store_name", "date", "item_count", "currency", "source", "method"},
+            "metadata": {
+                "store_name", "date", "item_count", "currency", "source", "method",
+                "ai_usage": {"model", "input_tokens", "output_tokens", "cost_gbp"},
+            },
         }
     """
     file_lower = file_path.lower()
+    source = "pdf" if file_lower.endswith(".pdf") else "image"
 
     try:
         # Convert file to base64 image(s)
@@ -248,19 +280,32 @@ def parse_receipt_ai(file_path: str) -> dict:
             b64, media = _image_to_base64(file_path)
             images = [(b64, media)]
 
-        # Call the AI
-        raw = _call_vision(images, RECEIPT_PROMPT)
-        parsed = _parse_json_response(raw, RECEIPT_PROMPT_STRICT, images)
+        # Call the AI — capture token usage from every call
+        raw, call_usage = _call_vision(images, RECEIPT_PROMPT)
+        parsed, retry_usage = _parse_json_response(raw, RECEIPT_PROMPT_STRICT, images)
+
+        total_in = int(call_usage.get("input_tokens", 0)) + int(retry_usage.get("input_tokens", 0))
+        total_out = int(call_usage.get("output_tokens", 0)) + int(retry_usage.get("output_tokens", 0))
+        cost_gbp = ai_pricing.calculate_cost_gbp(AI_MODEL, total_in, total_out)
+        ai_usage = {
+            "model": AI_MODEL,
+            "input_tokens": total_in,
+            "output_tokens": total_out,
+            "cost_gbp": cost_gbp,
+        }
 
         if "error" in parsed:
             logger.error("AI parse error for %s: %s", file_path, parsed["error"])
-            return _empty_receipt_result(parsed["error"], source="pdf" if file_lower.endswith(".pdf") else "image")
+            result = _empty_receipt_result(parsed["error"], source=source)
+            result["metadata"]["ai_usage"] = ai_usage
+            return result
 
-        return _normalise_receipt_result(parsed, file_path)
+        result = _normalise_receipt_result(parsed, file_path)
+        result["metadata"]["ai_usage"] = ai_usage
+        return result
 
     except Exception as exc:
         logger.exception("Unexpected error parsing receipt %s", file_path)
-        source = "pdf" if file_lower.endswith(".pdf") else "image"
         return _empty_receipt_result(str(exc), source=source)
 
 
@@ -333,20 +378,30 @@ def parse_statement_ai(file_path: str) -> dict:
 
     Converts each page to an image, sends to Haiku, and combines the
     results.  Returns a dict compatible with the existing ``pdf_parser``
-    output format::
+    output format, plus a nested ``ai_usage`` dict inside ``metadata``
+    summing token usage across every page::
 
         {
             "transactions": [{"date", "description", "amount", "balance", "type",
                               "debit", "credit"}, ...],
             "summary": {"total_transactions", "total_credits", "total_debits", "net"},
-            "metadata": {"bank_name", "account_holder", "statement_period",
-                         "source", "method", "pages_processed"},
+            "metadata": {
+                "bank_name", "account_holder", "statement_period",
+                "source", "method", "pages_processed",
+                "ai_usage": {"model", "input_tokens", "output_tokens", "cost_gbp"},
+            },
         }
     """
+    total_in = 0
+    total_out = 0
     try:
         pages = _pdf_pages_to_base64(file_path)
         if not pages:
-            return _empty_statement_result("PDF has no pages")
+            result = _empty_statement_result("PDF has no pages")
+            result["metadata"]["ai_usage"] = {
+                "model": AI_MODEL, "input_tokens": 0, "output_tokens": 0, "cost_gbp": 0.0,
+            }
+            return result
 
         all_transactions: list[dict] = []
         bank_name: Optional[str] = None
@@ -356,8 +411,11 @@ def parse_statement_ai(file_path: str) -> dict:
         for page_idx, page_image in enumerate(pages):
             logger.info("Processing statement page %d/%d", page_idx + 1, len(pages))
             try:
-                raw = _call_vision([page_image], STATEMENT_PROMPT)
-                parsed = _parse_json_response(raw, STATEMENT_PROMPT_STRICT, [page_image])
+                raw, call_usage = _call_vision([page_image], STATEMENT_PROMPT)
+                parsed, retry_usage = _parse_json_response(raw, STATEMENT_PROMPT_STRICT, [page_image])
+
+                total_in += int(call_usage.get("input_tokens", 0)) + int(retry_usage.get("input_tokens", 0))
+                total_out += int(call_usage.get("output_tokens", 0)) + int(retry_usage.get("output_tokens", 0))
 
                 if "error" in parsed:
                     logger.warning("AI parse error on page %d: %s", page_idx + 1, parsed["error"])
@@ -378,17 +436,33 @@ def parse_statement_ai(file_path: str) -> dict:
                 logger.exception("Error processing statement page %d", page_idx + 1)
                 continue
 
-        return _build_statement_result(
+        cost_gbp = ai_pricing.calculate_cost_gbp(AI_MODEL, total_in, total_out)
+        result = _build_statement_result(
             all_transactions,
             bank_name=bank_name,
             account_holder=account_holder,
             statement_period=statement_period,
             pages_processed=len(pages),
         )
+        result["metadata"]["ai_usage"] = {
+            "model": AI_MODEL,
+            "input_tokens": total_in,
+            "output_tokens": total_out,
+            "cost_gbp": cost_gbp,
+        }
+        return result
 
     except Exception as exc:
         logger.exception("Unexpected error parsing statement %s", file_path)
-        return _empty_statement_result(str(exc))
+        result = _empty_statement_result(str(exc))
+        cost_gbp = ai_pricing.calculate_cost_gbp(AI_MODEL, total_in, total_out)
+        result["metadata"]["ai_usage"] = {
+            "model": AI_MODEL,
+            "input_tokens": total_in,
+            "output_tokens": total_out,
+            "cost_gbp": cost_gbp,
+        }
+        return result
 
 
 def _normalise_transaction(raw_tx: dict) -> dict:
@@ -479,9 +553,8 @@ def _empty_statement_result(error_msg: str) -> dict:
 def parse_receipts_bulk(file_paths: list[str]) -> dict:
     """Parse multiple receipt files and combine the results.
 
-    Each file is processed independently with ``parse_receipt_ai``.
-    Falls back to the traditional parser when the AI key is not set
-    or when AI parsing returns no items.
+    Each file is processed independently with ``parse_receipt_ai`` — BankScan
+    is AI-only and no longer falls back to the traditional receipt parser.
 
     Returns a combined result::
 
@@ -492,34 +565,31 @@ def parse_receipts_bulk(file_paths: list[str]) -> dict:
             "grand_total": 0.00,
             "receipt_count": N,
             "total_items": M,
+            "ai_usage": {"model", "input_tokens", "output_tokens", "cost_gbp"},
         }
     """
-    from parsers.receipt_parser import parse_receipt as parse_receipt_traditional
-
     receipts: list[dict] = []
     combined_items: list[dict] = []
     grand_total = 0.0
+    bulk_in = 0
+    bulk_out = 0
 
     for fp in file_paths:
         logger.info("Bulk parsing receipt: %s", fp)
 
-        # Try AI first, fall back to traditional parser
-        result = None
-        if ANTHROPIC_API_KEY:
-            try:
-                result = parse_receipt_ai(fp)
-            except Exception as exc:
-                logger.warning("AI parse failed for %s, falling back: %s", fp, exc)
-
-        if result is None or not result.get("items"):
-            try:
-                result = parse_receipt_traditional(fp)
-            except Exception as exc:
-                logger.warning("Traditional parse also failed for %s: %s", fp, exc)
-                result = _empty_receipt_result(str(exc), source="image")
+        try:
+            result = parse_receipt_ai(fp)
+        except Exception as exc:
+            logger.warning("AI receipt parse failed for %s: %s", fp, exc)
+            result = _empty_receipt_result(str(exc), source="image")
 
         store_name = result.get("metadata", {}).get("store_name", "Unknown Store")
         receipt_date = result.get("metadata", {}).get("date")
+
+        # Accumulate token usage across all files
+        usage = result.get("metadata", {}).get("ai_usage") or {}
+        bulk_in += int(usage.get("input_tokens", 0))
+        bulk_out += int(usage.get("output_tokens", 0))
 
         # Build a slim receipt summary for the receipts list
         receipt_summary = {
@@ -546,21 +616,27 @@ def parse_receipts_bulk(file_paths: list[str]) -> dict:
 
         grand_total += result.get("totals", {}).get("total", 0)
 
+    bulk_cost = ai_pricing.calculate_cost_gbp(AI_MODEL, bulk_in, bulk_out)
     return {
         "receipts": receipts,
         "combined_items": combined_items,
         "grand_total": round(grand_total, 2),
         "receipt_count": len(receipts),
         "total_items": len(combined_items),
+        "ai_usage": {
+            "model": AI_MODEL,
+            "input_tokens": bulk_in,
+            "output_tokens": bulk_out,
+            "cost_gbp": bulk_cost,
+        },
     }
 
 
 def parse_statements_bulk(file_paths: list[str]) -> dict:
     """Parse multiple bank statement files and combine all transactions.
 
-    Each file is processed independently. Returns a combined result with
-    all transactions merged, sorted by date, and a summary across all
-    statements.
+    PDFs are always parsed via Claude vision (AI-only). CSV/TSV/TXT files
+    are still parsed locally because they need no intelligence.
 
     Returns::
 
@@ -569,38 +645,36 @@ def parse_statements_bulk(file_paths: list[str]) -> dict:
             "all_transactions": [<merged transaction list>],
             "summary": {"total_transactions", "total_credits", "total_debits", "net"},
             "statement_count": N,
+            "ai_usage": {"model", "input_tokens", "output_tokens", "cost_gbp"},
         }
     """
-    from parsers.pdf_parser import parse_pdf
     from parsers.csv_parser import parse_csv
 
     statements: list[dict] = []
     all_transactions: list[dict] = []
+    bulk_in = 0
+    bulk_out = 0
 
     for fp in file_paths:
         logger.info("Bulk parsing statement: %s", fp)
         lower = fp.lower()
 
         result = None
-
-        # Try standard parsers first
         try:
             if lower.endswith(".pdf"):
-                result = parse_pdf(fp)
+                result = parse_statement_ai(fp)
             elif lower.endswith((".csv", ".tsv", ".txt")):
                 result = parse_csv(fp)
         except Exception as exc:
-            logger.warning("Standard parse failed for %s: %s", fp, exc)
-
-        # If no transactions found, try AI fallback
-        if (result is None or not result.get("transactions")) and ANTHROPIC_API_KEY and lower.endswith(".pdf"):
-            try:
-                result = parse_statement_ai(fp)
-            except Exception as exc:
-                logger.warning("AI parse also failed for %s: %s", fp, exc)
+            logger.warning("Statement parse failed for %s: %s", fp, exc)
 
         if result is None:
             result = {"transactions": [], "summary": {}, "metadata": {"source": fp, "error": "Could not parse"}}
+
+        # Accumulate token usage across all files
+        usage = result.get("metadata", {}).get("ai_usage") or {}
+        bulk_in += int(usage.get("input_tokens", 0))
+        bulk_out += int(usage.get("output_tokens", 0))
 
         # Tag each transaction with the source file
         source_name = Path(fp).name
@@ -626,6 +700,7 @@ def parse_statements_bulk(file_paths: list[str]) -> dict:
     total_credits = sum(t.get("amount", 0) for t in all_transactions if t.get("amount", 0) > 0)
     total_debits = sum(t.get("amount", 0) for t in all_transactions if t.get("amount", 0) < 0)
 
+    bulk_cost = ai_pricing.calculate_cost_gbp(AI_MODEL, bulk_in, bulk_out)
     return {
         "statements": statements,
         "all_transactions": all_transactions,
@@ -636,4 +711,10 @@ def parse_statements_bulk(file_paths: list[str]) -> dict:
             "net": round(total_credits + total_debits, 2),
         },
         "statement_count": len(statements),
+        "ai_usage": {
+            "model": AI_MODEL,
+            "input_tokens": bulk_in,
+            "output_tokens": bulk_out,
+            "cost_gbp": bulk_cost,
+        },
     }

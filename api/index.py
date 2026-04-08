@@ -23,12 +23,10 @@ from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Red
 
 from typing import List
 
-from parsers.pdf_parser import parse_pdf
 from parsers.csv_parser import parse_csv
 from parsers.xlsx_exporter import export_to_xlsx, export_receipt_to_xlsx
-from parsers.receipt_parser import parse_receipt
 
-# AI-powered parsers (optional — require anthropic SDK)
+# AI-powered parsers (required — BankScan is AI-only).
 try:
     from parsers.ai_parser import parse_receipt_ai, parse_receipts_bulk, parse_statement_ai, parse_statements_bulk
     from parsers.xlsx_exporter import export_bulk_receipts_to_xlsx, export_bulk_statements_to_xlsx
@@ -37,12 +35,13 @@ except ImportError:
     AI_PARSERS_AVAILABLE = False
 from database import (
     get_usage, save_usage, increment_usage, store_otp, verify_otp,
-    create_user, get_user_by_email, update_user, delete_user, increment_user_usage,
+    create_user, get_user_by_email, get_user_by_id, update_user, delete_user, increment_user_usage,
     get_user_by_stripe_customer,
     get_chat_usage, increment_chat_usage,
     get_monthly_scans, increment_monthly_scans,
     get_monthly_statements, increment_monthly_statements,
     get_monthly_receipts, increment_monthly_receipts,
+    get_credit_balance, mark_email_verified, is_email_verified,
     _fetchall_dicts,
 )
 from otp import generate_otp, send_otp_email
@@ -68,6 +67,7 @@ from core import (
     get_session_id, ensure_session, set_session_cookie,
     # Subscription helpers
     verify_subscription, check_can_use, get_user_tier,
+    record_ai_spend, QUOTA_REASON_MESSAGES,
 )
 
 # Re-import stripe if available (needed for direct Stripe API calls in routes)
@@ -105,6 +105,10 @@ ADMIN_HTML = ADMIN_PATH.read_text() if ADMIN_PATH.exists() else ""
 from jinja2 import Environment, FileSystemLoader
 TOOLS_TEMPLATE_DIR = Path(__file__).parent.parent / "templates" / "tools"
 _jinja_env = Environment(loader=FileSystemLoader(str(TOOLS_TEMPLATE_DIR)))
+
+# Jinja2 for root-level templates that need context (credits, privacy, etc)
+_ROOT_TEMPLATE_DIR = Path(__file__).parent.parent / "templates"
+_root_jinja_env = Environment(loader=FileSystemLoader(str(_ROOT_TEMPLATE_DIR)))
 
 # SEO pages (pre-built at import time)
 from seo_pages import SEO_PAGES
@@ -175,6 +179,49 @@ async def admin_page(request: Request):
     return HTMLResponse(ADMIN_HTML)
 
 
+@app.get("/credits", response_class=HTMLResponse)
+async def credits_page(request: Request):
+    """AI credit pack purchase page. Logged-in users only. Non-indexed."""
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login?next=/credits", status_code=302)
+    import ai_pricing
+    balance = get_credit_balance(user["id"])
+    template = _root_jinja_env.get_template("credits.html")
+    html = template.render(credit_balance=balance, packs=ai_pricing.CREDIT_PACKS)
+    return HTMLResponse(html)
+
+
+@app.get("/verify-email", response_class=HTMLResponse)
+async def verify_email_page(request: Request):
+    """Email verification page. Logged-in users only. Non-indexed.
+
+    Shown after signup or whenever a user tries to parse while unverified.
+    Already-verified users are sent straight back to the dashboard.
+    """
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login?next=/verify-email", status_code=302)
+    if is_email_verified(user["id"]):
+        return RedirectResponse(url="/", status_code=302)
+    template = _root_jinja_env.get_template("verify_email.html")
+    html = template.render(email=user["email"])
+    return HTMLResponse(html)
+
+
+@app.get("/privacy", response_class=HTMLResponse)
+async def privacy_page(request: Request):
+    """Privacy policy. Publicly accessible and indexable.
+
+    Discloses Anthropic as the AI sub-processor that receives every uploaded
+    bank statement and receipt. Required for GDPR/legal transparency now that
+    all parsing runs through Claude.
+    """
+    template = _root_jinja_env.get_template("privacy.html")
+    html = template.render(effective_date="8 April 2026")
+    return HTMLResponse(html)
+
+
 # ==========================================================================
 # Auth API — register, login, logout
 # ==========================================================================
@@ -209,7 +256,22 @@ async def register(request: Request):
             raise HTTPException(status_code=409, detail="An account with this email already exists.")
         raise HTTPException(status_code=500, detail="Registration failed. Please try again.")
 
-    response = JSONResponse({"status": "ok", "email": email})
+    # Send email verification OTP. Parsing is blocked until verified
+    # (check_can_use enforces this). We still log the user in so they can
+    # hit /verify-email from the same session.
+    try:
+        code = generate_otp()
+        store_otp(email, code, session_id=f"verify:{user_id}")
+        send_otp_email(email, code)
+    except Exception:
+        logger.exception("Failed to send signup OTP to %s", email)
+
+    response = JSONResponse({
+        "status": "ok",
+        "email": email,
+        "email_verification_required": True,
+        "verify_url": "/verify-email",
+    })
     set_auth_cookie(response, user_id)
     return response
 
@@ -246,6 +308,60 @@ async def logout(request: Request):
     response = JSONResponse({"status": "ok"})
     clear_auth_cookie(response)
     return response
+
+
+@app.post("/api/verify-email-code")
+async def verify_email_code(request: Request):
+    """Verify an OTP sent after signup and mark the email as verified."""
+    client_ip = request.client.host if request.client else "unknown"
+    if not check_rate_limit(f"{client_ip}:/api/verify-email-code", limit=10, window_seconds=60):
+        raise HTTPException(status_code=429, detail="Rate limit exceeded. Please try again later.")
+
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required.")
+
+    if is_email_verified(user["id"]):
+        return JSONResponse({"status": "ok", "already_verified": True})
+
+    body = await request.json()
+    code = (body.get("code") or "").strip()
+    if not code or len(code) != 6 or not code.isdigit():
+        raise HTTPException(status_code=400, detail="Enter the 6-digit code.")
+
+    email = (user.get("email") or "").lower()
+    session_id = verify_otp(email, code)
+    if not session_id:
+        raise HTTPException(status_code=400, detail="Invalid or expired code.")
+
+    mark_email_verified(user["id"])
+    return JSONResponse({"status": "ok", "verified": True})
+
+
+@app.post("/api/verify-email/resend")
+async def verify_email_resend(request: Request):
+    """Generate + email a fresh OTP to the currently-logged-in user."""
+    client_ip = request.client.host if request.client else "unknown"
+    if not check_rate_limit(f"{client_ip}:/api/verify-email/resend", limit=3, window_seconds=60):
+        raise HTTPException(status_code=429, detail="Rate limit exceeded. Please try again later.")
+
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required.")
+
+    if is_email_verified(user["id"]):
+        return JSONResponse({"status": "ok", "already_verified": True})
+
+    email = (user.get("email") or "").lower()
+    try:
+        code = generate_otp()
+        store_otp(email, code, session_id=f"verify:{user['id']}")
+        send_otp_email(email, code)
+    except Exception:
+        logger.exception("Failed to resend verification OTP to %s", email)
+        raise HTTPException(status_code=500, detail="Failed to send code. Please try again.")
+
+    return JSONResponse({"status": "ok"})
 
 
 # ==========================================================================
@@ -405,11 +521,11 @@ async def parse_statement(request: Request, file: UploadFile = File(...)):
     if not user:
         raise HTTPException(status_code=401, detail="Authentication required.")
 
-    allowed, tier = check_can_use(user, "statement")
+    allowed, tier, reason, est_cost = check_can_use(user, "statement")
     if not allowed:
-        raise HTTPException(status_code=403, detail="FREE_LIMIT_REACHED")
-
-    limits = TIER_LIMITS[tier]
+        code = QUOTA_REASON_MESSAGES.get(reason, "FREE_LIMIT_REACHED")
+        status = 503 if reason == "global_daily_cap" else 403
+        raise HTTPException(status_code=status, detail=code)
 
     filename = file.filename.lower()
     if not any(filename.endswith(ext) for ext in [".pdf", ".csv", ".tsv", ".txt"]):
@@ -419,6 +535,9 @@ async def parse_statement(request: Request, file: UploadFile = File(...)):
     if len(contents) > 20 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="File too large. Max 20MB.")
 
+    if filename.endswith(".pdf") and (not AI_PARSERS_AVAILABLE or not ANTHROPIC_API_KEY):
+        raise HTTPException(status_code=501, detail="AI parsing is not configured on this server.")
+
     safe_filename = Path(file.filename).name  # Strip path components
     job_id = str(uuid.uuid4())[:8]
     upload_path = TMP_DIR / f"{job_id}_{safe_filename}"
@@ -426,20 +545,21 @@ async def parse_statement(request: Request, file: UploadFile = File(...)):
         f.write(contents)
 
     try:
+        # CSV files are parsed locally (no AI cost). PDFs always use Claude vision.
         if filename.endswith(".pdf"):
-            result = parse_pdf(str(upload_path))
+            result = parse_statement_ai(str(upload_path))
         else:
             result = parse_csv(str(upload_path))
 
-        # AI fallback: only for Pro/Business tiers (ai_parsing == True)
-        if not result["transactions"] and limits["ai_parsing"] and AI_PARSERS_AVAILABLE and ANTHROPIC_API_KEY:
-            try:
-                logger.info("No transactions from standard parser, trying AI fallback")
-                result = parse_statement_ai(str(upload_path))
-            except Exception as ai_err:
-                logger.warning("AI statement parsing fallback failed: %s", ai_err)
-
         if not result["transactions"]:
+            ai_usage = result.get("metadata", {}).get("ai_usage") or {}
+            if ai_usage.get("input_tokens") or ai_usage.get("output_tokens"):
+                record_ai_spend(
+                    user["id"], "statement", ai_usage.get("model", ""),
+                    int(ai_usage.get("input_tokens", 0)),
+                    int(ai_usage.get("output_tokens", 0)),
+                    success=False,
+                )
             raise HTTPException(status_code=422, detail="No transactions found.")
 
         output_path = TMP_DIR / f"bankparse_{job_id}.xlsx"
@@ -448,6 +568,16 @@ async def parse_statement(request: Request, file: UploadFile = File(...)):
 
         # Increment monthly statement count for all tiers
         increment_monthly_statements(user["id"], 1)
+
+        # Deduct the exact AI cost from the user's monthly budget / credit balance.
+        ai_usage = result.get("metadata", {}).get("ai_usage") or {}
+        if ai_usage.get("input_tokens") or ai_usage.get("output_tokens"):
+            record_ai_spend(
+                user["id"], "statement", ai_usage.get("model", ""),
+                int(ai_usage.get("input_tokens", 0)),
+                int(ai_usage.get("output_tokens", 0)),
+                success=True,
+            )
 
         response = JSONResponse({
             "transactions": result["transactions"],
@@ -473,11 +603,11 @@ async def parse_receipt_endpoint(request: Request, file: UploadFile = File(...))
     if not user:
         raise HTTPException(status_code=401, detail="Authentication required.")
 
-    allowed, tier = check_can_use(user, "receipt")
+    allowed, tier, reason, est_cost = check_can_use(user, "receipt")
     if not allowed:
-        raise HTTPException(status_code=403, detail="FREE_LIMIT_REACHED")
-
-    limits = TIER_LIMITS[tier]
+        code = QUOTA_REASON_MESSAGES.get(reason, "FREE_LIMIT_REACHED")
+        status = 503 if reason == "global_daily_cap" else 403
+        raise HTTPException(status_code=status, detail=code)
 
     filename = file.filename.lower()
     if not any(filename.endswith(ext) for ext in RECEIPT_EXTENSIONS):
@@ -487,6 +617,9 @@ async def parse_receipt_endpoint(request: Request, file: UploadFile = File(...))
     if len(contents) > 20 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="File too large. Max 20MB.")
 
+    if not AI_PARSERS_AVAILABLE or not ANTHROPIC_API_KEY:
+        raise HTTPException(status_code=501, detail="AI parsing is not configured on this server.")
+
     safe_filename = Path(file.filename).name  # Strip path components
     job_id = str(uuid.uuid4())[:8]
     upload_path = TMP_DIR / f"{job_id}_{safe_filename}"
@@ -494,20 +627,18 @@ async def parse_receipt_endpoint(request: Request, file: UploadFile = File(...))
         f.write(contents)
 
     try:
-        # AI-powered parsing only for Pro/Business tiers
-        result = None
-        if limits["ai_parsing"] and AI_PARSERS_AVAILABLE and ANTHROPIC_API_KEY:
-            try:
-                result = parse_receipt_ai(str(upload_path))
-            except Exception as ai_err:
-                logger.warning("AI receipt parsing failed, falling back to standard: %s", ai_err)
-                result = None
+        # AI-only: parse every receipt with Claude vision.
+        result = parse_receipt_ai(str(upload_path))
 
-        # Fall back to standard parser
-        if result is None or not result.get("items"):
-            result = parse_receipt(str(upload_path))
-
-        if not result["items"]:
+        if not result.get("items"):
+            ai_usage = result.get("metadata", {}).get("ai_usage") or {}
+            if ai_usage.get("input_tokens") or ai_usage.get("output_tokens"):
+                record_ai_spend(
+                    user["id"], "receipt", ai_usage.get("model", ""),
+                    int(ai_usage.get("input_tokens", 0)),
+                    int(ai_usage.get("output_tokens", 0)),
+                    success=False,
+                )
             raise HTTPException(status_code=422, detail="No items found.")
 
         output_path = TMP_DIR / f"receipt_{job_id}.xlsx"
@@ -516,6 +647,16 @@ async def parse_receipt_endpoint(request: Request, file: UploadFile = File(...))
 
         # Increment monthly receipt count for all tiers
         increment_monthly_receipts(user["id"], 1)
+
+        # Deduct the exact AI cost from the user's monthly budget / credit balance.
+        ai_usage = result.get("metadata", {}).get("ai_usage") or {}
+        if ai_usage.get("input_tokens") or ai_usage.get("output_tokens"):
+            record_ai_spend(
+                user["id"], "receipt", ai_usage.get("model", ""),
+                int(ai_usage.get("input_tokens", 0)),
+                int(ai_usage.get("output_tokens", 0)),
+                success=True,
+            )
 
         response = JSONResponse({
             "items": result["items"],
@@ -580,6 +721,13 @@ async def parse_receipts_bulk_endpoint(request: Request, files: List[UploadFile]
             remaining = max(0, monthly_limit - receipts_used)
             raise HTTPException(status_code=403, detail=f"Monthly receipt limit reached. You have {remaining} receipts remaining this month.")
 
+    # Pre-flight spend check: pessimistic estimate for the whole batch.
+    allowed, _tier, reason, _cost = check_can_use(user, "receipt", num_pages=len(files))
+    if not allowed:
+        code = QUOTA_REASON_MESSAGES.get(reason, "FREE_LIMIT_REACHED")
+        status = 503 if reason == "global_daily_cap" else 403
+        raise HTTPException(status_code=status, detail=code)
+
     # Validate and save all files to /tmp
     upload_paths = []
     job_id = str(uuid.uuid4())[:8]
@@ -606,23 +754,43 @@ async def parse_receipts_bulk_endpoint(request: Request, files: List[UploadFile]
                 f.write(contents)
             upload_paths.append(str(upload_path))
 
-        # Parse all receipts via AI
-        results = parse_receipts_bulk(upload_paths)
+        # Parse all receipts via AI.
+        bulk_result = parse_receipts_bulk(upload_paths)
+        bulk_usage = bulk_result.get("ai_usage") or {}
 
-        if not results:
+        if not bulk_result.get("combined_items"):
+            if bulk_usage.get("input_tokens") or bulk_usage.get("output_tokens"):
+                record_ai_spend(
+                    user["id"], "receipt", bulk_usage.get("model", ""),
+                    int(bulk_usage.get("input_tokens", 0)),
+                    int(bulk_usage.get("output_tokens", 0)),
+                    success=False,
+                )
             raise HTTPException(status_code=422, detail="No items found in any of the uploaded receipts.")
 
         # Generate combined XLSX
         output_path = TMP_DIR / f"receipts_bulk_{job_id}.xlsx"
-        export_bulk_receipts_to_xlsx(results, str(output_path))
+        export_bulk_receipts_to_xlsx(bulk_result, str(output_path))
         xlsx_b64 = base64.b64encode(output_path.read_bytes()).decode("utf-8")
 
         # Increment monthly receipt count for all files in batch
         increment_monthly_receipts(user["id"], len(upload_paths))
 
+        # Bill the exact aggregate AI cost across the whole batch.
+        if bulk_usage.get("input_tokens") or bulk_usage.get("output_tokens"):
+            record_ai_spend(
+                user["id"], "receipt", bulk_usage.get("model", ""),
+                int(bulk_usage.get("input_tokens", 0)),
+                int(bulk_usage.get("output_tokens", 0)),
+                success=True,
+            )
+
         return JSONResponse({
-            "receipts": results,
-            "count": len(results),
+            "receipts": bulk_result.get("receipts", []),
+            "combined_items": bulk_result.get("combined_items", []),
+            "grand_total": bulk_result.get("grand_total", 0),
+            "receipt_count": bulk_result.get("receipt_count", 0),
+            "total_items": bulk_result.get("total_items", 0),
             "xlsx_base64": xlsx_b64,
             "xlsx_filename": f"receipts_bulk_{job_id}.xlsx",
         })
@@ -694,6 +862,13 @@ async def parse_statements_bulk_endpoint(request: Request, files: List[UploadFil
             remaining = max(0, monthly_limit - statements_used)
             raise HTTPException(status_code=403, detail=f"Monthly statement limit reached. You have {remaining} statements remaining this month.")
 
+    # Pre-flight spend check: pessimistic ~3 pages/file for statements.
+    allowed, _tier, reason, _cost = check_can_use(user, "statement", num_pages=max(len(files) * 3, 1))
+    if not allowed:
+        code = QUOTA_REASON_MESSAGES.get(reason, "FREE_LIMIT_REACHED")
+        status = 503 if reason == "global_daily_cap" else 403
+        raise HTTPException(status_code=status, detail=code)
+
     STATEMENT_EXTENSIONS = [".pdf", ".csv", ".tsv", ".txt"]
     for f in files:
         fname = f.filename.lower()
@@ -716,8 +891,16 @@ async def parse_statements_bulk_endpoint(request: Request, files: List[UploadFil
             upload_paths.append(str(upload_path))
 
         bulk_result = parse_statements_bulk(upload_paths)
+        bulk_usage = bulk_result.get("ai_usage") or {}
 
         if not bulk_result["all_transactions"]:
+            if bulk_usage.get("input_tokens") or bulk_usage.get("output_tokens"):
+                record_ai_spend(
+                    user["id"], "statement", bulk_usage.get("model", ""),
+                    int(bulk_usage.get("input_tokens", 0)),
+                    int(bulk_usage.get("output_tokens", 0)),
+                    success=False,
+                )
             raise HTTPException(status_code=422, detail="No transactions found in any of the uploaded statements.")
 
         output_path = TMP_DIR / f"statements_bulk_{job_id}.xlsx"
@@ -726,6 +909,15 @@ async def parse_statements_bulk_endpoint(request: Request, files: List[UploadFil
 
         # Increment monthly statement count for all files in batch
         increment_monthly_statements(user["id"], len(upload_paths))
+
+        # Bill the exact aggregate AI cost across the whole batch.
+        if bulk_usage.get("input_tokens") or bulk_usage.get("output_tokens"):
+            record_ai_spend(
+                user["id"], "statement", bulk_usage.get("model", ""),
+                int(bulk_usage.get("input_tokens", 0)),
+                int(bulk_usage.get("output_tokens", 0)),
+                success=True,
+            )
 
         return JSONResponse({
             "statements": bulk_result["statements"],
@@ -814,6 +1006,77 @@ async def create_checkout_session(request: Request):
         raise HTTPException(status_code=500, detail="An error occurred while creating the checkout session. Please try again.")
 
 
+@app.post("/api/credits/checkout")
+async def create_credit_pack_checkout(request: Request):
+    """Create a Stripe one-time-payment checkout for an AI credit pack.
+
+    Paid users who've exhausted their monthly AI budget can pre-purchase a
+    credit pack; once paid, ``checkout.session.completed`` (mode=payment)
+    tops up ``ai_credit_balance_gbp`` by the pack face value.
+    """
+    if not STRIPE_AVAILABLE or not STRIPE_SECRET_KEY:
+        raise HTTPException(status_code=501, detail="Stripe is not configured.")
+
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required.")
+
+    body = await request.json()
+    pack_id = body.get("pack", "small")
+
+    import ai_pricing
+    pack = ai_pricing.CREDIT_PACKS.get(pack_id)
+    amount_pence = ai_pricing.credit_pack_stripe_amount(pack_id)
+    if not pack or not amount_pence:
+        raise HTTPException(status_code=400, detail="Unknown credit pack.")
+
+    email = user["email"]
+
+    try:
+        existing = stripe.Customer.search(query=f'email:"{email}"')
+        if existing.data:
+            customer_id = existing.data[0].id
+        else:
+            customer = stripe.Customer.create(email=email, metadata={"source": "bankparse"})
+            customer_id = customer.id
+
+        update_user(user["id"], stripe_customer_id=customer_id)
+
+        origin = get_safe_origin(request)
+        session = stripe.checkout.Session.create(
+            mode="payment",
+            customer=customer_id,
+            payment_method_types=["card"],
+            line_items=[{
+                "price_data": {
+                    "currency": "gbp",
+                    "product_data": {
+                        "name": f"BankScan AI — {pack['label']}",
+                        "description": "Pre-purchased AI parsing credit pack. Non-refundable. Each parse deducts the exact Anthropic token cost.",
+                    },
+                    "unit_amount": amount_pence,
+                },
+                "quantity": 1,
+            }],
+            success_url=f"{origin}/credits?status=success&session_id={{CHECKOUT_SESSION_ID}}",
+            cancel_url=f"{origin}/credits?status=cancelled",
+            metadata={
+                "user_id": str(user["id"]),
+                "credit_pack": pack_id,
+                "credit_amount_gbp": str(pack["amount_gbp"]),
+                "purchase_type": "ai_credit_pack",
+            },
+        )
+
+        return JSONResponse({"checkout_url": session.url, "session_id": session.id})
+
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Credit pack checkout error")
+        raise HTTPException(status_code=500, detail="Credit pack checkout failed. Please try again.")
+
+
 @app.get("/api/verify-session")
 async def verify_checkout_session(request: Request, session_id: str):
     if not STRIPE_AVAILABLE or not STRIPE_SECRET_KEY:
@@ -862,19 +1125,51 @@ async def stripe_webhook(request: Request):
     event_data = event.get("data", {}).get("object", {})
 
     if event_type == "checkout.session.completed":
-        # Link subscription to user
+        mode = event_data.get("mode", "")
+        metadata = event_data.get("metadata") or {}
         customer_id = event_data.get("customer")
-        user_email = None
-        if customer_id:
-            try:
-                customer = stripe.Customer.retrieve(customer_id)
-                user_email = customer.email
-            except Exception:
-                pass
-        if user_email:
-            user = get_user_by_email(user_email)
-            if user:
-                update_user(user["id"], stripe_customer_id=customer_id, subscription_status="active", subscription_checked_at=time.time())
+
+        if mode == "payment" and metadata.get("purchase_type") == "ai_credit_pack":
+            # One-time credit pack purchase — top up ai_credit_balance_gbp
+            if event_data.get("payment_status") == "paid":
+                from database import add_credit_balance
+                try:
+                    amount_gbp = float(metadata.get("credit_amount_gbp", "0"))
+                except (TypeError, ValueError):
+                    amount_gbp = 0.0
+                user_id_str = metadata.get("user_id", "")
+                target_user = None
+                if user_id_str:
+                    try:
+                        target_user = get_user_by_id(int(user_id_str))
+                    except (TypeError, ValueError):
+                        target_user = None
+                if not target_user and customer_id:
+                    target_user = get_user_by_stripe_customer(customer_id)
+                if target_user and amount_gbp > 0:
+                    add_credit_balance(target_user["id"], amount_gbp)
+                    logger.info(
+                        "Credited user %s with £%.2f AI credit pack (%s)",
+                        target_user["id"], amount_gbp, metadata.get("credit_pack", "?"),
+                    )
+                else:
+                    logger.warning(
+                        "Credit pack webhook: could not resolve user (customer=%s, metadata=%s)",
+                        customer_id, metadata,
+                    )
+        else:
+            # Subscription checkout — original path
+            user_email = None
+            if customer_id:
+                try:
+                    customer = stripe.Customer.retrieve(customer_id)
+                    user_email = customer.email
+                except Exception:
+                    pass
+            if user_email:
+                user = get_user_by_email(user_email)
+                if user:
+                    update_user(user["id"], stripe_customer_id=customer_id, subscription_status="active", subscription_checked_at=time.time())
 
     elif event_type in ("customer.subscription.updated", "customer.subscription.deleted"):
         sub_status = event_data.get("status", "")
@@ -984,6 +1279,46 @@ async def admin_delete_user(request: Request, user_id: int):
 
     delete_user(user_id)
     return JSONResponse({"ok": True})
+
+
+@app.get("/api/admin/ai-spend")
+async def admin_ai_spend(request: Request):
+    """Admin-only snapshot of AI spend against the global + tier budgets.
+
+    Returns: today's global spend vs the daily ceiling, the top 20 spenders
+    this calendar month, and the most recent 50 usage rows for audit.
+    """
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required.")
+
+    email = (user.get("email") or "").lower()
+    if email not in UNLIMITED_EMAILS:
+        raise HTTPException(status_code=403, detail="Admin access required.")
+
+    import ai_pricing
+    from database import get_global_daily_ai_spend, get_recent_ai_usage
+
+    global_today = get_global_daily_ai_spend()
+    top_spenders = _fetchall_dicts(
+        "SELECT id, email, subscription_status, ai_spend_this_month, "
+        "ai_credit_balance_gbp, usage_month "
+        "FROM users WHERE ai_spend_this_month > 0 "
+        "ORDER BY ai_spend_this_month DESC LIMIT 20"
+    )
+    recent = get_recent_ai_usage(limit=50)
+
+    return JSONResponse({
+        "global_daily_budget_gbp": ai_pricing.AI_DAILY_BUDGET_GBP,
+        "global_daily_spend_gbp": round(global_today, 4),
+        "global_daily_remaining_gbp": round(
+            max(0.0, ai_pricing.AI_DAILY_BUDGET_GBP - global_today), 4
+        ),
+        "user_daily_cap_gbp": ai_pricing.AI_USER_DAILY_CAP_GBP,
+        "tier_monthly_budgets_gbp": ai_pricing.TIER_MONTHLY_AI_BUDGET_GBP,
+        "top_spenders_this_month": top_spenders,
+        "recent_calls": recent,
+    })
 
 
 @app.get("/api/config")

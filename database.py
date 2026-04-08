@@ -101,7 +101,7 @@ def _execute_insert(sql: str, params: tuple = ()) -> int:
         return cursor.lastrowid
 
 
-_USER_COLS = "id, email, password_hash, stripe_customer_id, statements_used, receipts_used, subscription_status, subscription_checked_at, chat_count, chat_date, scans_this_month, scan_month, statements_this_month, receipts_this_month, usage_month, created_at"
+_USER_COLS = "id, email, password_hash, stripe_customer_id, statements_used, receipts_used, subscription_status, subscription_checked_at, chat_count, chat_date, scans_this_month, scan_month, statements_this_month, receipts_this_month, usage_month, email_verified, ai_credit_balance_gbp, ai_spend_this_month, created_at"
 
 
 # --- Schema ---
@@ -150,12 +150,29 @@ def init_db():
             window_start REAL NOT NULL,
             count INTEGER NOT NULL DEFAULT 0
         )""",
+        """CREATE TABLE IF NOT EXISTS ai_usage_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            mode TEXT NOT NULL,
+            model TEXT NOT NULL,
+            input_tokens INTEGER NOT NULL DEFAULT 0,
+            output_tokens INTEGER NOT NULL DEFAULT 0,
+            cost_gbp REAL NOT NULL DEFAULT 0,
+            success INTEGER NOT NULL DEFAULT 1,
+            usage_day TEXT NOT NULL,
+            usage_month TEXT NOT NULL,
+            created_at REAL DEFAULT (strftime('%s', 'now'))
+        )""",
         "CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)",
         "CREATE INDEX IF NOT EXISTS idx_users_stripe ON users(stripe_customer_id)",
         "CREATE INDEX IF NOT EXISTS idx_sessions_email ON sessions(email)",
         "CREATE INDEX IF NOT EXISTS idx_sessions_stripe ON sessions(stripe_customer_id)",
         "CREATE INDEX IF NOT EXISTS idx_otp_email ON otp_codes(email)",
         "CREATE INDEX IF NOT EXISTS idx_output_created ON output_files(created_at)",
+        "CREATE INDEX IF NOT EXISTS idx_ai_usage_user ON ai_usage_log(user_id)",
+        "CREATE INDEX IF NOT EXISTS idx_ai_usage_day ON ai_usage_log(usage_day)",
+        "CREATE INDEX IF NOT EXISTS idx_ai_usage_user_day ON ai_usage_log(user_id, usage_day)",
+        "CREATE INDEX IF NOT EXISTS idx_ai_usage_user_month ON ai_usage_log(user_id, usage_month)",
     ]
     for stmt in stmts:
         _execute(stmt)
@@ -169,6 +186,9 @@ def init_db():
         ("statements_this_month", "INTEGER DEFAULT 0"),
         ("receipts_this_month", "INTEGER DEFAULT 0"),
         ("usage_month", "TEXT DEFAULT NULL"),
+        ("email_verified", "INTEGER DEFAULT 0"),
+        ("ai_credit_balance_gbp", "REAL DEFAULT 0"),
+        ("ai_spend_this_month", "REAL DEFAULT 0"),
     ]:
         try:
             _execute(f"ALTER TABLE users ADD COLUMN {col} {col_def}")
@@ -199,7 +219,7 @@ def get_user_by_stripe_customer(stripe_customer_id: str) -> dict | None:
 
 
 def update_user(user_id: int, **kwargs):
-    allowed = {"stripe_customer_id", "statements_used", "receipts_used", "email", "password_hash", "subscription_status", "subscription_checked_at", "chat_count", "chat_date", "scans_this_month", "scan_month", "statements_this_month", "receipts_this_month", "usage_month"}
+    allowed = {"stripe_customer_id", "statements_used", "receipts_used", "email", "password_hash", "subscription_status", "subscription_checked_at", "chat_count", "chat_date", "scans_this_month", "scan_month", "statements_this_month", "receipts_this_month", "usage_month", "email_verified", "ai_credit_balance_gbp", "ai_spend_this_month"}
     fields = {k: v for k, v in kwargs.items() if k in allowed}
     if not fields:
         return
@@ -307,6 +327,166 @@ def increment_monthly_receipts(user_id: int, count: int = 1):
         _execute("UPDATE users SET receipts_this_month = receipts_this_month + ? WHERE id = ?", (count, user_id))
     else:
         _execute("UPDATE users SET receipts_this_month = ?, statements_this_month = 0, usage_month = ? WHERE id = ?", (count, current_month, user_id))
+
+
+# --- AI spend + usage log functions ---
+#
+# Every billable AI call must be recorded here. The log is the authoritative
+# source for daily / monthly spend queries; the `ai_spend_this_month` column
+# on users is a fast running-total cache reset each calendar month.
+
+def log_ai_usage(
+    user_id: int | None,
+    mode: str,
+    model: str,
+    input_tokens: int,
+    output_tokens: int,
+    cost_gbp: float,
+    success: bool = True,
+) -> int:
+    """Append a row to ``ai_usage_log``. Returns the new row ID.
+
+    ``user_id`` may be None for anonymous/session calls (e.g. global caps only).
+    ``mode`` should be 'receipt' or 'statement'. ``cost_gbp`` must come from
+    ``ai_pricing.calculate_cost_gbp`` using the real post-call token counts.
+    """
+    import datetime
+    now = datetime.datetime.utcnow()
+    day = now.strftime("%Y-%m-%d")
+    month = now.strftime("%Y-%m")
+    return _execute_insert(
+        """INSERT INTO ai_usage_log
+           (user_id, mode, model, input_tokens, output_tokens, cost_gbp, success, usage_day, usage_month)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (user_id, mode, model, int(input_tokens), int(output_tokens), float(cost_gbp), 1 if success else 0, day, month),
+    )
+
+
+def get_monthly_ai_spend(user_id: int) -> float:
+    """Return total AI spend (GBP) this calendar month for a user.
+
+    Reads from the fast ``ai_spend_this_month`` column, resetting to 0 if the
+    stored ``usage_month`` is not the current month. This is authoritative for
+    budget checks in the hot path — log-sum queries are reserved for admin.
+    """
+    import datetime
+    row = _fetchone_dict("SELECT ai_spend_this_month, usage_month FROM users WHERE id = ?", (user_id,))
+    if not row:
+        return 0.0
+    current_month = datetime.date.today().strftime("%Y-%m")
+    if row.get("usage_month") != current_month:
+        return 0.0
+    return float(row.get("ai_spend_this_month", 0) or 0)
+
+
+def add_to_monthly_ai_spend(user_id: int, amount_gbp: float):
+    """Increase the running monthly spend by ``amount_gbp``. Resets the
+    counter (and ``statements_this_month`` / ``receipts_this_month``) if the
+    month has rolled over."""
+    import datetime
+    current_month = datetime.date.today().strftime("%Y-%m")
+    row = _fetchone_dict("SELECT usage_month FROM users WHERE id = ?", (user_id,))
+    if row and row.get("usage_month") == current_month:
+        _execute(
+            "UPDATE users SET ai_spend_this_month = ai_spend_this_month + ? WHERE id = ?",
+            (float(amount_gbp), user_id),
+        )
+    else:
+        _execute(
+            "UPDATE users SET ai_spend_this_month = ?, statements_this_month = 0, receipts_this_month = 0, usage_month = ? WHERE id = ?",
+            (float(amount_gbp), current_month, user_id),
+        )
+
+
+def get_user_today_spend(user_id: int) -> float:
+    """Return today's (UTC) total AI spend for a specific user from the log."""
+    import datetime
+    day = datetime.datetime.utcnow().strftime("%Y-%m-%d")
+    row = _fetchone_dict(
+        "SELECT COALESCE(SUM(cost_gbp), 0) AS total FROM ai_usage_log WHERE user_id = ? AND usage_day = ?",
+        (user_id, day),
+    )
+    return float(row["total"]) if row and row.get("total") is not None else 0.0
+
+
+def get_global_daily_ai_spend() -> float:
+    """Return today's (UTC) total AI spend across ALL users from the log.
+    Used for the global daily ceiling hard-fail."""
+    import datetime
+    day = datetime.datetime.utcnow().strftime("%Y-%m-%d")
+    row = _fetchone_dict(
+        "SELECT COALESCE(SUM(cost_gbp), 0) AS total FROM ai_usage_log WHERE usage_day = ?",
+        (day,),
+    )
+    return float(row["total"]) if row and row.get("total") is not None else 0.0
+
+
+def get_recent_ai_usage(limit: int = 50) -> list[dict]:
+    """Fetch the most recent AI usage rows. For the admin /admin/ai-spend endpoint."""
+    return _fetchall_dicts(
+        "SELECT id, user_id, mode, model, input_tokens, output_tokens, cost_gbp, success, usage_day, created_at FROM ai_usage_log ORDER BY id DESC LIMIT ?",
+        (int(limit),),
+    )
+
+
+# --- Credit balance (pre-purchased overage packs) ---
+
+def get_credit_balance(user_id: int) -> float:
+    """Return the user's pre-purchased AI credit balance in GBP."""
+    row = _fetchone_dict("SELECT ai_credit_balance_gbp FROM users WHERE id = ?", (user_id,))
+    if not row:
+        return 0.0
+    return float(row.get("ai_credit_balance_gbp", 0) or 0)
+
+
+def add_credit_balance(user_id: int, amount_gbp: float):
+    """Atomically increase the user's credit balance (e.g. after a Stripe
+    one-time checkout.session.completed for a credit pack)."""
+    _execute(
+        "UPDATE users SET ai_credit_balance_gbp = COALESCE(ai_credit_balance_gbp, 0) + ? WHERE id = ?",
+        (float(amount_gbp), user_id),
+    )
+
+
+def deduct_credit_balance(user_id: int, amount_gbp: float) -> bool:
+    """Atomically decrease the user's credit balance.
+
+    Returns ``True`` if the deduction succeeded (balance was sufficient),
+    ``False`` otherwise. The caller should have already verified affordability
+    before calling, but we guard here with a conditional UPDATE to avoid races
+    between concurrent requests.
+    """
+    # Conditional update: only deducts if balance is sufficient. Both the
+    # Turso HTTP client and sqlite3 expose a row-count attribute we can use
+    # to detect whether the WHERE clause matched.
+    if USE_TURSO:
+        result = _get_turso().execute(
+            "UPDATE users SET ai_credit_balance_gbp = ai_credit_balance_gbp - ? WHERE id = ? AND ai_credit_balance_gbp >= ?",
+            (float(amount_gbp), user_id, float(amount_gbp)),
+        )
+        return (getattr(result, "affected_row_count", 0) or 0) > 0
+    else:
+        conn = _get_sqlite()
+        cursor = conn.execute(
+            "UPDATE users SET ai_credit_balance_gbp = ai_credit_balance_gbp - ? WHERE id = ? AND ai_credit_balance_gbp >= ?",
+            (float(amount_gbp), user_id, float(amount_gbp)),
+        )
+        conn.commit()
+        return cursor.rowcount > 0
+
+
+# --- Email verification ---
+
+def mark_email_verified(user_id: int):
+    """Mark a user's email as verified. Idempotent."""
+    _execute("UPDATE users SET email_verified = 1 WHERE id = ?", (user_id,))
+
+
+def is_email_verified(user_id: int) -> bool:
+    row = _fetchone_dict("SELECT email_verified FROM users WHERE id = ?", (user_id,))
+    if not row:
+        return False
+    return bool(row.get("email_verified", 0))
 
 
 # --- Session functions (legacy, used by restore flow) ---
