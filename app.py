@@ -188,7 +188,7 @@ async def admin_page(request: Request):
     email = (user.get("email") or "").lower()
     if email not in UNLIMITED_EMAILS:
         return RedirectResponse(url="/", status_code=302)
-    return templates.TemplateResponse("admin.html", {"request": request})
+    return templates.TemplateResponse(request, "admin.html")
 
 
 @app.get("/credits", response_class=HTMLResponse)
