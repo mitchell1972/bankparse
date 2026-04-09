@@ -1946,18 +1946,46 @@ async def admin_ai_test(request: Request):
     if not user or (user.get("email") or "").lower() not in UNLIMITED_EMAILS:
         raise HTTPException(status_code=403, detail="Admin access required.")
     import anthropic as _anth
-    import httpx
     result = {"ai_parsers": AI_PARSERS_AVAILABLE, "anthropic_key_set": bool(ANTHROPIC_API_KEY), "model": os.environ.get("AI_MODEL", "claude-haiku-4-5-20251001"), "sdk_version": _anth.__version__}
-    if AI_PARSERS_AVAILABLE and ANTHROPIC_API_KEY:
+
+    # Test 1: raw urllib to check basic connectivity
+    import urllib.request, urllib.error
+    try:
+        req = urllib.request.Request(
+            "https://api.anthropic.com/v1/messages",
+            data=json.dumps({"model": result["model"], "max_tokens": 10, "messages": [{"role": "user", "content": "Say OK"}]}).encode(),
+            headers={
+                "Content-Type": "application/json",
+                "x-api-key": ANTHROPIC_API_KEY,
+                "anthropic-version": "2023-06-01",
+            },
+        )
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            body = json.loads(resp.read().decode())
+            result["raw_http_test"] = "OK"
+            result["response"] = body.get("content", [{}])[0].get("text", "")
+            result["usage"] = body.get("usage", {})
+    except urllib.error.HTTPError as e:
+        result["raw_http_test"] = "HTTP_ERROR"
+        result["error"] = f"{e.code}: {e.read().decode()[:500]}"
+    except Exception as e:
+        result["raw_http_test"] = "FAILED"
+        result["error"] = f"{type(e).__name__}: {str(e)}"
+
+    # Test 2: SDK test (only if raw HTTP also failed)
+    if result.get("raw_http_test") == "OK":
+        result["api_test"] = "OK (via raw HTTP)"
+    elif AI_PARSERS_AVAILABLE and ANTHROPIC_API_KEY:
         try:
+            import httpx
             client = _anth.Anthropic(api_key=ANTHROPIC_API_KEY, timeout=httpx.Timeout(30.0, connect=10.0))
             resp = client.messages.create(model=result["model"], max_tokens=10, messages=[{"role": "user", "content": "Say OK"}])
             result["api_test"] = "OK"
             result["response"] = resp.content[0].text
             result["usage"] = {"in": resp.usage.input_tokens, "out": resp.usage.output_tokens}
         except Exception as e:
-            result["api_test"] = "FAILED"
-            result["error"] = f"{type(e).__name__}: {str(e)}"
+            result["sdk_test"] = "FAILED"
+            result["sdk_error"] = f"{type(e).__name__}: {str(e)}"
     return JSONResponse(result)
 
 
