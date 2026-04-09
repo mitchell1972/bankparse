@@ -557,20 +557,24 @@ async def parse_statement(request: Request, file: UploadFile = File(...)):
         if not result["transactions"]:
             ai_usage = result.get("metadata", {}).get("ai_usage") or {}
             method = result.get("metadata", {}).get("method", "unknown")
+            in_tokens = ai_usage.get("input_tokens", 0)
+            out_tokens = ai_usage.get("output_tokens", 0)
             logger.error(
                 "No transactions found for %s (method=%s, in_tokens=%s, out_tokens=%s, pages=%s)",
-                safe_filename, method,
-                ai_usage.get("input_tokens", 0), ai_usage.get("output_tokens", 0),
+                safe_filename, method, in_tokens, out_tokens,
                 result.get("metadata", {}).get("pages_processed", 0),
             )
-            if ai_usage.get("input_tokens") or ai_usage.get("output_tokens"):
+            if in_tokens or out_tokens:
                 record_ai_spend(
                     user["id"], "statement", ai_usage.get("model", ""),
-                    int(ai_usage.get("input_tokens", 0)),
-                    int(ai_usage.get("output_tokens", 0)),
+                    int(in_tokens), int(out_tokens),
                     success=False,
                 )
-            raise HTTPException(status_code=422, detail="No transactions found.")
+            if not in_tokens and not out_tokens:
+                detail = "AI parsing failed — the service could not process this file. Please try again or contact support."
+            else:
+                detail = "No transactions found. The file format may not be supported yet, or the statement may be empty."
+            raise HTTPException(status_code=422, detail=detail)
 
         output_path = TMP_DIR / f"bankparse_{job_id}.xlsx"
         export_to_xlsx(result, str(output_path))
@@ -1933,6 +1937,27 @@ async def sitemap():
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
   {"".join(urls)}
 </urlset>"""
+
+
+@app.get("/api/admin/ai-test")
+async def admin_ai_test(request: Request):
+    """Admin-only: test the Anthropic API connection."""
+    user = get_current_user(request)
+    if not user or (user.get("email") or "").lower() not in UNLIMITED_EMAILS:
+        raise HTTPException(status_code=403, detail="Admin access required.")
+    result = {"ai_parsers": AI_PARSERS_AVAILABLE, "anthropic_key_set": bool(ANTHROPIC_API_KEY), "model": os.environ.get("AI_MODEL", "claude-haiku-4-5-20251001")}
+    if AI_PARSERS_AVAILABLE and ANTHROPIC_API_KEY:
+        try:
+            import anthropic
+            client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+            resp = client.messages.create(model=result["model"], max_tokens=10, messages=[{"role": "user", "content": "Say OK"}])
+            result["api_test"] = "OK"
+            result["response"] = resp.content[0].text
+            result["usage"] = {"in": resp.usage.input_tokens, "out": resp.usage.output_tokens}
+        except Exception as e:
+            result["api_test"] = "FAILED"
+            result["error"] = f"{type(e).__name__}: {str(e)}"
+    return JSONResponse(result)
 
 
 @app.get("/api/health")
