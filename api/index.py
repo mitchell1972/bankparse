@@ -85,6 +85,9 @@ except ImportError:
 
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 
+# Deployment version stamp — bump on every deploy to verify Vercel picked up the code.
+_DEPLOY_VERSION = "2026-04-09-text-first-v2"
+
 logger = logging.getLogger("bankparse")
 
 # Use /tmp on Vercel for file operations
@@ -553,6 +556,13 @@ async def parse_statement(request: Request, file: UploadFile = File(...)):
 
         if not result["transactions"]:
             ai_usage = result.get("metadata", {}).get("ai_usage") or {}
+            method = result.get("metadata", {}).get("method", "unknown")
+            logger.error(
+                "No transactions found for %s (method=%s, in_tokens=%s, out_tokens=%s, pages=%s)",
+                safe_filename, method,
+                ai_usage.get("input_tokens", 0), ai_usage.get("output_tokens", 0),
+                result.get("metadata", {}).get("pages_processed", 0),
+            )
             if ai_usage.get("input_tokens") or ai_usage.get("output_tokens"):
                 record_ai_spend(
                     user["id"], "statement", ai_usage.get("model", ""),
@@ -589,7 +599,8 @@ async def parse_statement(request: Request, file: UploadFile = File(...)):
         return response
     except HTTPException:
         raise
-    except Exception:
+    except Exception as exc:
+        logger.exception("Unexpected error parsing statement %s", safe_filename)
         raise HTTPException(status_code=500, detail="An internal error occurred.")
     finally:
         for f in [upload_path, TMP_DIR / f"bankparse_{job_id}.xlsx"]:
@@ -1926,4 +1937,4 @@ async def sitemap():
 
 @app.get("/api/health")
 async def health():
-    return {"status": "ok", "version": "2.3.0", "runtime": "vercel", "stripe_configured": bool(STRIPE_SECRET_KEY)}
+    return {"status": "ok", "version": "2.3.0", "deploy": _DEPLOY_VERSION, "runtime": "vercel", "ai_parsers": AI_PARSERS_AVAILABLE, "stripe_configured": bool(STRIPE_SECRET_KEY)}
