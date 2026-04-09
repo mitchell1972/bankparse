@@ -1764,8 +1764,22 @@
             clearInterval(progressInterval);
 
             if (!response.ok) {
-                const err = await response.json();
-                throw new Error(err.detail || 'Failed to parse file');
+                let errMsg = 'Failed to parse file';
+                const contentType = response.headers.get('content-type') || '';
+                if (contentType.includes('application/json')) {
+                    const err = await response.json();
+                    errMsg = err.detail || errMsg;
+                } else {
+                    const text = await response.text();
+                    if (response.status === 413 || text.includes('Request En')) {
+                        errMsg = 'Files too large. Please upload fewer or smaller files (max 4.5MB total).';
+                    } else if (response.status === 504) {
+                        errMsg = 'Request timed out. Try uploading fewer files at once.';
+                    } else {
+                        errMsg = text.substring(0, 200) || errMsg;
+                    }
+                }
+                throw new Error(errMsg);
             }
 
             const data = await response.json();

@@ -1,5 +1,11 @@
 {
   "version": 2,
+  "functions": {
+    "api/index.py": {
+      "maxDuration": 300
+    }
+  },
+  "maximumPayloadSize": "25mb",
   "builds": [
     {
       "src": "api/index.py",
