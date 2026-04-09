@@ -1949,11 +1949,11 @@ async def admin_ai_test(request: Request):
     result = {"ai_parsers": AI_PARSERS_AVAILABLE, "anthropic_key_set": bool(ANTHROPIC_API_KEY), "model": os.environ.get("AI_MODEL", "claude-haiku-4-5-20251001"), "sdk_version": _anth.__version__}
 
     # Test 1: raw urllib to check basic connectivity
-    import urllib.request, urllib.error
+    import urllib.request, urllib.error, json as _json
     try:
         req = urllib.request.Request(
             "https://api.anthropic.com/v1/messages",
-            data=json.dumps({"model": result["model"], "max_tokens": 10, "messages": [{"role": "user", "content": "Say OK"}]}).encode(),
+            data=_json.dumps({"model": result["model"], "max_tokens": 10, "messages": [{"role": "user", "content": "Say OK"}]}).encode(),
             headers={
                 "Content-Type": "application/json",
                 "x-api-key": ANTHROPIC_API_KEY,
@@ -1961,7 +1961,7 @@ async def admin_ai_test(request: Request):
             },
         )
         with urllib.request.urlopen(req, timeout=30) as resp:
-            body = json.loads(resp.read().decode())
+            body = _json.loads(resp.read().decode())
             result["raw_http_test"] = "OK"
             result["response"] = body.get("content", [{}])[0].get("text", "")
             result["usage"] = body.get("usage", {})
