@@ -34,7 +34,11 @@ def _get_client():
         if not ANTHROPIC_API_KEY:
             raise ValueError("ANTHROPIC_API_KEY environment variable is required for AI parsing")
         import anthropic
-        _client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+        import httpx
+        _client = anthropic.Anthropic(
+            api_key=ANTHROPIC_API_KEY,
+            timeout=httpx.Timeout(120.0, connect=10.0),
+        )
     return _client
 
 

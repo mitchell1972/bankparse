@@ -1945,11 +1945,12 @@ async def admin_ai_test(request: Request):
     user = get_current_user(request)
     if not user or (user.get("email") or "").lower() not in UNLIMITED_EMAILS:
         raise HTTPException(status_code=403, detail="Admin access required.")
-    result = {"ai_parsers": AI_PARSERS_AVAILABLE, "anthropic_key_set": bool(ANTHROPIC_API_KEY), "model": os.environ.get("AI_MODEL", "claude-haiku-4-5-20251001")}
+    import anthropic as _anth
+    import httpx
+    result = {"ai_parsers": AI_PARSERS_AVAILABLE, "anthropic_key_set": bool(ANTHROPIC_API_KEY), "model": os.environ.get("AI_MODEL", "claude-haiku-4-5-20251001"), "sdk_version": _anth.__version__}
     if AI_PARSERS_AVAILABLE and ANTHROPIC_API_KEY:
         try:
-            import anthropic
-            client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+            client = _anth.Anthropic(api_key=ANTHROPIC_API_KEY, timeout=httpx.Timeout(30.0, connect=10.0))
             resp = client.messages.create(model=result["model"], max_tokens=10, messages=[{"role": "user", "content": "Say OK"}])
             result["api_test"] = "OK"
             result["response"] = resp.content[0].text
