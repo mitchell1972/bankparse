@@ -2364,6 +2364,12 @@
         if (download_url) {
             dlLink.href = download_url;
             dlLink.onclick = null;
+        } else if (data.xlsx_base64) {
+            dlLink.href = '#';
+            dlLink.onclick = (e) => {
+                e.preventDefault();
+                downloadBase64(data.xlsx_base64, data.xlsx_filename || 'bankparse_bulk.xlsx');
+            };
         }
 
         const results = document.getElementById('bulkStatementResults');
@@ -2389,6 +2395,12 @@
         if (download_url) {
             dlLink.href = download_url;
             dlLink.onclick = null;
+        } else if (data.xlsx_base64) {
+            dlLink.href = '#';
+            dlLink.onclick = (e) => {
+                e.preventDefault();
+                downloadBase64(data.xlsx_base64, data.xlsx_filename || 'receipts_bulk.xlsx');
+            };
         }
 
         const results = document.getElementById('bulkReceiptResults');
