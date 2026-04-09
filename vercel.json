@@ -1,48 +1,30 @@
 {
   "version": 2,
-  "builds": [
-    {
-      "src": "api/index.py",
-      "use": "@vercel/python",
-      "config": {
-        "maxLambdaSize": "50mb",
-        "maxDuration": 300
-      }
+  "functions": {
+    "api/index.py": {
+      "maxDuration": 300,
+      "memory": 1024
     },
-    {
-      "src": "api/debug.py",
-      "use": "@vercel/python"
+    "api/debug.py": {
+      "maxDuration": 10
     }
+  },
+  "rewrites": [
+    { "source": "/api/debug", "destination": "/api/debug.py" },
+    { "source": "/(.*)", "destination": "/api/index.py" }
   ],
-  "routes": [
+  "headers": [
     {
-      "src": "/api/debug",
-      "dest": "api/debug.py"
+      "source": "/blog/(.*)/((og|hero)-image|infographic)",
+      "headers": [{ "key": "Cache-Control", "value": "public, max-age=604800, s-maxage=604800, immutable" }]
     },
     {
-      "src": "/blog/(.*)/(og-image|hero-image|infographic)",
-      "dest": "api/index.py",
-      "headers": {
-        "Cache-Control": "public, max-age=604800, s-maxage=604800, immutable"
-      }
+      "source": "/blog/(.*)",
+      "headers": [{ "key": "Cache-Control", "value": "public, max-age=86400, s-maxage=86400" }]
     },
     {
-      "src": "/blog/(.*)",
-      "dest": "api/index.py",
-      "headers": {
-        "Cache-Control": "public, max-age=86400, s-maxage=86400"
-      }
-    },
-    {
-      "src": "/tools/(.*)",
-      "dest": "api/index.py",
-      "headers": {
-        "Cache-Control": "public, max-age=86400, s-maxage=86400"
-      }
-    },
-    {
-      "src": "/(.*)",
-      "dest": "api/index.py"
+      "source": "/tools/(.*)",
+      "headers": [{ "key": "Cache-Control", "value": "public, max-age=86400, s-maxage=86400" }]
     }
   ]
 }
