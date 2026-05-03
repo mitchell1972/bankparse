@@ -211,6 +211,88 @@
             color: rgba(255,255,255,0.6);
         }
 
+        /* ---- Hero Before/After Visual ---- */
+        .hero-visual {
+            margin-top: 48px;
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+            align-items: stretch;
+            max-width: 720px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        .hero-visual-card {
+            flex: 1;
+            background: rgba(255,255,255,0.08);
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(255,255,255,0.12);
+            border-radius: var(--radius);
+            padding: 20px 16px;
+            text-align: left;
+            position: relative;
+        }
+        .hero-visual-card .card-label {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            font-weight: 600;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .hero-visual-card .card-label.before { color: rgba(255,255,255,0.5); }
+        .hero-visual-card .card-label.after { color: var(--accent); }
+        .hero-visual-card .card-label svg { width: 14px; height: 14px; flex-shrink: 0; }
+        .hero-visual-table {
+            font-size: 0.65rem;
+            font-family: "SF Mono", "Cascadia Code", "Menlo", monospace;
+            line-height: 1.6;
+        }
+        .hero-visual-table .row {
+            display: flex;
+            gap: 8px;
+            padding: 3px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.06);
+        }
+        .hero-visual-table .row.header {
+            font-weight: 700;
+            border-bottom: 1px solid rgba(255,255,255,0.15);
+            padding-bottom: 6px;
+            margin-bottom: 2px;
+        }
+        .hero-visual-table .cell {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .hero-visual-table .cell.date { width: 52px; flex-shrink: 0; }
+        .hero-visual-table .cell.desc { flex: 1; }
+        .hero-visual-table .cell.amount { width: 55px; text-align: right; flex-shrink: 0; }
+        .hero-visual-card.clean .hero-visual-table .row { border-bottom: 1px solid rgba(255,255,255,0.04); }
+        .hero-visual-card.clean .hero-visual-table .row.header { border-bottom: 1px solid rgba(255,255,255,0.15); }
+        .hero-visual-card.clean .cell.amount.debit { color: #F1948A; }
+        .hero-visual-card.clean .cell.amount.credit { color: #82E0AA; }
+        .hero-visual-arrow {
+            display: flex;
+            align-items: center;
+            flex-shrink: 0;
+            color: var(--accent);
+            font-size: 1.5rem;
+        }
+        @media (max-width: 768px) {
+            .hero-visual {
+                flex-direction: column;
+                max-width: 400px;
+            }
+            .hero-visual-arrow {
+                transform: rotate(90deg);
+                justify-content: center;
+                padding: 4px 0;
+            }
+        }
+
         /* ---- How It Works ---- */
         .how-it-works { background: var(--bg); }
         .steps {
@@ -754,6 +836,42 @@
         <p>Upload your bank statement or store receipt and get a clean, colour-coded Excel file back instantly. Supports HSBC, Barclays, Chase, Bank of America and more.</p>
         <a href="/login" class="btn-hero">Try Free &mdash; No Sign Up</a>
         <div class="hero-note">No registration required. Try free: 1 statement + 1 receipt.</div>
+
+        <!-- Before / After Visual -->
+        <div class="hero-visual">
+            <!-- Messy PDF -->
+            <div class="hero-visual-card">
+                <div class="card-label before">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="8" y1="8" x2="16" y2="8"/><line x1="8" y1="12" x2="12" y2="12"/></svg>
+                    HSBC Statement PDF
+                </div>
+                <div class="hero-visual-table">
+                    <div class="row header"><span class="cell date">Date</span><span class="cell desc">Description</span><span class="cell amount">Amount</span></div>
+                    <div class="row"><span class="cell date">01 MAR</span><span class="cell desc">POS 3482 TESCO STORES</span><span class="cell amount">-£45.20</span></div>
+                    <div class="row" style="opacity:0.4"><span class="cell date"></span><span class="cell desc">LONDON E14</span><span class="cell amount"></span></div>
+                    <div class="row" style="opacity:0.4"><span class="cell date">Page 2 of 5</span><span class="cell desc">Statement continued</span><span class="cell amount"></span></div>
+                    <div class="row"><span class="cell date">03 MAR</span><span class="cell desc">DIRECT DEBIT BT GROUP</span><span class="cell amount"></span></div>
+                </div>
+            </div>
+
+            <!-- Arrow -->
+            <div class="hero-visual-arrow">→</div>
+
+            <!-- Clean Excel -->
+            <div class="hero-visual-card clean">
+                <div class="card-label after">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="8" y1="8" x2="16" y2="8"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="8" y1="16" x2="12" y2="16"/></svg>
+                    Clean Excel Output
+                </div>
+                <div class="hero-visual-table">
+                    <div class="row header"><span class="cell date">Date</span><span class="cell desc">Description</span><span class="cell amount">Debit</span><span class="cell amount">Credit</span></div>
+                    <div class="row"><span class="cell date">01/03</span><span class="cell desc">TESCO STORES LONDON E14</span><span class="cell amount debit">£45.20</span><span class="cell amount"></span></div>
+                    <div class="row"><span class="cell date">03/03</span><span class="cell desc">BT GROUP PLC</span><span class="cell amount debit">£89.00</span><span class="cell amount"></span></div>
+                    <div class="row"><span class="cell date">05/03</span><span class="cell desc">SALARY - ACME CORP</span><span class="cell amount"></span><span class="cell amount credit">£2,450</span></div>
+                    <div class="row"><span class="cell date">08/03</span><span class="cell desc">AMAZON MARKETPLACE</span><span class="cell amount debit">£23.99</span><span class="cell amount"></span></div>
+                </div>
+            </div>
+        </div>
     </div>
 </section>
 
