@@ -1514,6 +1514,30 @@ BLOG_POSTS = {
         "template": "blog/convert-bank-statement-pdf-to-excel.html",
         "keywords": "convert bank statement to excel, bank statement PDF to Excel, bank statement to spreadsheet, UK bank statement converter",
     },
+    "convert-barclays-statement-to-excel": {
+        "title": "How to Convert Barclays Bank Statements to Excel (2026 Guide)",
+        "description": "Barclays bank statement PDFs contain invisible formatting characters that break Excel imports. Step-by-step guide for UK accountants to convert Barclays statements cleanly.",
+        "date": "2026-05-03",
+        "author": "BankScan AI Team",
+        "template": "blog/convert-barclays-statement-to-excel.html",
+        "keywords": "Barclays statement to Excel, convert Barclays bank statement, Barclays PDF to Excel, Barclays PDF to CSV, Barclays statement converter, Barclays to Xero, Barclays to QuickBooks",
+    },
+    "convert-monzo-statement-to-excel": {
+        "title": "How to Convert Monzo Bank Statements to Excel (2026 Guide)",
+        "description": "Monzo exports 17-column CSVs but bookkeeping software only needs 5. Learn how to clean Monzo statements for Xero, QuickBooks, and Excel imports.",
+        "date": "2026-05-03",
+        "author": "BankScan AI Team",
+        "template": "blog/convert-monzo-statement-to-excel.html",
+        "keywords": "Monzo statement to Excel, Monzo CSV to Xero, convert Monzo statement, Monzo PDF to Excel, Monzo 17 columns fix, Monzo bank statement converter",
+    },
+    "convert-natwest-santander-statement-to-excel": {
+        "title": "How to Convert NatWest & Santander Bank Statements to Excel (2026 Guide)",
+        "description": "NatWest and Santander statements have unique formatting quirks that trip up standard converters. Complete guide for UK accountants to convert both banks cleanly.",
+        "date": "2026-05-03",
+        "author": "BankScan AI Team",
+        "template": "blog/convert-natwest-santander-statement-to-excel.html",
+        "keywords": "NatWest statement to Excel, Santander statement to Excel, convert NatWest bank statement, Santander PDF to Excel, NatWest to Xero, Santander to QuickBooks",
+    },
 }
 
 
