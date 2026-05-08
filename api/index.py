@@ -122,6 +122,14 @@ _root_jinja_env = Environment(loader=FileSystemLoader(str(_ROOT_TEMPLATE_DIR)))
 # SEO pages (pre-built at import time)
 from seo_pages import SEO_PAGES
 
+# Solution templates
+SOLUTION_IMPORT_NO_FEED_PATH = Path(__file__).parent.parent / "templates" / "solutions" / "import-bank-statement-without-bank-feed.html"
+SOLUTION_IMPORT_NO_FEED_HTML = SOLUTION_IMPORT_NO_FEED_PATH.read_text() if SOLUTION_IMPORT_NO_FEED_PATH.exists() else ""
+SOLUTION_QB_EOL_PATH = Path(__file__).parent.parent / "templates" / "solutions" / "quickbooks-desktop-eol.html"
+SOLUTION_QB_EOL_HTML = SOLUTION_QB_EOL_PATH.read_text() if SOLUTION_QB_EOL_PATH.exists() else ""
+SOLUTION_XERO_PDF_PATH = Path(__file__).parent.parent / "templates" / "solutions" / "xero-pdf-import.html"
+SOLUTION_XERO_PDF_HTML = SOLUTION_XERO_PDF_PATH.read_text() if SOLUTION_XERO_PDF_PATH.exists() else ""
+
 # Blog templates
 BLOG_DIR = Path(__file__).parent.parent / "templates" / "blog"
 BLOG_INDEX_HTML = (BLOG_DIR / "index.html").read_text() if (BLOG_DIR / "index.html").exists() else ""
@@ -193,6 +201,27 @@ async def compare_statement_desk():
     if not COMPARE_STATEMENT_DESK_HTML:
         raise HTTPException(status_code=404)
     return HTMLResponse(COMPARE_STATEMENT_DESK_HTML)
+
+
+@app.get("/solutions/import-bank-statement-without-bank-feed", response_class=HTMLResponse)
+async def solution_import_no_feed():
+    if not SOLUTION_IMPORT_NO_FEED_HTML:
+        raise HTTPException(status_code=404)
+    return HTMLResponse(SOLUTION_IMPORT_NO_FEED_HTML)
+
+
+@app.get("/solutions/quickbooks-desktop-eol", response_class=HTMLResponse)
+async def solution_qb_eol():
+    if not SOLUTION_QB_EOL_HTML:
+        raise HTTPException(status_code=404)
+    return HTMLResponse(SOLUTION_QB_EOL_HTML)
+
+
+@app.get("/solutions/xero-pdf-import", response_class=HTMLResponse)
+async def solution_xero_pdf():
+    if not SOLUTION_XERO_PDF_HTML:
+        raise HTTPException(status_code=404)
+    return HTMLResponse(SOLUTION_XERO_PDF_HTML)
 
 
 @app.get("/admin", response_class=HTMLResponse)
@@ -1941,6 +1970,7 @@ Allow: /login
 Allow: /compare
 Allow: /compare/docuclipper
 Allow: /compare/statement-desk
+Allow: /solutions
 Allow: /blog
 Allow: /tools
 Disallow: /api/
@@ -1956,6 +1986,9 @@ async def sitemap():
         '<url><loc>https://bankscanai.com/compare</loc><priority>0.8</priority><changefreq>monthly</changefreq></url>',
         '<url><loc>https://bankscanai.com/compare/docuclipper</loc><priority>0.7</priority><changefreq>monthly</changefreq></url>',
         '<url><loc>https://bankscanai.com/compare/statement-desk</loc><priority>0.7</priority><changefreq>monthly</changefreq></url>',
+        '<url><loc>https://bankscanai.com/solutions/import-bank-statement-without-bank-feed</loc><priority>0.7</priority><changefreq>monthly</changefreq></url>',
+        '<url><loc>https://bankscanai.com/solutions/quickbooks-desktop-eol</loc><priority>0.7</priority><changefreq>monthly</changefreq></url>',
+        '<url><loc>https://bankscanai.com/solutions/xero-pdf-import</loc><priority>0.7</priority><changefreq>monthly</changefreq></url>',
         '<url><loc>https://bankscanai.com/blog</loc><priority>0.8</priority><changefreq>weekly</changefreq></url>',
     ]
     for slug, post in BLOG_POSTS.items():

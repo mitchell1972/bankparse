@@ -194,6 +194,21 @@ async def compare_statement_desk_page(request: Request):
     return templates.TemplateResponse(request, "compare-statement-desk.html")
 
 
+@app.get("/solutions/import-bank-statement-without-bank-feed", response_class=HTMLResponse)
+async def solution_import_no_feed(request: Request):
+    return templates.TemplateResponse(request, "solutions/import-bank-statement-without-bank-feed.html")
+
+
+@app.get("/solutions/quickbooks-desktop-eol", response_class=HTMLResponse)
+async def solution_qb_eol(request: Request):
+    return templates.TemplateResponse(request, "solutions/quickbooks-desktop-eol.html")
+
+
+@app.get("/solutions/xero-pdf-import", response_class=HTMLResponse)
+async def solution_xero_pdf(request: Request):
+    return templates.TemplateResponse(request, "solutions/xero-pdf-import.html")
+
+
 @app.get("/admin", response_class=HTMLResponse)
 async def admin_page(request: Request):
     """Admin dashboard — restricted to UNLIMITED_EMAILS."""
@@ -1856,6 +1871,7 @@ async def robots():
 Allow: /landing
 Allow: /login
 Allow: /compare
+Allow: /solutions
 Allow: /blog
 Allow: /tools
 Disallow: /api/
@@ -1871,6 +1887,9 @@ async def sitemap():
         '<url><loc>https://bankscanai.com/compare</loc><priority>0.8</priority><changefreq>monthly</changefreq></url>',
         '<url><loc>https://bankscanai.com/compare/docuclipper</loc><priority>0.7</priority><changefreq>monthly</changefreq></url>',
         '<url><loc>https://bankscanai.com/compare/statement-desk</loc><priority>0.7</priority><changefreq>monthly</changefreq></url>',
+        '<url><loc>https://bankscanai.com/solutions/import-bank-statement-without-bank-feed</loc><priority>0.7</priority><changefreq>monthly</changefreq></url>',
+        '<url><loc>https://bankscanai.com/solutions/quickbooks-desktop-eol</loc><priority>0.7</priority><changefreq>monthly</changefreq></url>',
+        '<url><loc>https://bankscanai.com/solutions/xero-pdf-import</loc><priority>0.7</priority><changefreq>monthly</changefreq></url>',
         '<url><loc>https://bankscanai.com/blog</loc><priority>0.8</priority><changefreq>weekly</changefreq></url>',
     ]
     for slug, post in BLOG_POSTS.items():
