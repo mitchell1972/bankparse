@@ -179,6 +179,11 @@ async def landing(request: Request):
     return templates.TemplateResponse(request, "landing.html")
 
 
+@app.get("/compare", response_class=HTMLResponse)
+async def compare_page(request: Request):
+    return templates.TemplateResponse(request, "compare.html")
+
+
 @app.get("/admin", response_class=HTMLResponse)
 async def admin_page(request: Request):
     """Admin dashboard — restricted to UNLIMITED_EMAILS."""
@@ -1844,6 +1849,7 @@ async def sitemap():
     urls = [
         '<url><loc>https://bankscanai.com/landing</loc><priority>1.0</priority><changefreq>weekly</changefreq></url>',
         '<url><loc>https://bankscanai.com/login</loc><priority>0.5</priority><changefreq>monthly</changefreq></url>',
+        '<url><loc>https://bankscanai.com/compare</loc><priority>0.8</priority><changefreq>monthly</changefreq></url>',
         '<url><loc>https://bankscanai.com/blog</loc><priority>0.8</priority><changefreq>weekly</changefreq></url>',
     ]
     for slug, post in BLOG_POSTS.items():

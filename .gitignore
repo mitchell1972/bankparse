@@ -9,3 +9,4 @@ outputs/
 *.db
 usage/
 bankparse.db*
+.env*.local
