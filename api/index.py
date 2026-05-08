@@ -101,6 +101,10 @@ LANDING_PATH = Path(__file__).parent.parent / "templates" / "landing.html"
 LANDING_HTML = LANDING_PATH.read_text() if LANDING_PATH.exists() else TEMPLATE_HTML
 COMPARE_PATH = Path(__file__).parent.parent / "templates" / "compare.html"
 COMPARE_HTML = COMPARE_PATH.read_text() if COMPARE_PATH.exists() else ""
+COMPARE_DOCUCLIPPER_PATH = Path(__file__).parent.parent / "templates" / "compare-docuclipper.html"
+COMPARE_DOCUCLIPPER_HTML = COMPARE_DOCUCLIPPER_PATH.read_text() if COMPARE_DOCUCLIPPER_PATH.exists() else ""
+COMPARE_STATEMENT_DESK_PATH = Path(__file__).parent.parent / "templates" / "compare-statement-desk.html"
+COMPARE_STATEMENT_DESK_HTML = COMPARE_STATEMENT_DESK_PATH.read_text() if COMPARE_STATEMENT_DESK_PATH.exists() else ""
 LOGIN_PATH = Path(__file__).parent.parent / "templates" / "login.html"
 LOGIN_HTML = LOGIN_PATH.read_text() if LOGIN_PATH.exists() else ""
 ADMIN_PATH = Path(__file__).parent.parent / "templates" / "admin.html"
@@ -175,6 +179,20 @@ async def landing():
 @app.get("/compare", response_class=HTMLResponse)
 async def compare():
     return HTMLResponse(COMPARE_HTML)
+
+
+@app.get("/compare/docuclipper", response_class=HTMLResponse)
+async def compare_docuclipper():
+    if not COMPARE_DOCUCLIPPER_HTML:
+        raise HTTPException(status_code=404)
+    return HTMLResponse(COMPARE_DOCUCLIPPER_HTML)
+
+
+@app.get("/compare/statement-desk", response_class=HTMLResponse)
+async def compare_statement_desk():
+    if not COMPARE_STATEMENT_DESK_HTML:
+        raise HTTPException(status_code=404)
+    return HTMLResponse(COMPARE_STATEMENT_DESK_HTML)
 
 
 @app.get("/admin", response_class=HTMLResponse)
@@ -1609,6 +1627,11 @@ BLOG_POSTS = {
         "date": "2026-03-31",
         "author": "BankScan AI Team",
     },
+    "best-bank-statement-converters-2026": {
+        "title": "Best Bank Statement Converters 2026: Honest Comparison for UK Accountants",
+        "date": "2026-05-08",
+        "author": "BankScan AI Team",
+    },
 }
 
 
@@ -1916,6 +1939,8 @@ async def robots():
 Allow: /landing
 Allow: /login
 Allow: /compare
+Allow: /compare/docuclipper
+Allow: /compare/statement-desk
 Allow: /blog
 Allow: /tools
 Disallow: /api/
@@ -1929,6 +1954,8 @@ async def sitemap():
         '<url><loc>https://bankscanai.com/landing</loc><priority>1.0</priority><changefreq>weekly</changefreq></url>',
         '<url><loc>https://bankscanai.com/login</loc><priority>0.5</priority><changefreq>monthly</changefreq></url>',
         '<url><loc>https://bankscanai.com/compare</loc><priority>0.8</priority><changefreq>monthly</changefreq></url>',
+        '<url><loc>https://bankscanai.com/compare/docuclipper</loc><priority>0.7</priority><changefreq>monthly</changefreq></url>',
+        '<url><loc>https://bankscanai.com/compare/statement-desk</loc><priority>0.7</priority><changefreq>monthly</changefreq></url>',
         '<url><loc>https://bankscanai.com/blog</loc><priority>0.8</priority><changefreq>weekly</changefreq></url>',
     ]
     for slug, post in BLOG_POSTS.items():

@@ -184,6 +184,16 @@ async def compare_page(request: Request):
     return templates.TemplateResponse(request, "compare.html")
 
 
+@app.get("/compare/docuclipper", response_class=HTMLResponse)
+async def compare_docuclipper_page(request: Request):
+    return templates.TemplateResponse(request, "compare-docuclipper.html")
+
+
+@app.get("/compare/statement-desk", response_class=HTMLResponse)
+async def compare_statement_desk_page(request: Request):
+    return templates.TemplateResponse(request, "compare-statement-desk.html")
+
+
 @app.get("/admin", response_class=HTMLResponse)
 async def admin_page(request: Request):
     """Admin dashboard — restricted to UNLIMITED_EMAILS."""
@@ -1543,6 +1553,14 @@ BLOG_POSTS = {
         "template": "blog/convert-natwest-santander-statement-to-excel.html",
         "keywords": "NatWest statement to Excel, Santander statement to Excel, convert NatWest bank statement, Santander PDF to Excel, NatWest to Xero, Santander to QuickBooks",
     },
+    "best-bank-statement-converters-2026": {
+        "title": "Best Bank Statement Converters 2026: Honest Comparison for UK Accountants",
+        "description": "Compare the 6 best bank statement converters in 2026. Honest reviews covering pricing, UK bank support, and features. Written for UK accountants by BankScan AI.",
+        "date": "2026-05-08",
+        "author": "BankScan AI Team",
+        "template": "blog/best-bank-statement-converters-2026.html",
+        "keywords": "best bank statement converter 2026, bank statement converter comparison, best PDF to Excel converter for accountants, cheapest bank statement converter, DocuClipper alternative, Statement Desk alternative, UK bank statement converter",
+    },
 }
 
 
@@ -1837,6 +1855,7 @@ async def robots():
     return """User-agent: *
 Allow: /landing
 Allow: /login
+Allow: /compare
 Allow: /blog
 Allow: /tools
 Disallow: /api/
@@ -1850,6 +1869,8 @@ async def sitemap():
         '<url><loc>https://bankscanai.com/landing</loc><priority>1.0</priority><changefreq>weekly</changefreq></url>',
         '<url><loc>https://bankscanai.com/login</loc><priority>0.5</priority><changefreq>monthly</changefreq></url>',
         '<url><loc>https://bankscanai.com/compare</loc><priority>0.8</priority><changefreq>monthly</changefreq></url>',
+        '<url><loc>https://bankscanai.com/compare/docuclipper</loc><priority>0.7</priority><changefreq>monthly</changefreq></url>',
+        '<url><loc>https://bankscanai.com/compare/statement-desk</loc><priority>0.7</priority><changefreq>monthly</changefreq></url>',
         '<url><loc>https://bankscanai.com/blog</loc><priority>0.8</priority><changefreq>weekly</changefreq></url>',
     ]
     for slug, post in BLOG_POSTS.items():
