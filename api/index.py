@@ -122,13 +122,27 @@ _root_jinja_env = Environment(loader=FileSystemLoader(str(_ROOT_TEMPLATE_DIR)))
 # SEO pages (pre-built at import time)
 from seo_pages import SEO_PAGES
 
-# Solution templates
+# Solution templates (Tier 1)
 SOLUTION_IMPORT_NO_FEED_PATH = Path(__file__).parent.parent / "templates" / "solutions" / "import-bank-statement-without-bank-feed.html"
 SOLUTION_IMPORT_NO_FEED_HTML = SOLUTION_IMPORT_NO_FEED_PATH.read_text() if SOLUTION_IMPORT_NO_FEED_PATH.exists() else ""
 SOLUTION_QB_EOL_PATH = Path(__file__).parent.parent / "templates" / "solutions" / "quickbooks-desktop-eol.html"
 SOLUTION_QB_EOL_HTML = SOLUTION_QB_EOL_PATH.read_text() if SOLUTION_QB_EOL_PATH.exists() else ""
 SOLUTION_XERO_PDF_PATH = Path(__file__).parent.parent / "templates" / "solutions" / "xero-pdf-import.html"
 SOLUTION_XERO_PDF_HTML = SOLUTION_XERO_PDF_PATH.read_text() if SOLUTION_XERO_PDF_PATH.exists() else ""
+SOLUTION_QBO_PATH = Path(__file__).parent.parent / "templates" / "solutions" / "import-bank-statements-into-quickbooks-online.html"
+SOLUTION_QBO_HTML = SOLUTION_QBO_PATH.read_text() if SOLUTION_QBO_PATH.exists() else ""
+SOLUTION_SAGE_PATH = Path(__file__).parent.parent / "templates" / "solutions" / "import-bank-statements-into-sage.html"
+SOLUTION_SAGE_HTML = SOLUTION_SAGE_PATH.read_text() if SOLUTION_SAGE_PATH.exists() else ""
+SOLUTION_FREEAGENT_PATH = Path(__file__).parent.parent / "templates" / "solutions" / "import-bank-statements-into-freeagent.html"
+SOLUTION_FREEAGENT_HTML = SOLUTION_FREEAGENT_PATH.read_text() if SOLUTION_FREEAGENT_PATH.exists() else ""
+SOLUTION_YEAR_END_PATH = Path(__file__).parent.parent / "templates" / "solutions" / "bank-statement-conversion-for-year-end.html"
+SOLUTION_YEAR_END_HTML = SOLUTION_YEAR_END_PATH.read_text() if SOLUTION_YEAR_END_PATH.exists() else ""
+SOLUTION_RECEIPT_PATH = Path(__file__).parent.parent / "templates" / "solutions" / "receipt-scanner-for-accountants.html"
+SOLUTION_RECEIPT_HTML = SOLUTION_RECEIPT_PATH.read_text() if SOLUTION_RECEIPT_PATH.exists() else ""
+COMPARE_LIDO_PATH = Path(__file__).parent.parent / "templates" / "compare-lido.html"
+COMPARE_LIDO_HTML = COMPARE_LIDO_PATH.read_text() if COMPARE_LIDO_PATH.exists() else ""
+COMPARE_CAPYPARSE_PATH = Path(__file__).parent.parent / "templates" / "compare-capyparse.html"
+COMPARE_CAPYPARSE_HTML = COMPARE_CAPYPARSE_PATH.read_text() if COMPARE_CAPYPARSE_PATH.exists() else ""
 
 # Blog templates
 BLOG_DIR = Path(__file__).parent.parent / "templates" / "blog"
@@ -222,6 +236,55 @@ async def solution_xero_pdf():
     if not SOLUTION_XERO_PDF_HTML:
         raise HTTPException(status_code=404)
     return HTMLResponse(SOLUTION_XERO_PDF_HTML)
+
+
+@app.get("/solutions/import-bank-statements-into-quickbooks-online", response_class=HTMLResponse)
+async def solution_qbo():
+    if not SOLUTION_QBO_HTML:
+        raise HTTPException(status_code=404)
+    return HTMLResponse(SOLUTION_QBO_HTML)
+
+
+@app.get("/solutions/import-bank-statements-into-sage", response_class=HTMLResponse)
+async def solution_sage():
+    if not SOLUTION_SAGE_HTML:
+        raise HTTPException(status_code=404)
+    return HTMLResponse(SOLUTION_SAGE_HTML)
+
+
+@app.get("/solutions/import-bank-statements-into-freeagent", response_class=HTMLResponse)
+async def solution_freeagent():
+    if not SOLUTION_FREEAGENT_HTML:
+        raise HTTPException(status_code=404)
+    return HTMLResponse(SOLUTION_FREEAGENT_HTML)
+
+
+@app.get("/solutions/bank-statement-conversion-for-year-end", response_class=HTMLResponse)
+async def solution_year_end():
+    if not SOLUTION_YEAR_END_HTML:
+        raise HTTPException(status_code=404)
+    return HTMLResponse(SOLUTION_YEAR_END_HTML)
+
+
+@app.get("/solutions/receipt-scanner-for-accountants", response_class=HTMLResponse)
+async def solution_receipt():
+    if not SOLUTION_RECEIPT_HTML:
+        raise HTTPException(status_code=404)
+    return HTMLResponse(SOLUTION_RECEIPT_HTML)
+
+
+@app.get("/compare/lido", response_class=HTMLResponse)
+async def compare_lido():
+    if not COMPARE_LIDO_HTML:
+        raise HTTPException(status_code=404)
+    return HTMLResponse(COMPARE_LIDO_HTML)
+
+
+@app.get("/compare/capyparse", response_class=HTMLResponse)
+async def compare_capyparse():
+    if not COMPARE_CAPYPARSE_HTML:
+        raise HTTPException(status_code=404)
+    return HTMLResponse(COMPARE_CAPYPARSE_HTML)
 
 
 @app.get("/admin", response_class=HTMLResponse)
@@ -1661,6 +1724,11 @@ BLOG_POSTS = {
         "date": "2026-05-08",
         "author": "BankScan AI Team",
     },
+    "cost-of-manual-data-entry-bookkeeping": {
+        "title": "The True Cost of Manual Data Entry for UK Bookkeepers (2026)",
+        "date": "2026-05-08",
+        "author": "BankScan AI Team",
+    },
 }
 
 
@@ -1989,6 +2057,13 @@ async def sitemap():
         '<url><loc>https://bankscanai.com/solutions/import-bank-statement-without-bank-feed</loc><priority>0.7</priority><changefreq>monthly</changefreq></url>',
         '<url><loc>https://bankscanai.com/solutions/quickbooks-desktop-eol</loc><priority>0.7</priority><changefreq>monthly</changefreq></url>',
         '<url><loc>https://bankscanai.com/solutions/xero-pdf-import</loc><priority>0.7</priority><changefreq>monthly</changefreq></url>',
+        '<url><loc>https://bankscanai.com/solutions/import-bank-statements-into-quickbooks-online</loc><priority>0.7</priority><changefreq>monthly</changefreq></url>',
+        '<url><loc>https://bankscanai.com/solutions/import-bank-statements-into-sage</loc><priority>0.7</priority><changefreq>monthly</changefreq></url>',
+        '<url><loc>https://bankscanai.com/solutions/import-bank-statements-into-freeagent</loc><priority>0.7</priority><changefreq>monthly</changefreq></url>',
+        '<url><loc>https://bankscanai.com/solutions/bank-statement-conversion-for-year-end</loc><priority>0.7</priority><changefreq>monthly</changefreq></url>',
+        '<url><loc>https://bankscanai.com/solutions/receipt-scanner-for-accountants</loc><priority>0.7</priority><changefreq>monthly</changefreq></url>',
+        '<url><loc>https://bankscanai.com/compare/lido</loc><priority>0.7</priority><changefreq>monthly</changefreq></url>',
+        '<url><loc>https://bankscanai.com/compare/capyparse</loc><priority>0.7</priority><changefreq>monthly</changefreq></url>',
         '<url><loc>https://bankscanai.com/blog</loc><priority>0.8</priority><changefreq>weekly</changefreq></url>',
     ]
     for slug, post in BLOG_POSTS.items():

@@ -209,6 +209,41 @@ async def solution_xero_pdf(request: Request):
     return templates.TemplateResponse(request, "solutions/xero-pdf-import.html")
 
 
+@app.get("/solutions/import-bank-statements-into-quickbooks-online", response_class=HTMLResponse)
+async def solution_qbo(request: Request):
+    return templates.TemplateResponse(request, "solutions/import-bank-statements-into-quickbooks-online.html")
+
+
+@app.get("/solutions/import-bank-statements-into-sage", response_class=HTMLResponse)
+async def solution_sage(request: Request):
+    return templates.TemplateResponse(request, "solutions/import-bank-statements-into-sage.html")
+
+
+@app.get("/solutions/import-bank-statements-into-freeagent", response_class=HTMLResponse)
+async def solution_freeagent(request: Request):
+    return templates.TemplateResponse(request, "solutions/import-bank-statements-into-freeagent.html")
+
+
+@app.get("/solutions/bank-statement-conversion-for-year-end", response_class=HTMLResponse)
+async def solution_year_end(request: Request):
+    return templates.TemplateResponse(request, "solutions/bank-statement-conversion-for-year-end.html")
+
+
+@app.get("/solutions/receipt-scanner-for-accountants", response_class=HTMLResponse)
+async def solution_receipt(request: Request):
+    return templates.TemplateResponse(request, "solutions/receipt-scanner-for-accountants.html")
+
+
+@app.get("/compare/lido", response_class=HTMLResponse)
+async def compare_lido_page(request: Request):
+    return templates.TemplateResponse(request, "compare-lido.html")
+
+
+@app.get("/compare/capyparse", response_class=HTMLResponse)
+async def compare_capyparse_page(request: Request):
+    return templates.TemplateResponse(request, "compare-capyparse.html")
+
+
 @app.get("/admin", response_class=HTMLResponse)
 async def admin_page(request: Request):
     """Admin dashboard — restricted to UNLIMITED_EMAILS."""
@@ -1576,6 +1611,14 @@ BLOG_POSTS = {
         "template": "blog/best-bank-statement-converters-2026.html",
         "keywords": "best bank statement converter 2026, bank statement converter comparison, best PDF to Excel converter for accountants, cheapest bank statement converter, DocuClipper alternative, Statement Desk alternative, UK bank statement converter",
     },
+    "cost-of-manual-data-entry-bookkeeping": {
+        "title": "The True Cost of Manual Data Entry for UK Bookkeepers (2026)",
+        "description": "How much does manual bank statement and receipt data entry actually cost your bookkeeping practice? We break down the numbers with real UK bookkeeper rates.",
+        "date": "2026-05-08",
+        "author": "BankScan AI Team",
+        "template": "blog/cost-of-manual-data-entry-bookkeeping.html",
+        "keywords": "cost of manual data entry accounting, cost of data entry bookkeeping, automate data entry bookkeeping, bookkeeping automation ROI, manual data entry cost UK, save time bookkeeping automation",
+    },
 }
 
 
@@ -1890,6 +1933,13 @@ async def sitemap():
         '<url><loc>https://bankscanai.com/solutions/import-bank-statement-without-bank-feed</loc><priority>0.7</priority><changefreq>monthly</changefreq></url>',
         '<url><loc>https://bankscanai.com/solutions/quickbooks-desktop-eol</loc><priority>0.7</priority><changefreq>monthly</changefreq></url>',
         '<url><loc>https://bankscanai.com/solutions/xero-pdf-import</loc><priority>0.7</priority><changefreq>monthly</changefreq></url>',
+        '<url><loc>https://bankscanai.com/solutions/import-bank-statements-into-quickbooks-online</loc><priority>0.7</priority><changefreq>monthly</changefreq></url>',
+        '<url><loc>https://bankscanai.com/solutions/import-bank-statements-into-sage</loc><priority>0.7</priority><changefreq>monthly</changefreq></url>',
+        '<url><loc>https://bankscanai.com/solutions/import-bank-statements-into-freeagent</loc><priority>0.7</priority><changefreq>monthly</changefreq></url>',
+        '<url><loc>https://bankscanai.com/solutions/bank-statement-conversion-for-year-end</loc><priority>0.7</priority><changefreq>monthly</changefreq></url>',
+        '<url><loc>https://bankscanai.com/solutions/receipt-scanner-for-accountants</loc><priority>0.7</priority><changefreq>monthly</changefreq></url>',
+        '<url><loc>https://bankscanai.com/compare/lido</loc><priority>0.7</priority><changefreq>monthly</changefreq></url>',
+        '<url><loc>https://bankscanai.com/compare/capyparse</loc><priority>0.7</priority><changefreq>monthly</changefreq></url>',
         '<url><loc>https://bankscanai.com/blog</loc><priority>0.8</priority><changefreq>weekly</changefreq></url>',
     ]
     for slug, post in BLOG_POSTS.items():
