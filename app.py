@@ -244,6 +244,31 @@ async def compare_capyparse_page(request: Request):
     return templates.TemplateResponse(request, "compare-capyparse.html")
 
 
+@app.get("/solutions/convert-bank-statements-for-mortgage-application", response_class=HTMLResponse)
+async def solution_mortgage(request: Request):
+    return templates.TemplateResponse(request, "solutions/convert-bank-statements-for-mortgage-application.html")
+
+
+@app.get("/solutions/bank-statement-conversion-for-audit", response_class=HTMLResponse)
+async def solution_audit(request: Request):
+    return templates.TemplateResponse(request, "solutions/bank-statement-conversion-for-audit.html")
+
+
+@app.get("/solutions/receipt-to-excel-guide", response_class=HTMLResponse)
+async def solution_receipt_excel(request: Request):
+    return templates.TemplateResponse(request, "solutions/receipt-to-excel-guide.html")
+
+
+@app.get("/solutions/bank-statement-conversion-bookkeepers", response_class=HTMLResponse)
+async def solution_bookkeepers(request: Request):
+    return templates.TemplateResponse(request, "solutions/bank-statement-conversion-bookkeepers.html")
+
+
+@app.get("/solutions/convert-multiple-bank-statements-bulk", response_class=HTMLResponse)
+async def solution_bulk(request: Request):
+    return templates.TemplateResponse(request, "solutions/convert-multiple-bank-statements-bulk.html")
+
+
 @app.get("/admin", response_class=HTMLResponse)
 async def admin_page(request: Request):
     """Admin dashboard — restricted to UNLIMITED_EMAILS."""
@@ -1619,6 +1644,22 @@ BLOG_POSTS = {
         "template": "blog/cost-of-manual-data-entry-bookkeeping.html",
         "keywords": "cost of manual data entry accounting, cost of data entry bookkeeping, automate data entry bookkeeping, bookkeeping automation ROI, manual data entry cost UK, save time bookkeeping automation",
     },
+    "how-to-reconcile-bank-statements-faster": {
+        "title": "How to Reconcile Bank Statements Faster: A Guide for UK Bookkeepers",
+        "description": "Bank reconciliation doesn't have to take hours. Learn practical techniques to speed up reconciliation — from AI bank statement conversion to smart matching strategies.",
+        "date": "2026-05-08",
+        "author": "BankScan AI Team",
+        "template": "blog/how-to-reconcile-bank-statements-faster.html",
+        "keywords": "reconcile bank statements faster, bank reconciliation tips, speed up bank reconciliation, bookkeeping reconciliation faster, automate bank reconciliation",
+    },
+    "uk-bank-statement-formats-guide": {
+        "title": "UK Bank Statement Formats Compared: A Guide for Accountants",
+        "description": "Every UK bank formats statements differently. Compare HSBC, Barclays, Lloyds, NatWest, Monzo, and Starling statement formats in one guide.",
+        "date": "2026-05-08",
+        "author": "BankScan AI Team",
+        "template": "blog/uk-bank-statement-formats-guide.html",
+        "keywords": "UK bank statement formats, HSBC statement format, Barclays statement format, Lloyds statement format, NatWest statement format, Monzo statement format, UK bank statement comparison",
+    },
 }
 
 
@@ -1940,6 +1981,11 @@ async def sitemap():
         '<url><loc>https://bankscanai.com/solutions/receipt-scanner-for-accountants</loc><priority>0.7</priority><changefreq>monthly</changefreq></url>',
         '<url><loc>https://bankscanai.com/compare/lido</loc><priority>0.7</priority><changefreq>monthly</changefreq></url>',
         '<url><loc>https://bankscanai.com/compare/capyparse</loc><priority>0.7</priority><changefreq>monthly</changefreq></url>',
+        '<url><loc>https://bankscanai.com/solutions/convert-bank-statements-for-mortgage-application</loc><priority>0.6</priority><changefreq>monthly</changefreq></url>',
+        '<url><loc>https://bankscanai.com/solutions/bank-statement-conversion-for-audit</loc><priority>0.6</priority><changefreq>monthly</changefreq></url>',
+        '<url><loc>https://bankscanai.com/solutions/receipt-to-excel-guide</loc><priority>0.6</priority><changefreq>monthly</changefreq></url>',
+        '<url><loc>https://bankscanai.com/solutions/bank-statement-conversion-bookkeepers</loc><priority>0.6</priority><changefreq>monthly</changefreq></url>',
+        '<url><loc>https://bankscanai.com/solutions/convert-multiple-bank-statements-bulk</loc><priority>0.6</priority><changefreq>monthly</changefreq></url>',
         '<url><loc>https://bankscanai.com/blog</loc><priority>0.8</priority><changefreq>weekly</changefreq></url>',
     ]
     for slug, post in BLOG_POSTS.items():

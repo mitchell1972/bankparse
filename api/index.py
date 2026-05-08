@@ -143,6 +143,17 @@ COMPARE_LIDO_PATH = Path(__file__).parent.parent / "templates" / "compare-lido.h
 COMPARE_LIDO_HTML = COMPARE_LIDO_PATH.read_text() if COMPARE_LIDO_PATH.exists() else ""
 COMPARE_CAPYPARSE_PATH = Path(__file__).parent.parent / "templates" / "compare-capyparse.html"
 COMPARE_CAPYPARSE_HTML = COMPARE_CAPYPARSE_PATH.read_text() if COMPARE_CAPYPARSE_PATH.exists() else ""
+# Tier 2 solution templates
+SOLUTION_MORTGAGE_PATH = Path(__file__).parent.parent / "templates" / "solutions" / "convert-bank-statements-for-mortgage-application.html"
+SOLUTION_MORTGAGE_HTML = SOLUTION_MORTGAGE_PATH.read_text() if SOLUTION_MORTGAGE_PATH.exists() else ""
+SOLUTION_AUDIT_PATH = Path(__file__).parent.parent / "templates" / "solutions" / "bank-statement-conversion-for-audit.html"
+SOLUTION_AUDIT_HTML = SOLUTION_AUDIT_PATH.read_text() if SOLUTION_AUDIT_PATH.exists() else ""
+SOLUTION_RECEIPT_EXCEL_PATH = Path(__file__).parent.parent / "templates" / "solutions" / "receipt-to-excel-guide.html"
+SOLUTION_RECEIPT_EXCEL_HTML = SOLUTION_RECEIPT_EXCEL_PATH.read_text() if SOLUTION_RECEIPT_EXCEL_PATH.exists() else ""
+SOLUTION_BOOKKEEPERS_PATH = Path(__file__).parent.parent / "templates" / "solutions" / "bank-statement-conversion-bookkeepers.html"
+SOLUTION_BOOKKEEPERS_HTML = SOLUTION_BOOKKEEPERS_PATH.read_text() if SOLUTION_BOOKKEEPERS_PATH.exists() else ""
+SOLUTION_BULK_PATH = Path(__file__).parent.parent / "templates" / "solutions" / "convert-multiple-bank-statements-bulk.html"
+SOLUTION_BULK_HTML = SOLUTION_BULK_PATH.read_text() if SOLUTION_BULK_PATH.exists() else ""
 
 # Blog templates
 BLOG_DIR = Path(__file__).parent.parent / "templates" / "blog"
@@ -285,6 +296,41 @@ async def compare_capyparse():
     if not COMPARE_CAPYPARSE_HTML:
         raise HTTPException(status_code=404)
     return HTMLResponse(COMPARE_CAPYPARSE_HTML)
+
+
+@app.get("/solutions/convert-bank-statements-for-mortgage-application", response_class=HTMLResponse)
+async def solution_mortgage():
+    if not SOLUTION_MORTGAGE_HTML:
+        raise HTTPException(status_code=404)
+    return HTMLResponse(SOLUTION_MORTGAGE_HTML)
+
+
+@app.get("/solutions/bank-statement-conversion-for-audit", response_class=HTMLResponse)
+async def solution_audit():
+    if not SOLUTION_AUDIT_HTML:
+        raise HTTPException(status_code=404)
+    return HTMLResponse(SOLUTION_AUDIT_HTML)
+
+
+@app.get("/solutions/receipt-to-excel-guide", response_class=HTMLResponse)
+async def solution_receipt_excel():
+    if not SOLUTION_RECEIPT_EXCEL_HTML:
+        raise HTTPException(status_code=404)
+    return HTMLResponse(SOLUTION_RECEIPT_EXCEL_HTML)
+
+
+@app.get("/solutions/bank-statement-conversion-bookkeepers", response_class=HTMLResponse)
+async def solution_bookkeepers():
+    if not SOLUTION_BOOKKEEPERS_HTML:
+        raise HTTPException(status_code=404)
+    return HTMLResponse(SOLUTION_BOOKKEEPERS_HTML)
+
+
+@app.get("/solutions/convert-multiple-bank-statements-bulk", response_class=HTMLResponse)
+async def solution_bulk():
+    if not SOLUTION_BULK_HTML:
+        raise HTTPException(status_code=404)
+    return HTMLResponse(SOLUTION_BULK_HTML)
 
 
 @app.get("/admin", response_class=HTMLResponse)
@@ -1729,6 +1775,16 @@ BLOG_POSTS = {
         "date": "2026-05-08",
         "author": "BankScan AI Team",
     },
+    "how-to-reconcile-bank-statements-faster": {
+        "title": "How to Reconcile Bank Statements Faster: A Guide for UK Bookkeepers",
+        "date": "2026-05-08",
+        "author": "BankScan AI Team",
+    },
+    "uk-bank-statement-formats-guide": {
+        "title": "UK Bank Statement Formats Compared: A Guide for Accountants",
+        "date": "2026-05-08",
+        "author": "BankScan AI Team",
+    },
 }
 
 
@@ -2064,6 +2120,11 @@ async def sitemap():
         '<url><loc>https://bankscanai.com/solutions/receipt-scanner-for-accountants</loc><priority>0.7</priority><changefreq>monthly</changefreq></url>',
         '<url><loc>https://bankscanai.com/compare/lido</loc><priority>0.7</priority><changefreq>monthly</changefreq></url>',
         '<url><loc>https://bankscanai.com/compare/capyparse</loc><priority>0.7</priority><changefreq>monthly</changefreq></url>',
+        '<url><loc>https://bankscanai.com/solutions/convert-bank-statements-for-mortgage-application</loc><priority>0.6</priority><changefreq>monthly</changefreq></url>',
+        '<url><loc>https://bankscanai.com/solutions/bank-statement-conversion-for-audit</loc><priority>0.6</priority><changefreq>monthly</changefreq></url>',
+        '<url><loc>https://bankscanai.com/solutions/receipt-to-excel-guide</loc><priority>0.6</priority><changefreq>monthly</changefreq></url>',
+        '<url><loc>https://bankscanai.com/solutions/bank-statement-conversion-bookkeepers</loc><priority>0.6</priority><changefreq>monthly</changefreq></url>',
+        '<url><loc>https://bankscanai.com/solutions/convert-multiple-bank-statements-bulk</loc><priority>0.6</priority><changefreq>monthly</changefreq></url>',
         '<url><loc>https://bankscanai.com/blog</loc><priority>0.8</priority><changefreq>weekly</changefreq></url>',
     ]
     for slug, post in BLOG_POSTS.items():
