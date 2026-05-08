@@ -99,6 +99,8 @@ TEMPLATE_PATH = Path(__file__).parent.parent / "templates" / "index.html"
 TEMPLATE_HTML = TEMPLATE_PATH.read_text()
 LANDING_PATH = Path(__file__).parent.parent / "templates" / "landing.html"
 LANDING_HTML = LANDING_PATH.read_text() if LANDING_PATH.exists() else TEMPLATE_HTML
+COMPARE_PATH = Path(__file__).parent.parent / "templates" / "compare.html"
+COMPARE_HTML = COMPARE_PATH.read_text() if COMPARE_PATH.exists() else ""
 LOGIN_PATH = Path(__file__).parent.parent / "templates" / "login.html"
 LOGIN_HTML = LOGIN_PATH.read_text() if LOGIN_PATH.exists() else ""
 ADMIN_PATH = Path(__file__).parent.parent / "templates" / "admin.html"
@@ -168,6 +170,11 @@ async def home(request: Request):
 @app.get("/landing", response_class=HTMLResponse)
 async def landing():
     return HTMLResponse(LANDING_HTML)
+
+
+@app.get("/compare", response_class=HTMLResponse)
+async def compare():
+    return HTMLResponse(COMPARE_HTML)
 
 
 @app.get("/admin", response_class=HTMLResponse)
@@ -1908,6 +1915,7 @@ async def robots():
     return """User-agent: *
 Allow: /landing
 Allow: /login
+Allow: /compare
 Allow: /blog
 Allow: /tools
 Disallow: /api/
@@ -1920,6 +1928,7 @@ async def sitemap():
     urls = [
         '<url><loc>https://bankscanai.com/landing</loc><priority>1.0</priority><changefreq>weekly</changefreq></url>',
         '<url><loc>https://bankscanai.com/login</loc><priority>0.5</priority><changefreq>monthly</changefreq></url>',
+        '<url><loc>https://bankscanai.com/compare</loc><priority>0.8</priority><changefreq>monthly</changefreq></url>',
         '<url><loc>https://bankscanai.com/blog</loc><priority>0.8</priority><changefreq>weekly</changefreq></url>',
     ]
     for slug, post in BLOG_POSTS.items():
