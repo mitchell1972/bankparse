@@ -1785,6 +1785,41 @@ BLOG_POSTS = {
         "date": "2026-05-08",
         "author": "BankScan AI Team",
     },
+    "convert-lloyds-statement-to-excel": {
+        "title": "How to Convert Lloyds Bank Statements to Excel (2026 Guide)",
+        "date": "2026-05-08",
+        "author": "BankScan AI Team",
+    },
+    "convert-starling-statement-to-excel": {
+        "title": "How to Convert Starling Bank Statements to Excel (2026 Guide)",
+        "date": "2026-05-08",
+        "author": "BankScan AI Team",
+    },
+    "convert-revolut-statement-to-excel": {
+        "title": "How to Convert Revolut Bank Statements to Excel (2026 Guide)",
+        "date": "2026-05-08",
+        "author": "BankScan AI Team",
+    },
+    "convert-tide-statement-to-excel": {
+        "title": "How to Convert Tide Bank Statements to Excel (2026 Guide)",
+        "date": "2026-05-08",
+        "author": "BankScan AI Team",
+    },
+    "convert-nationwide-statement-to-excel": {
+        "title": "How to Convert Nationwide Bank Statements to Excel (2026 Guide)",
+        "date": "2026-05-08",
+        "author": "BankScan AI Team",
+    },
+    "convert-halifax-statement-to-excel": {
+        "title": "How to Convert Halifax Bank Statements to Excel (2026 Guide)",
+        "date": "2026-05-08",
+        "author": "BankScan AI Team",
+    },
+    "convert-santander-statement-to-excel": {
+        "title": "How to Convert Santander Bank Statements to Excel (2026 Guide)",
+        "date": "2026-05-08",
+        "author": "BankScan AI Team",
+    },
 }
 
 
