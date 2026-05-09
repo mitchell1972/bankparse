@@ -1716,6 +1716,14 @@ BLOG_POSTS = {
         "template": "blog/convert-santander-statement-to-excel.html",
         "keywords": "Santander statement to Excel, convert Santander bank statement, Santander PDF to Excel, Santander 123 account statement",
     },
+    "batch-bank-statement-processing": {
+        "title": "Batch Bank Statement Processing for Accounting Firms — Complete Guide",
+        "description": "UK accounting firms lose 10-20+ hours a month manually converting bank statements. Guide to batch processing, what to look for, and how to cut processing time by 90%.",
+        "date": "2026-05-09",
+        "author": "BankScan AI Team",
+        "template": "blog/batch-bank-statement-processing.html",
+        "keywords": "batch convert bank statements for accounting firms, bulk bank statement processing UK, automate bank statement data entry for bookkeepers, convert multiple bank statements to excel at once",
+    },
 }
 
 
