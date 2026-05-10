@@ -1724,6 +1724,14 @@ BLOG_POSTS = {
         "template": "blog/batch-bank-statement-processing.html",
         "keywords": "batch convert bank statements for accounting firms, bulk bank statement processing UK, automate bank statement data entry for bookkeepers, convert multiple bank statements to excel at once",
     },
+    "convert-tsb-statement-to-excel": {
+        "title": "How to Convert TSB Bank Statements to Excel (2026 Guide)",
+        "description": "TSB statements use DD MMM YYYY dates and truncate transaction descriptions at 18 characters. Complete guide for UK accountants to convert TSB statements to Excel cleanly.",
+        "date": "2026-05-10",
+        "author": "BankScan AI Team",
+        "template": "blog/convert-tsb-statement-to-excel.html",
+        "keywords": "TSB statement to Excel, convert TSB bank statement, TSB PDF to Excel, TSB PDF to CSV, TSB statement converter, TSB to Xero, TSB to QuickBooks",
+    },
 }
 
 
