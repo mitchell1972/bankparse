@@ -163,6 +163,18 @@ def init_db():
             usage_month TEXT NOT NULL,
             created_at REAL DEFAULT (strftime('%s', 'now'))
         )""",
+        """CREATE TABLE IF NOT EXISTS qbo_connections (
+            user_id INTEGER PRIMARY KEY,
+            realm_id TEXT NOT NULL,
+            access_token TEXT NOT NULL,
+            refresh_token TEXT NOT NULL,
+            access_expires_at REAL NOT NULL,
+            refresh_expires_at REAL NOT NULL,
+            environment TEXT NOT NULL DEFAULT 'sandbox',
+            company_name TEXT,
+            connected_at REAL DEFAULT (strftime('%s', 'now')),
+            updated_at REAL DEFAULT (strftime('%s', 'now'))
+        )""",
         "CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)",
         "CREATE INDEX IF NOT EXISTS idx_users_stripe ON users(stripe_customer_id)",
         "CREATE INDEX IF NOT EXISTS idx_sessions_email ON sessions(email)",
@@ -570,6 +582,65 @@ def get_stale_output_files(max_age_seconds: int = 3600) -> list[str]:
 
 def remove_output_file_record(filename: str):
     _execute("DELETE FROM output_files WHERE filename = ?", (filename,))
+
+
+# --- QuickBooks Online connection helpers ---
+
+def upsert_qbo_connection(
+    user_id: int,
+    realm_id: str,
+    access_token: str,
+    refresh_token: str,
+    access_expires_at: float,
+    refresh_expires_at: float,
+    environment: str,
+    company_name: str | None = None,
+):
+    _execute(
+        """INSERT INTO qbo_connections
+           (user_id, realm_id, access_token, refresh_token, access_expires_at,
+            refresh_expires_at, environment, company_name, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, strftime('%s', 'now'))
+           ON CONFLICT(user_id) DO UPDATE SET
+             realm_id = excluded.realm_id,
+             access_token = excluded.access_token,
+             refresh_token = excluded.refresh_token,
+             access_expires_at = excluded.access_expires_at,
+             refresh_expires_at = excluded.refresh_expires_at,
+             environment = excluded.environment,
+             company_name = COALESCE(excluded.company_name, qbo_connections.company_name),
+             updated_at = strftime('%s', 'now')""",
+        (user_id, realm_id, access_token, refresh_token, access_expires_at,
+         refresh_expires_at, environment, company_name),
+    )
+
+
+def get_qbo_connection(user_id: int) -> dict | None:
+    return _fetchone_dict(
+        "SELECT user_id, realm_id, access_token, refresh_token, access_expires_at, "
+        "refresh_expires_at, environment, company_name, connected_at, updated_at "
+        "FROM qbo_connections WHERE user_id = ?",
+        (user_id,),
+    )
+
+
+def update_qbo_tokens(
+    user_id: int,
+    access_token: str,
+    refresh_token: str,
+    access_expires_at: float,
+    refresh_expires_at: float,
+):
+    _execute(
+        "UPDATE qbo_connections SET access_token = ?, refresh_token = ?, "
+        "access_expires_at = ?, refresh_expires_at = ?, updated_at = strftime('%s', 'now') "
+        "WHERE user_id = ?",
+        (access_token, refresh_token, access_expires_at, refresh_expires_at, user_id),
+    )
+
+
+def delete_qbo_connection(user_id: int):
+    _execute("DELETE FROM qbo_connections WHERE user_id = ?", (user_id,))
 
 
 # Initialize on import

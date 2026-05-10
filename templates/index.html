@@ -177,6 +177,72 @@
             color: white;
         }
         .btn-receipt:hover { background: var(--receipt-light); }
+        .btn-qbo {
+            background: #2CA01C;
+            color: white;
+        }
+        .btn-qbo:hover { background: #228B16; }
+        .btn-qbo:disabled {
+            background: #C8E6C0;
+            color: #5A6B5A;
+            cursor: not-allowed;
+        }
+
+        /* QBO push modal */
+        .qbo-modal-backdrop {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.55);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+            padding: 1rem;
+        }
+        .qbo-modal-backdrop.show { display: flex; }
+        .qbo-modal {
+            background: var(--card);
+            max-width: 480px;
+            width: 100%;
+            border-radius: 12px;
+            padding: 1.5rem;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        .qbo-modal h3 { margin-bottom: 1rem; color: var(--primary); }
+        .qbo-modal label {
+            display: block;
+            font-size: 0.9rem;
+            font-weight: 600;
+            margin: 0.75rem 0 0.25rem;
+            color: var(--text);
+        }
+        .qbo-modal select {
+            width: 100%;
+            padding: 0.6rem 0.75rem;
+            font-size: 0.95rem;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            background: white;
+        }
+        .qbo-modal .help {
+            font-size: 0.8rem;
+            color: var(--muted);
+            margin-top: 0.25rem;
+        }
+        .qbo-modal .actions {
+            display: flex;
+            gap: 0.75rem;
+            margin-top: 1.5rem;
+        }
+        .qbo-modal .actions .btn { width: auto; flex: 1; margin-top: 0; }
+        .qbo-result {
+            margin-top: 1rem;
+            padding: 0.75rem 1rem;
+            border-radius: 6px;
+            font-size: 0.9rem;
+        }
+        .qbo-result.ok { background: #E8F8EF; color: #1A7A2E; border: 1px solid #B5E5C6; }
+        .qbo-result.err { background: #FDECEA; color: #C0392B; border: 1px solid #F5C6CB; }
 
         /* Progress */
         .progress-section {
@@ -928,6 +994,10 @@
             <a id="downloadLink" href="#" class="btn btn-success" style="text-decoration: none;">
                 Download Spreadsheet (.xlsx)
             </a>
+            <button id="pushQboBtn" class="btn btn-qbo" style="margin-top: 0.75rem; display: none;"
+                    onclick="openQboModal('statement')">
+                Push to QuickBooks
+            </button>
             <button onclick="clearAndReset()" class="btn" style="margin-top: 0.75rem; background: var(--muted);">
                 Clear &amp; Upload New
             </button>
@@ -1104,9 +1174,40 @@
             <a id="bulkStmtDownloadLink" href="#" class="btn" style="text-decoration: none;">
                 Download Combined Spreadsheet (.xlsx)
             </a>
+            <button id="pushQboBulkBtn" class="btn btn-qbo" style="margin-top: 0.75rem; display: none;"
+                    onclick="openQboModal('bulk_statement')">
+                Push to QuickBooks
+            </button>
             <button onclick="clearAndReset()" class="btn" style="margin-top: 0.75rem; background: var(--muted);">
                 Clear &amp; Upload New
             </button>
+        </div>
+    </div>
+
+    <!-- QBO Push Modal -->
+    <div class="qbo-modal-backdrop" id="qboModalBackdrop">
+        <div class="qbo-modal">
+            <h3>Push Transactions to QuickBooks</h3>
+            <p style="font-size: 0.9rem; color: var(--muted); margin-bottom: 0.5rem;"
+               id="qboModalCompany">Loading your QuickBooks accounts...</p>
+
+            <label for="qboBankSelect">Bank account (destination)</label>
+            <select id="qboBankSelect"></select>
+            <div class="help">Transactions appear in this account's register.</div>
+
+            <label for="qboExpenseSelect">Default expense account (for money out)</label>
+            <select id="qboExpenseSelect"></select>
+            <div class="help">Re-categorise individual rows inside QuickBooks after import.</div>
+
+            <label for="qboIncomeSelect">Default income account (for money in)</label>
+            <select id="qboIncomeSelect"></select>
+
+            <div class="qbo-result" id="qboResult" style="display:none;"></div>
+
+            <div class="actions">
+                <button class="btn" style="background: var(--muted); color: white;" onclick="closeQboModal()">Cancel</button>
+                <button class="btn btn-qbo" id="qboPushConfirm" onclick="confirmQboPush()">Push</button>
+            </div>
         </div>
     </div>
 
@@ -2616,6 +2717,194 @@
             input.focus();
         }
     }
+
+    // ============================================================
+    // QuickBooks Online integration
+    // ============================================================
+
+    let qboStatus = { available: false, connected: false };
+    let qboAccountsCache = null;
+    let qboPushContext = null; // 'statement' | 'bulk_statement'
+
+    async function loadQboStatus() {
+        try {
+            const res = await fetch('/api/qbo/status', { credentials: 'same-origin' });
+            if (!res.ok) return;
+            qboStatus = await res.json();
+        } catch (e) {
+            qboStatus = { available: false, connected: false };
+        }
+        updateQboButtons();
+    }
+
+    function updateQboButtons() {
+        const btns = [document.getElementById('pushQboBtn'), document.getElementById('pushQboBulkBtn')];
+        btns.forEach(btn => {
+            if (!btn) return;
+            if (qboStatus.available) {
+                btn.style.display = '';
+                btn.textContent = qboStatus.connected
+                    ? 'Push to QuickBooks'
+                    : 'Connect to QuickBooks';
+                btn.disabled = false;
+            } else {
+                btn.style.display = 'none';
+            }
+        });
+    }
+
+    async function openQboModal(context) {
+        if (!qboStatus.available) return;
+        if (!qboStatus.connected) {
+            // Bounce the user through the OAuth flow.
+            window.location.href = '/api/qbo/connect';
+            return;
+        }
+
+        qboPushContext = context;
+        const backdrop = document.getElementById('qboModalBackdrop');
+        const company = document.getElementById('qboModalCompany');
+        const result = document.getElementById('qboResult');
+        result.style.display = 'none';
+        result.textContent = '';
+        document.getElementById('qboPushConfirm').disabled = false;
+        backdrop.classList.add('show');
+        company.textContent = qboStatus.company_name
+            ? `Connected to ${qboStatus.company_name}`
+            : 'Connected to QuickBooks';
+
+        if (!qboAccountsCache) {
+            try {
+                const res = await fetch('/api/qbo/accounts', { credentials: 'same-origin' });
+                if (!res.ok) throw new Error('Failed to load accounts');
+                qboAccountsCache = await res.json();
+            } catch (e) {
+                result.textContent = 'Could not load QuickBooks accounts. Please try again.';
+                result.className = 'qbo-result err';
+                result.style.display = 'block';
+                return;
+            }
+        }
+        populateQboSelects(qboAccountsCache);
+    }
+
+    function populateQboSelects(accounts) {
+        const fill = (id, list) => {
+            const sel = document.getElementById(id);
+            sel.innerHTML = '';
+            if (!list || list.length === 0) {
+                const opt = document.createElement('option');
+                opt.textContent = 'No accounts found — create one in QuickBooks first';
+                opt.value = '';
+                sel.appendChild(opt);
+                return;
+            }
+            list.forEach(a => {
+                const opt = document.createElement('option');
+                opt.value = a.id;
+                opt.textContent = a.name + (a.type ? ' (' + a.type + ')' : '');
+                sel.appendChild(opt);
+            });
+        };
+        fill('qboBankSelect', accounts.bank_accounts);
+        fill('qboExpenseSelect', accounts.expense_accounts);
+        fill('qboIncomeSelect', accounts.income_accounts);
+    }
+
+    function closeQboModal() {
+        document.getElementById('qboModalBackdrop').classList.remove('show');
+    }
+
+    function collectTransactionsForPush() {
+        if (qboPushContext === 'bulk_statement') {
+            return (bulkStatementData && bulkStatementData.all_transactions) || [];
+        }
+        return allTransactions || [];
+    }
+
+    async function confirmQboPush() {
+        const result = document.getElementById('qboResult');
+        const confirmBtn = document.getElementById('qboPushConfirm');
+        const bankId = document.getElementById('qboBankSelect').value;
+        const expenseId = document.getElementById('qboExpenseSelect').value;
+        const incomeId = document.getElementById('qboIncomeSelect').value;
+        const txns = collectTransactionsForPush();
+
+        if (!bankId || !expenseId || !incomeId) {
+            result.className = 'qbo-result err';
+            result.textContent = 'Select a bank account and default expense/income accounts.';
+            result.style.display = 'block';
+            return;
+        }
+        if (!txns.length) {
+            result.className = 'qbo-result err';
+            result.textContent = 'No transactions available to push.';
+            result.style.display = 'block';
+            return;
+        }
+
+        confirmBtn.disabled = true;
+        result.className = 'qbo-result';
+        result.style.background = '#F4F6F7';
+        result.style.color = 'var(--text)';
+        result.textContent = `Pushing ${txns.length} transactions to QuickBooks...`;
+        result.style.display = 'block';
+
+        try {
+            const res = await fetch('/api/qbo/push', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': getCsrfToken() },
+                body: JSON.stringify({
+                    transactions: txns,
+                    bank_account_id: bankId,
+                    expense_account_id: expenseId,
+                    income_account_id: incomeId,
+                }),
+            });
+            const data = await res.json();
+            if (!res.ok) {
+                result.className = 'qbo-result err';
+                result.textContent = data.detail || 'Push failed. Please try again.';
+            } else {
+                const created = data.created || 0;
+                const failed = data.failed || 0;
+                if (failed === 0) {
+                    result.className = 'qbo-result ok';
+                    result.textContent = `Pushed ${created} transactions to QuickBooks.`;
+                } else {
+                    result.className = 'qbo-result err';
+                    result.textContent = `Pushed ${created}, ${failed} failed. ` +
+                        ((data.errors || []).slice(0, 2).join(' | '));
+                }
+            }
+        } catch (e) {
+            result.className = 'qbo-result err';
+            result.textContent = 'Network error pushing to QuickBooks.';
+        } finally {
+            confirmBtn.disabled = false;
+        }
+    }
+
+    // Surface OAuth callback result (?qbo=connected / ?qbo=error).
+    (function handleQboRedirect() {
+        const params = new URLSearchParams(window.location.search);
+        const qbo = params.get('qbo');
+        if (!qbo) return;
+        // Strip the param so reloads don't re-trigger.
+        params.delete('qbo');
+        const msg = params.get('msg');
+        params.delete('msg');
+        const newQuery = params.toString();
+        history.replaceState({}, '', window.location.pathname + (newQuery ? '?' + newQuery : ''));
+        if (qbo === 'connected') {
+            alert('QuickBooks connected. Run a parse and click "Push to QuickBooks" to import.');
+        } else if (qbo === 'error') {
+            alert('QuickBooks connection failed: ' + (msg || 'unknown error'));
+        }
+    })();
+
+    loadQboStatus();
 </script>
 </body>
 </html>

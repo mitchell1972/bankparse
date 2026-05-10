@@ -1466,6 +1466,166 @@ async def manage_billing(request: Request):
         raise HTTPException(status_code=500, detail="Billing request failed. Please try again.")
 
 
+# ==========================================================================
+# QuickBooks Online (Intuit) integration
+# ==========================================================================
+
+import quickbooks as qbo
+from core import INTUIT_AVAILABLE
+from database import get_qbo_connection
+
+
+@app.get("/api/qbo/status")
+async def qbo_status(request: Request):
+    """Return connection status for the current user."""
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required.")
+    if not INTUIT_AVAILABLE:
+        return JSONResponse({"available": False, "connected": False})
+    conn = get_qbo_connection(user["id"])
+    if not conn:
+        return JSONResponse({"available": True, "connected": False})
+    return JSONResponse({
+        "available": True,
+        "connected": True,
+        "realm_id": conn["realm_id"],
+        "company_name": conn.get("company_name"),
+        "environment": conn["environment"],
+        "connected_at": conn["connected_at"],
+    })
+
+
+@app.get("/api/qbo/connect")
+async def qbo_connect(request: Request):
+    """Redirect the user to Intuit's OAuth consent page."""
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login?next=/api/qbo/connect", status_code=302)
+    if not INTUIT_AVAILABLE:
+        raise HTTPException(status_code=501, detail="QuickBooks integration is not configured on this server.")
+    url = qbo.build_authorize_url(user["id"])
+    return RedirectResponse(url=url, status_code=302)
+
+
+@app.get("/api/qbo/callback")
+async def qbo_callback(request: Request):
+    """Intuit redirects here with `?code=...&state=...&realmId=...`."""
+    if not INTUIT_AVAILABLE:
+        raise HTTPException(status_code=501, detail="QuickBooks integration is not configured on this server.")
+
+    params = dict(request.query_params)
+    error = params.get("error")
+    if error:
+        msg = params.get("error_description", error)
+        return RedirectResponse(url=f"/?qbo=error&msg={msg}", status_code=302)
+
+    code = params.get("code")
+    state = params.get("state")
+    realm_id = params.get("realmId")
+    if not code or not state or not realm_id:
+        raise HTTPException(status_code=400, detail="Missing code, state, or realmId.")
+
+    user_id = qbo.verify_state(state)
+    if not user_id:
+        raise HTTPException(status_code=400, detail="Invalid or expired state token. Please retry the connection.")
+
+    # Make sure the logged-in user matches the state token (defence-in-depth).
+    user = get_current_user(request)
+    if not user or user["id"] != user_id:
+        return RedirectResponse(url="/login?next=/api/qbo/connect", status_code=302)
+
+    try:
+        token_response = qbo.exchange_code_for_tokens(code)
+    except Exception:
+        logger.exception("QBO token exchange failed for user %s", user_id)
+        return RedirectResponse(url="/?qbo=error&msg=token_exchange_failed", status_code=302)
+
+    qbo.store_initial_connection(user_id, token_response, realm_id)
+    # Best-effort: pull and cache the company name.
+    try:
+        qbo.get_company_info(user_id)
+    except Exception:
+        pass
+
+    return RedirectResponse(url="/?qbo=connected", status_code=302)
+
+
+@app.post("/api/qbo/disconnect")
+async def qbo_disconnect(request: Request):
+    """Revoke the QBO connection for the current user."""
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required.")
+    qbo.disconnect(user["id"])
+    return JSONResponse({"status": "disconnected"})
+
+
+@app.get("/api/qbo/accounts")
+async def qbo_accounts(request: Request):
+    """List the user's QBO accounts so they can pick where to push transactions."""
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required.")
+    conn = get_qbo_connection(user["id"])
+    if not conn:
+        raise HTTPException(status_code=400, detail="QuickBooks not connected.")
+    try:
+        bank = qbo.list_accounts(user["id"], "Bank")
+        expense = qbo.list_accounts(user["id"], "Expense")
+        income = qbo.list_accounts(user["id"], "Income")
+        cards = qbo.list_accounts(user["id"], "Credit Card")
+    except Exception:
+        logger.exception("QBO list accounts failed")
+        raise HTTPException(status_code=502, detail="Could not load accounts from QuickBooks.")
+    return JSONResponse({
+        "bank_accounts": [{"id": a["Id"], "name": a["Name"], "type": a.get("AccountType")} for a in (bank + cards)],
+        "expense_accounts": [{"id": a["Id"], "name": a["Name"]} for a in expense],
+        "income_accounts": [{"id": a["Id"], "name": a["Name"]} for a in income],
+    })
+
+
+@app.post("/api/qbo/push")
+@limiter.limit("5/minute")
+async def qbo_push(request: Request):
+    """Push parsed transactions into the user's QBO company."""
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required.")
+    if not get_qbo_connection(user["id"]):
+        raise HTTPException(status_code=400, detail="QuickBooks not connected.")
+
+    body = await request.json()
+    transactions = body.get("transactions") or []
+    bank_account_id = body.get("bank_account_id")
+    expense_account_id = body.get("expense_account_id")
+    income_account_id = body.get("income_account_id")
+
+    if not transactions or not isinstance(transactions, list):
+        raise HTTPException(status_code=400, detail="No transactions to push.")
+    if not bank_account_id or not expense_account_id or not income_account_id:
+        raise HTTPException(
+            status_code=400,
+            detail="bank_account_id, expense_account_id, and income_account_id are all required.",
+        )
+    if len(transactions) > 500:
+        raise HTTPException(status_code=400, detail="Cannot push more than 500 transactions in one request.")
+
+    try:
+        summary = qbo.push_transactions(
+            user_id=user["id"],
+            transactions=transactions,
+            bank_account_id=str(bank_account_id),
+            expense_account_id=str(expense_account_id),
+            income_account_id=str(income_account_id),
+        )
+    except Exception:
+        logger.exception("QBO push failed for user %s", user["id"])
+        raise HTTPException(status_code=502, detail="Push to QuickBooks failed. Please try again.")
+
+    return JSONResponse(summary)
+
+
 @app.get("/api/admin/subscribers")
 async def admin_subscribers(request: Request):
     """Admin-only endpoint to check subscriber count and details."""

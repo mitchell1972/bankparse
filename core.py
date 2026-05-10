@@ -11,6 +11,15 @@ import time
 import bcrypt
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 
+# Load .env for local dev. In production (Vercel/Railway) env vars come from
+# the platform, so this silently no-ops if dotenv isn't installed or .env
+# is missing.
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
 from fastapi import Request
 from fastapi.responses import JSONResponse
 
@@ -50,6 +59,23 @@ STRIPE_ENTERPRISE_PRICE_ID = os.environ.get("STRIPE_ENTERPRISE_PRICE_ID", "price
 # Initialize Stripe
 if STRIPE_AVAILABLE and STRIPE_SECRET_KEY:
     stripe.api_key = STRIPE_SECRET_KEY
+
+# --- Intuit / QuickBooks Online OAuth ---
+# Created in the Mitoba Consulting workspace at developer.intuit.com.
+# INTUIT_ENVIRONMENT controls which Intuit base URL is used:
+#   sandbox    → sandbox-quickbooks.api.intuit.com (dev / testing)
+#   production → quickbooks.api.intuit.com (live customer data)
+INTUIT_CLIENT_ID = os.environ.get("INTUIT_CLIENT_ID", "")
+INTUIT_CLIENT_SECRET = os.environ.get("INTUIT_CLIENT_SECRET", "")
+INTUIT_ENVIRONMENT = os.environ.get("INTUIT_ENVIRONMENT", "sandbox").lower()
+INTUIT_REDIRECT_URI = os.environ.get(
+    "INTUIT_REDIRECT_URI",
+    "https://bankscanai.com/api/qbo/callback" if IS_PRODUCTION else "http://localhost:8000/api/qbo/callback",
+)
+# Minimum scopes for posting bank transactions / journal entries.
+# `com.intuit.quickbooks.accounting` covers Accounts, BankTransaction, JournalEntry.
+INTUIT_SCOPES = "com.intuit.quickbooks.accounting"
+INTUIT_AVAILABLE = bool(INTUIT_CLIENT_ID and INTUIT_CLIENT_SECRET)
 
 # --- Tier limits ---
 # Free tier is file-count gated (1 statement + 1 receipt per calendar month).
