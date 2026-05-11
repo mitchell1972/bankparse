@@ -1892,6 +1892,14 @@ BLOG_POSTS = {
         "template": "blog/convert-tsb-statement-to-excel.html",
         "keywords": "TSB statement to Excel, convert TSB bank statement, TSB PDF to Excel, TSB PDF to CSV, TSB statement converter, TSB to Xero, TSB to QuickBooks",
     },
+    "convert-metro-bank-statement-to-excel": {
+        "title": "How to Convert Metro Bank Statements to Excel (2026 Guide)",
+        "description": "Metro Bank statements use dual Money In/Money Out columns and the app doesn't support downloads. Complete guide for UK accountants to convert Metro Bank statements to Excel cleanly.",
+        "date": "2026-05-11",
+        "author": "BankScan AI Team",
+        "template": "blog/convert-metro-bank-statement-to-excel.html",
+        "keywords": "Metro Bank statement to Excel, convert Metro Bank statement, Metro Bank PDF to Excel, Metro Bank PDF to CSV, Metro Bank statement converter, Metro Bank to Xero, Metro Bank to QuickBooks",
+    },
 }
 
 
