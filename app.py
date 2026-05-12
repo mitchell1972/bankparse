@@ -1900,6 +1900,14 @@ BLOG_POSTS = {
         "template": "blog/convert-metro-bank-statement-to-excel.html",
         "keywords": "Metro Bank statement to Excel, convert Metro Bank statement, Metro Bank PDF to Excel, Metro Bank PDF to CSV, Metro Bank statement converter, Metro Bank to Xero, Metro Bank to QuickBooks",
     },
+    "convert-chase-uk-statement-to-excel": {
+        "title": "How to Convert Chase UK Bank Statements to Excel (2026 Guide)",
+        "description": "Chase UK statements include reward cashback entries and categorised spending that break generic converters. Step-by-step guide for UK accountants to convert Chase bank statements to Excel cleanly.",
+        "date": "2026-05-12",
+        "author": "BankScan AI Team",
+        "template": "blog/convert-chase-uk-statement-to-excel.html",
+        "keywords": "Chase UK statement to Excel, convert Chase bank statement, Chase UK PDF to Excel, Chase UK PDF to CSV, Chase bank statement converter, Chase UK to Xero, Chase UK to QuickBooks, Chase reward cashback statement",
+    },
 }
 
 
