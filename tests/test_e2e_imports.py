@@ -256,11 +256,16 @@ def _parse_receipt_patch_target() -> str:
     detect which one is live and patch where Python actually resolves
     the call — Python mock idiom: patch where it's looked up, not where
     it's defined.
+
+    Uses a try/except import rather than importlib.util.find_spec because
+    find_spec raises ModuleNotFoundError when the parent package itself
+    is missing (which is exactly the case on main — no routers/ folder).
     """
-    import importlib.util
-    if importlib.util.find_spec("routers.parsing") is not None:
+    try:
+        import routers.parsing  # noqa: F401
         return "routers.parsing.parse_receipt_ai"
-    return "app.parse_receipt_ai"
+    except ModuleNotFoundError:
+        return "app.parse_receipt_ai"
 
 
 def test_receipt_import_end_to_end_mocked():
