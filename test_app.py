@@ -28,6 +28,8 @@ from parsers.receipt_parser import parse_receipt_text
 @pytest.fixture(autouse=True)
 def clean_db():
     """Reset the test database before each test."""
+    import database
+    database.init_db()
     from database import _execute
     _execute("DELETE FROM sessions")
     _execute("DELETE FROM otp_codes")

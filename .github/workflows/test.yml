@@ -1,0 +1,52 @@
+name: Tests
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: [main]
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install system dependencies (tesseract, libheif)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            tesseract-ocr \
+            tesseract-ocr-eng \
+            libheif-dev
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytesseract pillow-heif anthropic
+          pip install pytest pytest-asyncio httpx
+
+      - name: Run unit / integration tests
+        env:
+          BANKPARSE_DB_PATH: /tmp/bankparse_ci_test.db
+          SECRET_KEY: ci-test-secret-not-used-in-prod
+          ENVIRONMENT: development
+          # Fake key — the AI parser is mocked in E2E tests, but the route
+          # short-circuits to 501 if the env var is falsy. Setting a fake
+          # string lets us exercise the full HTTP path without burning real
+          # Anthropic credits.
+          ANTHROPIC_API_KEY: sk-ant-ci-fake-key-not-used-for-real-calls
+        run: |
+          pytest tests/ test_app.py -v \
+            --ignore-glob='tests/ui_test_*.py' \
+            --ignore-glob='tests/e2e_*.py'
