@@ -418,6 +418,77 @@ def test_generate_otp_uniqueness():
 
 
 # ==========================================================================
+# 12b. send_otp_email — Resend HTTP API integration
+# ==========================================================================
+
+def test_send_otp_email_no_api_key_falls_back_to_log():
+    """Without RESEND_API_KEY set, send_otp_email logs the code and returns True."""
+    import otp
+
+    with patch.object(otp, "RESEND_API_KEY", ""), \
+         patch("otp.httpx.post") as mock_post:
+        result = otp.send_otp_email("user@example.com", "123456")
+
+    assert result is True
+    mock_post.assert_not_called()
+
+
+def test_send_otp_email_success_calls_resend_with_correct_payload():
+    """When RESEND_API_KEY is set, posts to Resend with the expected body."""
+    import otp
+
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {"id": "msg_abc123"}
+
+    with patch.object(otp, "RESEND_API_KEY", "re_test_key"), \
+         patch.object(otp, "RESEND_FROM", "BankScan AI <noreply@bankscanai.com>"), \
+         patch("otp.httpx.post", return_value=mock_response) as mock_post:
+        result = otp.send_otp_email("user@example.com", "654321")
+
+    assert result is True
+    mock_post.assert_called_once()
+
+    args, kwargs = mock_post.call_args
+    assert args[0] == "https://api.resend.com/emails"
+    assert kwargs["headers"]["Authorization"] == "Bearer re_test_key"
+
+    payload = kwargs["json"]
+    assert payload["from"] == "BankScan AI <noreply@bankscanai.com>"
+    assert payload["to"] == ["user@example.com"]
+    assert "654321" in payload["html"]
+    assert "654321" in payload["text"]
+    assert payload["subject"].startswith("BankScan AI")
+
+
+def test_send_otp_email_returns_false_on_resend_4xx():
+    """A 4xx response from Resend returns False (caller can surface the failure)."""
+    import otp
+
+    mock_response = MagicMock()
+    mock_response.status_code = 422
+    mock_response.text = '{"message": "from email not verified"}'
+
+    with patch.object(otp, "RESEND_API_KEY", "re_test_key"), \
+         patch("otp.httpx.post", return_value=mock_response):
+        result = otp.send_otp_email("user@example.com", "999999")
+
+    assert result is False
+
+
+def test_send_otp_email_returns_false_on_network_error():
+    """If httpx raises (timeout, DNS, etc.), send_otp_email returns False."""
+    import otp
+    import httpx
+
+    with patch.object(otp, "RESEND_API_KEY", "re_test_key"), \
+         patch("otp.httpx.post", side_effect=httpx.ConnectTimeout("timed out")):
+        result = otp.send_otp_email("user@example.com", "111111")
+
+    assert result is False
+
+
+# ==========================================================================
 # 13. Multiple rapid OTP requests — rate limiting (3/minute via slowapi)
 # ==========================================================================
 
