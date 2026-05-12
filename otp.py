@@ -1,24 +1,27 @@
 """
 BankParse — OTP Email Verification
-Generates and sends OTP codes for email-based subscription restoration.
-Uses SMTP for email delivery.
+Generates and sends OTP codes via Resend's HTTP API
+(https://resend.com/docs/api-reference/emails/send-email).
+
+Falls back to console logging when RESEND_API_KEY is not set, so local dev
+and CI work without credentials.
 """
 
 import os
 import secrets
 import string
-import smtplib
 import logging
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
+
+import httpx
 
 logger = logging.getLogger("bankparse.otp")
 
-SMTP_HOST = os.environ.get("SMTP_HOST", "")
-SMTP_PORT = int(os.environ.get("SMTP_PORT", "587"))
-SMTP_USER = os.environ.get("SMTP_USER", "")
-SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "")
-SMTP_FROM = os.environ.get("SMTP_FROM", "noreply@bankparse.com")
+RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
+# Sends from mitobaconsulting.com until bankscanai.com is verified in Resend
+# (Pro plan upgrade required for a second domain). Override via RESEND_FROM env var.
+RESEND_FROM = os.environ.get("RESEND_FROM", "BankScan AI <noreply@mitobaconsulting.com>")
+RESEND_API_URL = "https://api.resend.com/emails"
+RESEND_TIMEOUT_SECONDS = 10.0
 
 
 def generate_otp(length: int = 6) -> str:
@@ -27,9 +30,9 @@ def generate_otp(length: int = 6) -> str:
 
 
 def send_otp_email(to_email: str, code: str) -> bool:
-    """Send an OTP verification email. Returns True on success."""
-    if not SMTP_HOST:
-        logger.warning("SMTP not configured — OTP code for %s: %s", to_email, code)
+    """Send an OTP verification email via Resend. Returns True on success."""
+    if not RESEND_API_KEY:
+        logger.warning("RESEND_API_KEY not set — OTP code for %s: %s", to_email, code)
         return True
 
     subject = "BankScan AI — Your verification code"
@@ -46,25 +49,44 @@ def send_otp_email(to_email: str, code: str) -> bool:
         <p style="color: #999; font-size: 0.85rem;">BankScan AI — AI-powered bank statement &amp; receipt intelligence</p>
     </div>
     """
-
-    msg = MIMEMultipart("alternative")
-    msg["Subject"] = subject
-    msg["From"] = SMTP_FROM
-    msg["To"] = to_email
-    msg.attach(MIMEText(f"Your BankScan AI verification code is: {code}\n\nThis code expires in 10 minutes.", "plain"))
-    msg.attach(MIMEText(html_body, "html"))
+    text_body = (
+        f"Your BankScan AI verification code is: {code}\n\n"
+        "This code expires in 10 minutes.\n\n"
+        "If you didn't request this code, you can safely ignore this email."
+    )
 
     try:
-        with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=10) as server:
-            server.ehlo()
-            if SMTP_PORT != 25:
-                server.starttls()
-                server.ehlo()
-            if SMTP_USER and SMTP_PASSWORD:
-                server.login(SMTP_USER, SMTP_PASSWORD)
-            server.sendmail(SMTP_FROM, to_email, msg.as_string())
-        logger.info("OTP email sent to %s", to_email)
-        return True
-    except Exception:
-        logger.exception("Failed to send OTP email to %s", to_email)
+        response = httpx.post(
+            RESEND_API_URL,
+            headers={
+                "Authorization": f"Bearer {RESEND_API_KEY}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "from": RESEND_FROM,
+                "to": [to_email],
+                "subject": subject,
+                "html": html_body,
+                "text": text_body,
+            },
+            timeout=RESEND_TIMEOUT_SECONDS,
+        )
+    except httpx.HTTPError:
+        logger.exception("Resend request failed for %s", to_email)
         return False
+
+    if response.status_code >= 400:
+        logger.error(
+            "Resend rejected OTP to %s — status=%d body=%s",
+            to_email,
+            response.status_code,
+            response.text[:500],
+        )
+        return False
+
+    try:
+        message_id = response.json().get("id", "<no-id>")
+    except ValueError:
+        message_id = "<unparseable-json>"
+    logger.info("OTP email sent to %s via Resend (id=%s)", to_email, message_id)
+    return True
