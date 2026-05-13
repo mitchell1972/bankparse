@@ -109,6 +109,28 @@ def test_home_redirects_to_login():
         assert "/landing" in resp.headers.get("location", "")
 
 
+def test_home_unverified_redirects_to_verify_email():
+    """A logged-in user whose email isn't verified is bounced from / to
+    /verify-email instead of seeing the upload UI and bouncing off /api/parse."""
+    with TestClient(app, raise_server_exceptions=False) as client:
+        _register(client, "unverified-home@example.com", "password1234")
+        resp = client.get("/", follow_redirects=False)
+        assert resp.status_code == 302
+        assert "/verify-email" in resp.headers.get("location", "")
+
+
+def test_home_verified_loads_dashboard():
+    """A verified logged-in user sees the dashboard at /."""
+    from database import mark_email_verified, get_user_by_email
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        _register(client, "verified-home@example.com", "password1234")
+        user = get_user_by_email("verified-home@example.com")
+        mark_email_verified(user["id"])
+        resp = client.get("/")
+        assert resp.status_code == 200
+
+
 def test_login_page_loads():
     """GET /login returns 200 with 'Sign In' in body."""
     with TestClient(app, raise_server_exceptions=False) as client:
