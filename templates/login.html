@@ -346,6 +346,13 @@
                     return;
                 }
 
+                // If the backend asks for email verification, route there first.
+                // The user can come back to plan/checkout once verified.
+                if (data.verify_url) {
+                    window.location.href = data.verify_url;
+                    return;
+                }
+
                 // Check if user came from a pricing plan CTA
                 const urlParams = new URLSearchParams(window.location.search);
                 const plan = urlParams.get('plan');

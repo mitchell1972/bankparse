@@ -400,7 +400,22 @@ async def login(request: Request):
     if not user or not verify_password(password, user["password_hash"]):
         raise HTTPException(status_code=401, detail="Invalid email or password.")
 
-    response = JSONResponse({"status": "ok", "email": user["email"]})
+    payload = {"status": "ok", "email": user["email"]}
+
+    # If the email isn't verified yet, send a fresh OTP and tell the frontend
+    # to route to /verify-email. Mirrors /api/register so the user never has
+    # to navigate there manually.
+    if not is_email_verified(user["id"]):
+        try:
+            code = generate_otp()
+            store_otp(user["email"], code, session_id=f"verify:{user['id']}")
+            send_otp_email(user["email"], code)
+        except Exception:
+            logger.exception("Failed to send login OTP to %s", user["email"])
+        payload["email_verification_required"] = True
+        payload["verify_url"] = "/verify-email"
+
+    response = JSONResponse(payload)
     set_auth_cookie(response, user["id"])
     return response
 
