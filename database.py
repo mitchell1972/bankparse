@@ -180,6 +180,7 @@ def init_db():
             user_id INTEGER NOT NULL,
             mode TEXT NOT NULL,
             source_filename TEXT,
+            source_size_bytes INTEGER NOT NULL DEFAULT 0,
             rows_json TEXT NOT NULL,
             row_count INTEGER NOT NULL DEFAULT 0,
             parsed_at REAL DEFAULT (strftime('%s', 'now'))
@@ -216,6 +217,12 @@ def init_db():
             _execute(f"ALTER TABLE users ADD COLUMN {col} {col_def}")
         except Exception:
             pass  # Column already exists
+
+    # Migrate user_extracted_data — source_size_bytes added in commit 3
+    try:
+        _execute("ALTER TABLE user_extracted_data ADD COLUMN source_size_bytes INTEGER NOT NULL DEFAULT 0")
+    except Exception:
+        pass  # Column already exists
 
     logger.info("Database schema initialized")
 
@@ -659,20 +666,40 @@ def delete_qbo_connection(user_id: int):
 # device switch.
 # ---------------------------------------------------------------------------
 
-def save_extracted_data(user_id: int, mode: str, source_filename: str, rows: list[dict]) -> int:
+def save_extracted_data(
+    user_id: int,
+    mode: str,
+    source_filename: str,
+    rows: list[dict],
+    source_size_bytes: int = 0,
+) -> int:
     """Append a parse's extracted rows to the user's cumulative store.
 
-    `mode` is 'statement' or 'receipt'. Returns the new row id.
+    `mode` is 'statement' or 'receipt'. `source_size_bytes` is the byte size
+    of the original uploaded file — used for the 25MB session-cumulative cap.
+    Returns the new row id.
     """
     import json
     if mode not in ("statement", "receipt"):
         raise ValueError(f"invalid mode: {mode!r}")
     rows_json = json.dumps(rows or [])
     return _execute_insert(
-        "INSERT INTO user_extracted_data (user_id, mode, source_filename, rows_json, row_count) "
-        "VALUES (?, ?, ?, ?, ?)",
-        (user_id, mode, source_filename or "", rows_json, len(rows or [])),
+        "INSERT INTO user_extracted_data "
+        "(user_id, mode, source_filename, source_size_bytes, rows_json, row_count) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        (user_id, mode, source_filename or "", int(source_size_bytes or 0),
+         rows_json, len(rows or [])),
     )
+
+
+def get_user_extracted_total_bytes(user_id: int) -> int:
+    """Total bytes of all files this user has uploaded since last clear."""
+    row = _fetchone_dict(
+        "SELECT COALESCE(SUM(source_size_bytes), 0) AS total "
+        "FROM user_extracted_data WHERE user_id = ?",
+        (user_id,),
+    )
+    return int((row or {}).get("total") or 0)
 
 
 def get_user_extracted_files(user_id: int, mode: str) -> list[dict]:

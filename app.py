@@ -42,6 +42,7 @@ from database import (
     get_credit_balance, mark_email_verified, is_email_verified,
     save_extracted_data, get_user_extracted_files, get_user_extracted_rows,
     get_user_extracted_summary, clear_user_extracted_data,
+    get_user_extracted_total_bytes,
     _fetchall_dicts,
 )
 from otp import generate_otp, send_otp_email
@@ -71,6 +72,8 @@ from core import (
     record_ai_spend, QUOTA_REASON_MESSAGES,
     # Trial helpers
     trial_days_remaining, is_trial_active,
+    # Session cap
+    SESSION_MAX_BYTES,
 )
 
 # Re-import stripe if available (needed for direct Stripe API calls in routes)
@@ -553,6 +556,7 @@ async def get_extracted_data(request: Request):
     receipt_files = get_user_extracted_files(user["id"], "receipt")
     statement_rows = [row for f in statement_files for row in f["rows"]]
     receipt_rows = [row for f in receipt_files for row in f["rows"]]
+    total_bytes = get_user_extracted_total_bytes(user["id"])
     return JSONResponse({
         "statements": {
             "rows": statement_rows,
@@ -570,6 +574,8 @@ async def get_extracted_data(request: Request):
                 for f in receipt_files
             ],
         },
+        "total_size_bytes": total_bytes,
+        "session_max_bytes": SESSION_MAX_BYTES,
     })
 
 
@@ -747,6 +753,13 @@ async def parse_statement(request: Request, file: UploadFile = File(...)):
     if len(contents) > 20 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="File too large. Maximum size is 20MB.")
 
+    # Cumulative session cap — total bytes already stored + this file must
+    # stay under SESSION_MAX_BYTES. User can lift it by clicking "Clear &
+    # Upload New" on the dashboard.
+    existing_bytes = get_user_extracted_total_bytes(user["id"])
+    if existing_bytes + len(contents) > SESSION_MAX_BYTES:
+        raise HTTPException(status_code=413, detail="SESSION_LIMIT_EXCEEDED")
+
     if not ANTHROPIC_API_KEY and filename.endswith(".pdf"):
         raise HTTPException(status_code=501, detail="AI parsing is not configured on this server.")
 
@@ -791,7 +804,10 @@ async def parse_statement(request: Request, file: UploadFile = File(...)):
         # show cumulative totals across uploads, surviving logout. Cleared
         # only when the user clicks "Clear & Upload New".
         try:
-            save_extracted_data(user["id"], "statement", safe_filename, result["transactions"])
+            save_extracted_data(
+                user["id"], "statement", safe_filename,
+                result["transactions"], source_size_bytes=len(contents),
+            )
         except Exception:
             logger.exception("Failed to persist extracted statement data for user %s", user["id"])
 
@@ -846,6 +862,11 @@ async def parse_receipt_endpoint(request: Request, file: UploadFile = File(...))
     if len(contents) > 20 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="File too large. Maximum size is 20MB.")
 
+    # Cumulative session cap (see /api/parse).
+    existing_bytes = get_user_extracted_total_bytes(user["id"])
+    if existing_bytes + len(contents) > SESSION_MAX_BYTES:
+        raise HTTPException(status_code=413, detail="SESSION_LIMIT_EXCEEDED")
+
     if not ANTHROPIC_API_KEY:
         raise HTTPException(status_code=501, detail="AI parsing is not configured on this server.")
 
@@ -885,7 +906,10 @@ async def parse_receipt_endpoint(request: Request, file: UploadFile = File(...))
 
         # Persist the extracted line items on the user account (cumulative).
         try:
-            save_extracted_data(user["id"], "receipt", safe_filename, result["items"])
+            save_extracted_data(
+                user["id"], "receipt", safe_filename,
+                result["items"], source_size_bytes=len(contents),
+            )
         except Exception:
             logger.exception("Failed to persist extracted receipt data for user %s", user["id"])
 
