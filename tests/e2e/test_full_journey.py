@@ -65,11 +65,9 @@ def test_full_user_journey(page: Page, live_server: str, fixture_csv: Path):
     # 1-2. Register, expect redirect to /verify-email
     # ----------------------------------------------------------------------
     page.goto(f"{base}/login")
-    # Switch to the Register tab (assume there's a tab; otherwise the page
-    # directly shows both flows).
-    register_tab = page.get_by_role("tab", name=re.compile("register|sign up", re.I))
-    if register_tab.count() > 0:
-        register_tab.click()
+    # Switch to the Register tab. They're plain styled <button> elements
+    # with data-tab="register", not ARIA tabs.
+    page.locator('button[data-tab="register"]').click()
 
     page.locator("input[type=email], input[name=email]").first.fill(TEST_EMAIL)
     page.locator("input[type=password], input[name=password]").first.fill(TEST_PASSWORD)
@@ -108,10 +106,11 @@ def test_full_user_journey(page: Page, live_server: str, fixture_csv: Path):
     expect(banner).to_contain_text("2 statements", timeout=30_000)
 
     # ----------------------------------------------------------------------
-    # 8. Log out, log back in, verify cumulative data still there
+    # 8. Log out (via cookie clear), log back in, verify cumulative data
+    #    still there — the "data persists across logout" guarantee
     # ----------------------------------------------------------------------
+    page.context.clear_cookies()
     page.goto(f"{base}/login")
-    # If still logged in, /login redirects to / — handle either case
     page.locator("input[type=email], input[name=email]").first.fill(TEST_EMAIL)
     page.locator("input[type=password], input[name=password]").first.fill(TEST_PASSWORD)
     page.locator("button[type=submit]").first.click()
