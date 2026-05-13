@@ -33,11 +33,16 @@ def _get_turso():
 
 
 def _get_sqlite():
-    """Get or create a local SQLite connection."""
+    """Get or create a local SQLite connection.
+
+    DATABASE_PATH env var overrides the default location — used by E2E
+    tests to isolate against a temp DB instead of the dev database.
+    """
     global _sqlite_conn
     if _sqlite_conn is None:
+        import os
         import sqlite3
-        db_path = str(Path(__file__).parent / "bankparse.db")
+        db_path = os.environ.get("DATABASE_PATH") or str(Path(__file__).parent / "bankparse.db")
         _sqlite_conn = sqlite3.connect(db_path, timeout=10)
         _sqlite_conn.execute("PRAGMA journal_mode=WAL")
         _sqlite_conn.execute("PRAGMA foreign_keys=ON")

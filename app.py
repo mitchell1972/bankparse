@@ -626,6 +626,45 @@ async def download_cumulative_xlsx(request: Request, mode: str):
 # On Railway / local you can hit it manually with the same header.
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# Test-mode endpoints — only enabled when TEST_MODE_ENABLED=1.
+# Used by Playwright to read OTPs and simulate trial expiry without
+# touching real email or waiting 7 days. Disabled in prod.
+# ---------------------------------------------------------------------------
+
+def _test_mode_guard():
+    if os.environ.get("TEST_MODE_ENABLED", "") != "1":
+        raise HTTPException(status_code=404, detail="Not found")
+
+
+@app.get("/api/test/peek-otp")
+async def test_peek_otp(email: str):
+    _test_mode_guard()
+    from database import _fetchone_dict
+    row = _fetchone_dict(
+        "SELECT code FROM otp_codes WHERE email = ? ORDER BY created_at DESC LIMIT 1",
+        (email.strip().lower(),),
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="No OTP for this email")
+    return JSONResponse({"email": email, "code": row["code"]})
+
+
+@app.post("/api/test/age-user")
+async def test_age_user(request: Request):
+    _test_mode_guard()
+    body = await request.json()
+    email = (body.get("email") or "").strip().lower()
+    days_ago = float(body.get("days_ago") or 0)
+    if not email:
+        raise HTTPException(status_code=400, detail="email required")
+    from database import _execute
+    import time
+    new_created = time.time() - days_ago * 86400.0
+    _execute("UPDATE users SET created_at = ? WHERE email = ?", (new_created, email))
+    return JSONResponse({"email": email, "days_ago": days_ago, "new_created_at": new_created})
+
+
 @app.get("/api/cron/trial-reminders")
 async def cron_trial_reminders(request: Request):
     expected = os.environ.get("CRON_SECRET", "")
