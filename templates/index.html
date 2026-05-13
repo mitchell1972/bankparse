@@ -803,15 +803,9 @@
     </div>
 
     <!-- Cumulative session totals — visible whenever the account has any
-         accumulated extracted data. Cleared by the inline button or any
-         "Clear & Upload New" inside a results panel. -->
+         accumulated extracted data. Cleared by "Clear & Upload New". -->
     <div id="accumulatedBanner"
-         style="display:none; margin:0.75rem 0; padding:0.6rem 0.9rem; background:#F0F4F8; border-left:4px solid #1B4F72; border-radius:6px; font-size:0.85rem; color:#3a4f64; display:none; align-items:center; justify-content:space-between; gap:1rem; flex-wrap:wrap;">
-        <span id="accumulatedBannerText"></span>
-        <button id="accumulatedClearBtn" type="button" onclick="clearAndReset()"
-                style="padding:0.4rem 0.8rem; background:#1B4F72; color:white; border:none; border-radius:4px; cursor:pointer; font-size:0.8rem; font-weight:600;">
-            Clear &amp; Upload New
-        </button>
+         style="display:none; margin:0.75rem 0; padding:0.6rem 0.9rem; background:#F0F4F8; border-left:4px solid #1B4F72; border-radius:6px; font-size:0.85rem; color:#3a4f64;">
     </div>
 
     <!-- Paywall -->
@@ -1931,10 +1925,6 @@
             if (err.message === 'FREE_LIMIT_REACHED' || err.message === 'TRIAL_EXPIRED') {
                 await loadUsage();
                 showPaywall();
-            } else if (err.message === 'SESSION_LIMIT_EXCEEDED') {
-                await loadAccumulatedData();
-                errorMsg.textContent = `Session full: ${formatBytes(sessionTotalBytes)} / ${formatBytes(sessionMaxBytes)} used. Click "Clear & Upload New" to start a fresh session, or remove some files before adding more.`;
-                errorMsg.classList.add('show');
             } else {
                 errorMsg.textContent = 'Error: ' + err.message;
                 errorMsg.classList.add('show');
@@ -1976,18 +1966,6 @@
     // /api/extracted-data on page load. Cleared only by Clear & Upload New.
     let accumulatedStatements = [];  // {filename, row_count, parsed_at}
     let accumulatedReceipts = [];    // {filename, row_count, parsed_at}
-    let sessionTotalBytes = 0;
-    let sessionMaxBytes = 25 * 1024 * 1024;  // overridden from server
-
-    function formatBytes(n) {
-        if (n < 1024) return `${n} B`;
-        if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-        return `${(n / (1024 * 1024)).toFixed(1)} MB`;
-    }
-
-    function sessionBytesRemaining() {
-        return Math.max(0, sessionMaxBytes - sessionTotalBytes);
-    }
 
     function describeAccumulatedTotals() {
         const stmtRows = accumulatedStatements.reduce((s, f) => s + (f.row_count || 0), 0);
@@ -2011,8 +1989,6 @@
             const data = await res.json();
             accumulatedStatements = (data.statements && data.statements.files) || [];
             accumulatedReceipts = (data.receipts && data.receipts.files) || [];
-            sessionTotalBytes = data.total_size_bytes || 0;
-            if (data.session_max_bytes) sessionMaxBytes = data.session_max_bytes;
             updateAccumulatedBanner();
         } catch (e) {
             console.log('Accumulated data fetch failed (offline?)');
@@ -2021,16 +1997,11 @@
 
     function updateAccumulatedBanner() {
         const banner = document.getElementById('accumulatedBanner');
-        const textEl = document.getElementById('accumulatedBannerText');
-        if (!banner || !textEl) return;
+        if (!banner) return;
         const text = describeAccumulatedTotals();
-        const sizeLine = `Session size: ${formatBytes(sessionTotalBytes)} / ${formatBytes(sessionMaxBytes)}`;
         if (text) {
-            textEl.innerHTML = `<strong>Session totals:</strong> ${text}.<br>${sizeLine}.`;
-            banner.style.display = 'flex';
-        } else if (sessionTotalBytes > 0) {
-            textEl.textContent = sizeLine;
-            banner.style.display = 'flex';
+            banner.textContent = `Session totals: ${text}.  Click "Clear & Upload New" to start fresh.`;
+            banner.style.display = 'block';
         } else {
             banner.style.display = 'none';
         }
@@ -2528,8 +2499,6 @@
         }
         accumulatedStatements = [];
         accumulatedReceipts = [];
-        sessionTotalBytes = 0;
-        updateAccumulatedBanner();
 
         // Hide all results
         document.getElementById('statementResults').classList.remove('show');
