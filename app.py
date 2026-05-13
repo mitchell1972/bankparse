@@ -43,9 +43,10 @@ from database import (
     save_extracted_data, get_user_extracted_files, get_user_extracted_rows,
     get_user_extracted_summary, clear_user_extracted_data,
     get_user_extracted_total_bytes,
+    find_users_due_trial_reminder, mark_trial_reminder_sent,
     _fetchall_dicts,
 )
-from otp import generate_otp, send_otp_email
+from otp import generate_otp, send_otp_email, send_trial_reminder_email
 from seo_pages import SEO_PAGES
 
 from core import (
@@ -615,6 +616,40 @@ async def download_cumulative_xlsx(request: Request, mode: str):
 
     track_output_file(output_filename)
     return JSONResponse({"download_url": f"/downloads/{output_filename}"})
+
+
+# ---------------------------------------------------------------------------
+# Cron: day-5 trial reminder
+# ---------------------------------------------------------------------------
+# Vercel hits this endpoint on the schedule in vercel.json (`crons`). The
+# request carries Authorization: Bearer ${CRON_SECRET} — see Vercel docs.
+# On Railway / local you can hit it manually with the same header.
+# ---------------------------------------------------------------------------
+
+@app.get("/api/cron/trial-reminders")
+async def cron_trial_reminders(request: Request):
+    expected = os.environ.get("CRON_SECRET", "")
+    if expected:
+        auth = request.headers.get("authorization", "")
+        if auth != f"Bearer {expected}":
+            raise HTTPException(status_code=401, detail="Unauthorized")
+
+    users = find_users_due_trial_reminder()
+    sent = 0
+    failed = 0
+    for u in users:
+        try:
+            ok = send_trial_reminder_email(u["email"], days_left=2)
+        except Exception:
+            logger.exception("Trial reminder send raised for user %s", u["id"])
+            ok = False
+        if ok:
+            mark_trial_reminder_sent(u["id"])
+            sent += 1
+        else:
+            failed += 1
+
+    return JSONResponse({"status": "ok", "candidates": len(users), "sent": sent, "failed": failed})
 
 
 @app.post("/api/restore/request")

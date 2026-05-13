@@ -101,7 +101,7 @@ def _execute_insert(sql: str, params: tuple = ()) -> int:
         return cursor.lastrowid
 
 
-_USER_COLS = "id, email, password_hash, stripe_customer_id, statements_used, receipts_used, subscription_status, subscription_checked_at, chat_count, chat_date, scans_this_month, scan_month, statements_this_month, receipts_this_month, usage_month, email_verified, ai_credit_balance_gbp, ai_spend_this_month, created_at"
+_USER_COLS = "id, email, password_hash, stripe_customer_id, statements_used, receipts_used, subscription_status, subscription_checked_at, chat_count, chat_date, scans_this_month, scan_month, statements_this_month, receipts_this_month, usage_month, email_verified, ai_credit_balance_gbp, ai_spend_this_month, created_at, trial_reminder_sent_at"
 
 
 # --- Schema ---
@@ -212,6 +212,7 @@ def init_db():
         ("email_verified", "INTEGER DEFAULT 0"),
         ("ai_credit_balance_gbp", "REAL DEFAULT 0"),
         ("ai_spend_this_month", "REAL DEFAULT 0"),
+        ("trial_reminder_sent_at", "REAL DEFAULT NULL"),
     ]:
         try:
             _execute(f"ALTER TABLE users ADD COLUMN {col} {col_def}")
@@ -757,6 +758,38 @@ def get_user_extracted_summary(user_id: int) -> dict:
             summary[mode]["file_count"] = int(r.get("file_count") or 0)
             summary[mode]["row_count"] = int(r.get("row_count") or 0)
     return summary
+
+
+def find_users_due_trial_reminder(min_days: float = 5.0, max_days: float = 6.0) -> list[dict]:
+    """Return users whose trial is ~5 days in and who haven't been reminded.
+
+    Filters: verified email, no active Stripe subscription, no reminder yet,
+    and created_at falls inside (now - max_days, now - min_days) — i.e.
+    they have between 1 and 2 days of trial left.
+    """
+    import time
+    now = time.time()
+    upper = now - (min_days * 86400.0)
+    lower = now - (max_days * 86400.0)
+    return _fetchall_dicts(
+        f"SELECT {_USER_COLS} FROM users "
+        "WHERE email_verified = 1 "
+        "  AND trial_reminder_sent_at IS NULL "
+        "  AND (subscription_status IS NULL OR subscription_status NOT IN ('active','trialing')) "
+        "  AND created_at IS NOT NULL "
+        "  AND created_at > ? "
+        "  AND created_at <= ?",
+        (lower, upper),
+    )
+
+
+def mark_trial_reminder_sent(user_id: int):
+    """Stamp the user record so the cron doesn't re-send."""
+    import time
+    _execute(
+        "UPDATE users SET trial_reminder_sent_at = ? WHERE id = ?",
+        (time.time(), user_id),
+    )
 
 
 def clear_user_extracted_data(user_id: int) -> int:
