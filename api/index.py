@@ -68,6 +68,8 @@ from core import (
     # Subscription helpers
     verify_subscription, check_can_use, get_user_tier,
     record_ai_spend, QUOTA_REASON_MESSAGES,
+    # Trial helpers
+    trial_days_remaining, is_trial_active,
 )
 
 # Re-import stripe if available (needed for direct Stripe API calls in routes)
@@ -569,6 +571,8 @@ async def get_usage_status(request: Request):
             "chat_limit": 0,
             "email": None,
             "stripe_configured": bool(STRIPE_PUBLISHABLE_KEY),
+            "trial_days_remaining": None,
+            "trial_active": None,
         })
 
     tier = get_user_tier(user)
@@ -577,6 +581,10 @@ async def get_usage_status(request: Request):
     statements_used = get_monthly_statements(user["id"])
     receipts_used = get_monthly_receipts(user["id"])
     chat_used = get_chat_usage(user["id"]) if limits["chat_per_day"] else 0
+
+    # Trial state — only meaningful for free-tier users.
+    days_left = trial_days_remaining(user) if not is_subscriber else None
+    in_trial = is_trial_active(user) if not is_subscriber else None
 
     return JSONResponse({
         "has_subscription": is_subscriber,
@@ -590,6 +598,8 @@ async def get_usage_status(request: Request):
         "chat_limit": limits["chat_per_day"],
         "email": user["email"],
         "stripe_configured": bool(STRIPE_PUBLISHABLE_KEY),
+        "trial_days_remaining": days_left,
+        "trial_active": in_trial,
     })
 
 

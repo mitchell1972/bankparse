@@ -1386,17 +1386,24 @@
             return;
         }
 
-        // Free tier
-        const statementsRemaining = Math.max(0, (statementsLimit || 1) - statementsUsed);
-        const receiptsRemaining = Math.max(0, (receiptsLimit || 1) - receiptsUsed);
-        if (statementsRemaining === 0 && receiptsRemaining === 0) {
+        // Free tier — 7-day trial from signup
+        const daysLeft = usageData.trial_days_remaining;
+        const trialActive = usageData.trial_active;
+        if (trialActive === false || daysLeft === 0) {
             bar.className = 'usage-bar exhausted';
-            text.textContent = 'Free allowance used up';
+            text.textContent = 'Trial expired — subscribe to continue';
             badge.textContent = 'UPGRADE';
             badge.className = 'usage-badge exhausted';
-        } else {
+        } else if (typeof daysLeft === 'number') {
             bar.className = 'usage-bar';
-            text.textContent = `Free: ${statementsRemaining} statement, ${receiptsRemaining} receipt remaining`;
+            const dayWord = daysLeft === 1 ? 'day' : 'days';
+            text.textContent = `Free trial: ${daysLeft} ${dayWord} left`;
+            badge.textContent = 'FREE TRIAL';
+            badge.className = 'usage-badge free';
+        } else {
+            // Fallback when trial fields aren't present (e.g. logged-out)
+            bar.className = 'usage-bar';
+            text.textContent = 'Free 7-day trial';
             badge.textContent = 'FREE';
             badge.className = 'usage-badge free';
         }
@@ -1906,7 +1913,7 @@
             clearInterval(progressInterval);
             progressSection.classList.remove('show');
 
-            if (err.message === 'FREE_LIMIT_REACHED') {
+            if (err.message === 'FREE_LIMIT_REACHED' || err.message === 'TRIAL_EXPIRED') {
                 await loadUsage();
                 showPaywall();
             } else {

@@ -84,16 +84,22 @@ INTUIT_AVAILABLE = bool(INTUIT_CLIENT_ID and INTUIT_CLIENT_SECRET)
 # Paid users can exceed the budget by pre-purchasing credit packs (one-time
 # Stripe checkouts that top up `ai_credit_balance_gbp`), after which each
 # overage parse deducts the exact Anthropic token cost.
+# Free tier is now a 7-day trial from registration. The per-month file
+# count limits are kept as None — gating happens via TRIAL_DAYS in
+# check_can_use, not by counting files.
+TRIAL_DAYS = 7
+
 TIER_LIMITS = {
     "free": {
-        "monthly_statements": ai_pricing.FREE_MONTHLY_STATEMENTS,
-        "monthly_receipts": ai_pricing.FREE_MONTHLY_RECEIPTS,
+        "monthly_statements": None,
+        "monthly_receipts": None,
         "monthly_ai_budget_gbp": ai_pricing.TIER_MONTHLY_AI_BUDGET_GBP["free"],
         "bulk_max_files": 0,
-        "ai_parsing": True,   # AI-only parsing everywhere — even the 1 free use is AI
+        "ai_parsing": True,   # AI-only parsing everywhere
         "auto_insights": False,
         "pre_built_reports": False,
         "chat_per_day": 0,
+        "trial_days": TRIAL_DAYS,
     },
     "starter": {
         "monthly_statements": None,  # no file-count cap — spend-capped instead
@@ -337,6 +343,28 @@ def get_user_tier(user: dict) -> str:
     return "starter"
 
 
+def trial_days_remaining(user: dict) -> int:
+    """Days left on the 7-day free trial for this user.
+
+    Returns 0 once the trial has ended. Returns TRIAL_DAYS for users without
+    a recorded created_at timestamp (treat as freshly created).
+    """
+    import time
+
+    created_at = user.get("created_at")
+    if not created_at:
+        return TRIAL_DAYS
+    elapsed_seconds = time.time() - float(created_at)
+    elapsed_days = elapsed_seconds / 86400.0
+    remaining = TRIAL_DAYS - int(elapsed_days)
+    return max(remaining, 0)
+
+
+def is_trial_active(user: dict) -> bool:
+    """True if the user is within their 7-day free trial window."""
+    return trial_days_remaining(user) > 0
+
+
 def check_can_use(user: dict, mode: str, num_pages: int = 1) -> tuple[bool, str, str, float]:
     """Pre-flight gate for an AI parse request.
 
@@ -344,7 +372,7 @@ def check_can_use(user: dict, mode: str, num_pages: int = 1) -> tuple[bool, str,
       1. Email verification (required for any AI usage)
       2. Global daily budget ceiling (all users, panic brake)
       3. Per-user daily cap (panic brake for single abusive account)
-      4. Free-tier file-count cap (statements/receipts this month)
+      4. Free tier: 7-day trial from registration
       5. Paid-tier monthly spend budget — if exhausted, credit balance must
          cover the pre-flight estimate.
 
@@ -356,14 +384,11 @@ def check_can_use(user: dict, mode: str, num_pages: int = 1) -> tuple[bool, str,
         - ``allowed`` — bool, True if the request should proceed
         - ``tier`` — the user's tier ('free'/'starter'/.../'enterprise')
         - ``reason`` — short machine-readable code; 'ok' if allowed, otherwise
-          one of: 'email_unverified', 'free_statements_cap',
-          'free_receipts_cap', 'monthly_budget_exhausted', 'user_daily_cap',
-          'global_daily_cap'
+          one of: 'email_unverified', 'trial_expired',
+          'monthly_budget_exhausted', 'user_daily_cap', 'global_daily_cap'
         - ``estimated_cost_gbp`` — the pre-flight (pessimistic) cost for
           this specific call
     """
-    from database import get_monthly_statements, get_monthly_receipts
-
     tier = get_user_tier(user)
     limits = TIER_LIMITS[tier]
     user_id = user["id"]
@@ -387,16 +412,11 @@ def check_can_use(user: dict, mode: str, num_pages: int = 1) -> tuple[bool, str,
     if user_today + estimated_cost > ai_pricing.AI_USER_DAILY_CAP_GBP:
         return False, tier, "user_daily_cap", estimated_cost
 
-    # 4. Free tier: file-count cap (1 statement + 1 receipt per month).
-    #    Spend budget is £0 so the paid-tier check would always fail; we
-    #    short-circuit here for a better UX error code.
+    # 4. Free tier: 7-day trial from registration. UNLIMITED_EMAILS bypass
+    #    this so admin/test accounts can always parse.
     if tier == "free":
-        if mode == "statement":
-            if get_monthly_statements(user_id) >= ai_pricing.FREE_MONTHLY_STATEMENTS:
-                return False, tier, "free_statements_cap", estimated_cost
-        elif mode == "receipt":
-            if get_monthly_receipts(user_id) >= ai_pricing.FREE_MONTHLY_RECEIPTS:
-                return False, tier, "free_receipts_cap", estimated_cost
+        if email not in UNLIMITED_EMAILS and not is_trial_active(user):
+            return False, tier, "trial_expired", estimated_cost
         return True, tier, "ok", estimated_cost
 
     # 5. Paid tier: spend-based budget check.
@@ -503,6 +523,8 @@ def record_ai_spend(
 QUOTA_REASON_MESSAGES = {
     "ok": "OK",
     "email_unverified": "EMAIL_VERIFICATION_REQUIRED",
+    "trial_expired": "TRIAL_EXPIRED",
+    # Kept for backward compat with any client JS that branches on the old codes
     "free_statements_cap": "FREE_LIMIT_REACHED",
     "free_receipts_cap": "FREE_LIMIT_REACHED",
     "monthly_budget_exhausted": "MONTHLY_BUDGET_EXHAUSTED",
