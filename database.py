@@ -175,6 +175,16 @@ def init_db():
             connected_at REAL DEFAULT (strftime('%s', 'now')),
             updated_at REAL DEFAULT (strftime('%s', 'now'))
         )""",
+        """CREATE TABLE IF NOT EXISTS user_extracted_data (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            mode TEXT NOT NULL,
+            source_filename TEXT,
+            rows_json TEXT NOT NULL,
+            row_count INTEGER NOT NULL DEFAULT 0,
+            parsed_at REAL DEFAULT (strftime('%s', 'now'))
+        )""",
+        "CREATE INDEX IF NOT EXISTS idx_extracted_user_mode ON user_extracted_data(user_id, mode)",
         "CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)",
         "CREATE INDEX IF NOT EXISTS idx_users_stripe ON users(stripe_customer_id)",
         "CREATE INDEX IF NOT EXISTS idx_sessions_email ON sessions(email)",
@@ -641,6 +651,97 @@ def update_qbo_tokens(
 
 def delete_qbo_connection(user_id: int):
     _execute("DELETE FROM qbo_connections WHERE user_id = ?", (user_id,))
+
+
+# ---------------------------------------------------------------------------
+# Per-user persisted extraction (cumulative across uploads, cleared only by
+# the user clicking "Clear & Upload New"). Survives logout, browser close,
+# device switch.
+# ---------------------------------------------------------------------------
+
+def save_extracted_data(user_id: int, mode: str, source_filename: str, rows: list[dict]) -> int:
+    """Append a parse's extracted rows to the user's cumulative store.
+
+    `mode` is 'statement' or 'receipt'. Returns the new row id.
+    """
+    import json
+    if mode not in ("statement", "receipt"):
+        raise ValueError(f"invalid mode: {mode!r}")
+    rows_json = json.dumps(rows or [])
+    return _execute_insert(
+        "INSERT INTO user_extracted_data (user_id, mode, source_filename, rows_json, row_count) "
+        "VALUES (?, ?, ?, ?, ?)",
+        (user_id, mode, source_filename or "", rows_json, len(rows or [])),
+    )
+
+
+def get_user_extracted_files(user_id: int, mode: str) -> list[dict]:
+    """Return each parsed-file record for this user/mode, oldest first.
+
+    Each record has: id, source_filename, row_count, parsed_at, rows (parsed JSON list).
+    """
+    import json
+    if mode not in ("statement", "receipt"):
+        raise ValueError(f"invalid mode: {mode!r}")
+    raw = _fetchall_dicts(
+        "SELECT id, source_filename, row_count, parsed_at, rows_json "
+        "FROM user_extracted_data WHERE user_id = ? AND mode = ? "
+        "ORDER BY parsed_at ASC, id ASC",
+        (user_id, mode),
+    )
+    out = []
+    for r in raw:
+        try:
+            rows = json.loads(r.get("rows_json") or "[]")
+        except Exception:
+            rows = []
+        out.append({
+            "id": r["id"],
+            "source_filename": r.get("source_filename") or "",
+            "row_count": r.get("row_count") or 0,
+            "parsed_at": r.get("parsed_at"),
+            "rows": rows,
+        })
+    return out
+
+
+def get_user_extracted_rows(user_id: int, mode: str) -> list[dict]:
+    """Flatten every parse's rows for this user/mode into one list."""
+    flat: list[dict] = []
+    for f in get_user_extracted_files(user_id, mode):
+        flat.extend(f["rows"])
+    return flat
+
+
+def get_user_extracted_summary(user_id: int) -> dict:
+    """Light summary for the dashboard banner: counts of files and rows per mode."""
+    raw = _fetchall_dicts(
+        "SELECT mode, COUNT(*) AS file_count, COALESCE(SUM(row_count), 0) AS row_count "
+        "FROM user_extracted_data WHERE user_id = ? GROUP BY mode",
+        (user_id,),
+    )
+    summary = {
+        "statement": {"file_count": 0, "row_count": 0},
+        "receipt": {"file_count": 0, "row_count": 0},
+    }
+    for r in raw:
+        mode = r.get("mode")
+        if mode in summary:
+            summary[mode]["file_count"] = int(r.get("file_count") or 0)
+            summary[mode]["row_count"] = int(r.get("row_count") or 0)
+    return summary
+
+
+def clear_user_extracted_data(user_id: int) -> int:
+    """Wipe all persisted extracted rows for this user. Returns the count
+    of file records deleted."""
+    raw = _fetchone_dict(
+        "SELECT COUNT(*) AS c FROM user_extracted_data WHERE user_id = ?",
+        (user_id,),
+    )
+    count = int((raw or {}).get("c") or 0)
+    _execute("DELETE FROM user_extracted_data WHERE user_id = ?", (user_id,))
+    return count
 
 
 # Initialize on import

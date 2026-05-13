@@ -40,6 +40,8 @@ from database import (
     get_monthly_statements, increment_monthly_statements,
     get_monthly_receipts, increment_monthly_receipts,
     get_credit_balance, mark_email_verified, is_email_verified,
+    save_extracted_data, get_user_extracted_files, get_user_extracted_rows,
+    get_user_extracted_summary, clear_user_extracted_data,
     _fetchall_dicts,
 )
 from otp import generate_otp, send_otp_email
@@ -536,6 +538,79 @@ async def get_usage_status(request: Request):
     })
 
 
+# ---------------------------------------------------------------------------
+# Persisted cumulative extraction — survives logout, only cleared by the
+# explicit "Clear & Upload New" button.
+# ---------------------------------------------------------------------------
+
+@app.get("/api/extracted-data")
+async def get_extracted_data(request: Request):
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required.")
+
+    statement_files = get_user_extracted_files(user["id"], "statement")
+    receipt_files = get_user_extracted_files(user["id"], "receipt")
+    statement_rows = [row for f in statement_files for row in f["rows"]]
+    receipt_rows = [row for f in receipt_files for row in f["rows"]]
+    return JSONResponse({
+        "statements": {
+            "rows": statement_rows,
+            "files": [
+                {"id": f["id"], "filename": f["source_filename"],
+                 "row_count": f["row_count"], "parsed_at": f["parsed_at"]}
+                for f in statement_files
+            ],
+        },
+        "receipts": {
+            "rows": receipt_rows,
+            "files": [
+                {"id": f["id"], "filename": f["source_filename"],
+                 "row_count": f["row_count"], "parsed_at": f["parsed_at"]}
+                for f in receipt_files
+            ],
+        },
+    })
+
+
+@app.post("/api/extracted-data/clear")
+async def clear_extracted_data(request: Request):
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required.")
+
+    deleted = clear_user_extracted_data(user["id"])
+    return JSONResponse({"status": "ok", "files_cleared": deleted})
+
+
+@app.get("/api/extracted-data/download")
+async def download_cumulative_xlsx(request: Request, mode: str):
+    """Build a fresh XLSX from all the user's accumulated rows for one mode."""
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required.")
+    if mode not in ("statement", "receipt"):
+        raise HTTPException(status_code=400, detail="mode must be 'statement' or 'receipt'.")
+
+    rows = get_user_extracted_rows(user["id"], mode)
+    if not rows:
+        raise HTTPException(status_code=404, detail="No extracted data to download.")
+
+    job_id = str(uuid.uuid4())[:8]
+    if mode == "statement":
+        output_filename = f"cumulative_statements_{job_id}.xlsx"
+        output_path = OUTPUT_DIR / output_filename
+        # xlsx_exporter expects a `result` dict shape; rebuild a minimal one
+        export_to_xlsx({"transactions": rows, "summary": {}, "metadata": {}}, str(output_path))
+    else:
+        output_filename = f"cumulative_receipts_{job_id}.xlsx"
+        output_path = OUTPUT_DIR / output_filename
+        export_receipt_to_xlsx({"items": rows, "totals": {}, "metadata": {}}, str(output_path))
+
+    track_output_file(output_filename)
+    return JSONResponse({"download_url": f"/downloads/{output_filename}"})
+
+
 @app.post("/api/restore/request")
 @limiter.limit("3/minute")
 async def restore_request_otp(request: Request):
@@ -712,6 +787,14 @@ async def parse_statement(request: Request, file: UploadFile = File(...)):
         # Increment monthly statement count for all tiers
         increment_monthly_statements(user["id"], 1)
 
+        # Persist the extracted rows on the user account so the dashboard can
+        # show cumulative totals across uploads, surviving logout. Cleared
+        # only when the user clicks "Clear & Upload New".
+        try:
+            save_extracted_data(user["id"], "statement", safe_filename, result["transactions"])
+        except Exception:
+            logger.exception("Failed to persist extracted statement data for user %s", user["id"])
+
         # Deduct the exact AI cost from the user's monthly budget / credit balance.
         ai_usage = result.get("metadata", {}).get("ai_usage") or {}
         if ai_usage.get("input_tokens") or ai_usage.get("output_tokens"):
@@ -799,6 +882,12 @@ async def parse_receipt_endpoint(request: Request, file: UploadFile = File(...))
 
         # Increment monthly receipt count for all tiers
         increment_monthly_receipts(user["id"], 1)
+
+        # Persist the extracted line items on the user account (cumulative).
+        try:
+            save_extracted_data(user["id"], "receipt", safe_filename, result["items"])
+        except Exception:
+            logger.exception("Failed to persist extracted receipt data for user %s", user["id"])
 
         # Deduct the exact AI cost from the user's monthly budget / credit balance.
         ai_usage = result.get("metadata", {}).get("ai_usage") or {}

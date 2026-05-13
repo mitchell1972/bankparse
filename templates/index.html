@@ -802,6 +802,12 @@
         </span>
     </div>
 
+    <!-- Cumulative session totals — visible whenever the account has any
+         accumulated extracted data. Cleared by "Clear & Upload New". -->
+    <div id="accumulatedBanner"
+         style="display:none; margin:0.75rem 0; padding:0.6rem 0.9rem; background:#F0F4F8; border-left:4px solid #1B4F72; border-radius:6px; font-size:0.85rem; color:#3a4f64;">
+    </div>
+
     <!-- Paywall -->
     <div class="paywall" id="paywall">
         <div class="paywall-card">
@@ -1589,6 +1595,7 @@
 
     // Load usage on page load
     loadUsage();
+    loadAccumulatedData();
 
     const fileInput = document.getElementById('fileInput');
     const fileInfo = document.getElementById('fileInfo');
@@ -1907,6 +1914,8 @@
                 } else {
                     showStatementResults(data);
                 }
+                // Refresh the cumulative banner — server has just appended.
+                loadAccumulatedData();
             }, 500);
 
         } catch (err) {
@@ -1952,6 +1961,51 @@
 
     // Tracks which pagination context is active for keyboard navigation
     let activePaginationContext = null; // 'statement', 'receipt', 'bulkReceipt', 'bulkStatement'
+
+    // Cumulative extraction across uploads — survives logout. Loaded from
+    // /api/extracted-data on page load. Cleared only by Clear & Upload New.
+    let accumulatedStatements = [];  // {filename, row_count, parsed_at}
+    let accumulatedReceipts = [];    // {filename, row_count, parsed_at}
+
+    function describeAccumulatedTotals() {
+        const stmtRows = accumulatedStatements.reduce((s, f) => s + (f.row_count || 0), 0);
+        const rcptRows = accumulatedReceipts.reduce((s, f) => s + (f.row_count || 0), 0);
+        const parts = [];
+        if (accumulatedStatements.length > 0) {
+            const fileWord = accumulatedStatements.length === 1 ? 'statement' : 'statements';
+            parts.push(`${stmtRows} transactions across ${accumulatedStatements.length} ${fileWord}`);
+        }
+        if (accumulatedReceipts.length > 0) {
+            const fileWord = accumulatedReceipts.length === 1 ? 'receipt' : 'receipts';
+            parts.push(`${rcptRows} line items across ${accumulatedReceipts.length} ${fileWord}`);
+        }
+        return parts.join(' and ');
+    }
+
+    async function loadAccumulatedData() {
+        try {
+            const res = await fetch('/api/extracted-data');
+            if (!res.ok) return;
+            const data = await res.json();
+            accumulatedStatements = (data.statements && data.statements.files) || [];
+            accumulatedReceipts = (data.receipts && data.receipts.files) || [];
+            updateAccumulatedBanner();
+        } catch (e) {
+            console.log('Accumulated data fetch failed (offline?)');
+        }
+    }
+
+    function updateAccumulatedBanner() {
+        const banner = document.getElementById('accumulatedBanner');
+        if (!banner) return;
+        const text = describeAccumulatedTotals();
+        if (text) {
+            banner.textContent = `Session totals: ${text}.  Click "Clear & Upload New" to start fresh.`;
+            banner.style.display = 'block';
+        } else {
+            banner.style.display = 'none';
+        }
+    }
 
     function showStatementResults(data) {
         const { summary, transactions, download_url } = data;
@@ -2425,7 +2479,27 @@
         }
     }
 
-    function clearAndReset() {
+    async function clearAndReset() {
+        // Ask before wiping accumulated data — destructive and irreversible.
+        const summary = describeAccumulatedTotals();
+        const confirmMsg = summary
+            ? `Clear ${summary} and start a new session?\n\nYour current spreadsheet will no longer be downloadable from your account.`
+            : 'Clear and start a new session?';
+        if (!window.confirm(confirmMsg)) return;
+
+        // Wipe server-side cumulative store. Frontend state reset continues
+        // regardless of network failure so the page doesn't get stuck.
+        try {
+            await fetch('/api/extracted-data/clear', {
+                method: 'POST',
+                headers: { 'X-CSRF-Token': getCsrfToken() },
+            });
+        } catch (err) {
+            console.warn('Clear failed server-side, continuing UI reset:', err);
+        }
+        accumulatedStatements = [];
+        accumulatedReceipts = [];
+
         // Hide all results
         document.getElementById('statementResults').classList.remove('show');
         document.getElementById('receiptResults').classList.remove('show');
