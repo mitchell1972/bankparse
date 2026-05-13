@@ -123,7 +123,10 @@ def test_full_user_journey(page: Page, live_server: str, fixture_csv: Path):
     def accept_dialog(dialog: Dialog):
         dialog.accept()
     page.once("dialog", accept_dialog)
-    page.get_by_role("button", name=re.compile("Clear & Upload New", re.I)).first.click()
+    # Use the always-visible Clear button inside the cumulative banner —
+    # the per-results-card Clear buttons are only rendered when that
+    # results card is visible, which it isn't on a fresh page load.
+    page.locator("#accumulatedClearBtn").click()
     # Banner should hide once data is wiped
     expect(banner).to_be_hidden(timeout=5_000)
 
