@@ -13,6 +13,12 @@
     { "source": "/api/debug", "destination": "/api/debug.py" },
     { "source": "/(.*)", "destination": "/api/index.py" }
   ],
+  "crons": [
+    {
+      "path": "/api/cron/trial-reminders",
+      "schedule": "0 14 * * *"
+    }
+  ],
   "headers": [
     {
       "source": "/blog/:path*/:asset(og-image|hero-image|infographic)",

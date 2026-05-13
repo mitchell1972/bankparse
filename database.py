@@ -33,11 +33,16 @@ def _get_turso():
 
 
 def _get_sqlite():
-    """Get or create a local SQLite connection."""
+    """Get or create a local SQLite connection.
+
+    DATABASE_PATH env var overrides the default location — used by E2E
+    tests to isolate against a temp DB instead of the dev database.
+    """
     global _sqlite_conn
     if _sqlite_conn is None:
+        import os
         import sqlite3
-        db_path = str(Path(__file__).parent / "bankparse.db")
+        db_path = os.environ.get("DATABASE_PATH") or str(Path(__file__).parent / "bankparse.db")
         _sqlite_conn = sqlite3.connect(db_path, timeout=10)
         _sqlite_conn.execute("PRAGMA journal_mode=WAL")
         _sqlite_conn.execute("PRAGMA foreign_keys=ON")
@@ -101,7 +106,7 @@ def _execute_insert(sql: str, params: tuple = ()) -> int:
         return cursor.lastrowid
 
 
-_USER_COLS = "id, email, password_hash, stripe_customer_id, statements_used, receipts_used, subscription_status, subscription_checked_at, chat_count, chat_date, scans_this_month, scan_month, statements_this_month, receipts_this_month, usage_month, email_verified, ai_credit_balance_gbp, ai_spend_this_month, created_at"
+_USER_COLS = "id, email, password_hash, stripe_customer_id, statements_used, receipts_used, subscription_status, subscription_checked_at, chat_count, chat_date, scans_this_month, scan_month, statements_this_month, receipts_this_month, usage_month, email_verified, ai_credit_balance_gbp, ai_spend_this_month, created_at, trial_reminder_sent_at"
 
 
 # --- Schema ---
@@ -175,6 +180,17 @@ def init_db():
             connected_at REAL DEFAULT (strftime('%s', 'now')),
             updated_at REAL DEFAULT (strftime('%s', 'now'))
         )""",
+        """CREATE TABLE IF NOT EXISTS user_extracted_data (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            mode TEXT NOT NULL,
+            source_filename TEXT,
+            source_size_bytes INTEGER NOT NULL DEFAULT 0,
+            rows_json TEXT NOT NULL,
+            row_count INTEGER NOT NULL DEFAULT 0,
+            parsed_at REAL DEFAULT (strftime('%s', 'now'))
+        )""",
+        "CREATE INDEX IF NOT EXISTS idx_extracted_user_mode ON user_extracted_data(user_id, mode)",
         "CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)",
         "CREATE INDEX IF NOT EXISTS idx_users_stripe ON users(stripe_customer_id)",
         "CREATE INDEX IF NOT EXISTS idx_sessions_email ON sessions(email)",
@@ -201,11 +217,18 @@ def init_db():
         ("email_verified", "INTEGER DEFAULT 0"),
         ("ai_credit_balance_gbp", "REAL DEFAULT 0"),
         ("ai_spend_this_month", "REAL DEFAULT 0"),
+        ("trial_reminder_sent_at", "REAL DEFAULT NULL"),
     ]:
         try:
             _execute(f"ALTER TABLE users ADD COLUMN {col} {col_def}")
         except Exception:
             pass  # Column already exists
+
+    # Migrate user_extracted_data — source_size_bytes added in commit 3
+    try:
+        _execute("ALTER TABLE user_extracted_data ADD COLUMN source_size_bytes INTEGER NOT NULL DEFAULT 0")
+    except Exception:
+        pass  # Column already exists
 
     logger.info("Database schema initialized")
 
@@ -641,6 +664,149 @@ def update_qbo_tokens(
 
 def delete_qbo_connection(user_id: int):
     _execute("DELETE FROM qbo_connections WHERE user_id = ?", (user_id,))
+
+
+# ---------------------------------------------------------------------------
+# Per-user persisted extraction (cumulative across uploads, cleared only by
+# the user clicking "Clear & Upload New"). Survives logout, browser close,
+# device switch.
+# ---------------------------------------------------------------------------
+
+def save_extracted_data(
+    user_id: int,
+    mode: str,
+    source_filename: str,
+    rows: list[dict],
+    source_size_bytes: int = 0,
+) -> int:
+    """Append a parse's extracted rows to the user's cumulative store.
+
+    `mode` is 'statement' or 'receipt'. `source_size_bytes` is the byte size
+    of the original uploaded file — used for the 25MB session-cumulative cap.
+    Returns the new row id.
+    """
+    import json
+    if mode not in ("statement", "receipt"):
+        raise ValueError(f"invalid mode: {mode!r}")
+    rows_json = json.dumps(rows or [])
+    return _execute_insert(
+        "INSERT INTO user_extracted_data "
+        "(user_id, mode, source_filename, source_size_bytes, rows_json, row_count) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        (user_id, mode, source_filename or "", int(source_size_bytes or 0),
+         rows_json, len(rows or [])),
+    )
+
+
+def get_user_extracted_total_bytes(user_id: int) -> int:
+    """Total bytes of all files this user has uploaded since last clear."""
+    row = _fetchone_dict(
+        "SELECT COALESCE(SUM(source_size_bytes), 0) AS total "
+        "FROM user_extracted_data WHERE user_id = ?",
+        (user_id,),
+    )
+    return int((row or {}).get("total") or 0)
+
+
+def get_user_extracted_files(user_id: int, mode: str) -> list[dict]:
+    """Return each parsed-file record for this user/mode, oldest first.
+
+    Each record has: id, source_filename, row_count, parsed_at, rows (parsed JSON list).
+    """
+    import json
+    if mode not in ("statement", "receipt"):
+        raise ValueError(f"invalid mode: {mode!r}")
+    raw = _fetchall_dicts(
+        "SELECT id, source_filename, row_count, parsed_at, rows_json "
+        "FROM user_extracted_data WHERE user_id = ? AND mode = ? "
+        "ORDER BY parsed_at ASC, id ASC",
+        (user_id, mode),
+    )
+    out = []
+    for r in raw:
+        try:
+            rows = json.loads(r.get("rows_json") or "[]")
+        except Exception:
+            rows = []
+        out.append({
+            "id": r["id"],
+            "source_filename": r.get("source_filename") or "",
+            "row_count": r.get("row_count") or 0,
+            "parsed_at": r.get("parsed_at"),
+            "rows": rows,
+        })
+    return out
+
+
+def get_user_extracted_rows(user_id: int, mode: str) -> list[dict]:
+    """Flatten every parse's rows for this user/mode into one list."""
+    flat: list[dict] = []
+    for f in get_user_extracted_files(user_id, mode):
+        flat.extend(f["rows"])
+    return flat
+
+
+def get_user_extracted_summary(user_id: int) -> dict:
+    """Light summary for the dashboard banner: counts of files and rows per mode."""
+    raw = _fetchall_dicts(
+        "SELECT mode, COUNT(*) AS file_count, COALESCE(SUM(row_count), 0) AS row_count "
+        "FROM user_extracted_data WHERE user_id = ? GROUP BY mode",
+        (user_id,),
+    )
+    summary = {
+        "statement": {"file_count": 0, "row_count": 0},
+        "receipt": {"file_count": 0, "row_count": 0},
+    }
+    for r in raw:
+        mode = r.get("mode")
+        if mode in summary:
+            summary[mode]["file_count"] = int(r.get("file_count") or 0)
+            summary[mode]["row_count"] = int(r.get("row_count") or 0)
+    return summary
+
+
+def find_users_due_trial_reminder(min_days: float = 5.0, max_days: float = 6.0) -> list[dict]:
+    """Return users whose trial is ~5 days in and who haven't been reminded.
+
+    Filters: verified email, no active Stripe subscription, no reminder yet,
+    and created_at falls inside (now - max_days, now - min_days) — i.e.
+    they have between 1 and 2 days of trial left.
+    """
+    import time
+    now = time.time()
+    upper = now - (min_days * 86400.0)
+    lower = now - (max_days * 86400.0)
+    return _fetchall_dicts(
+        f"SELECT {_USER_COLS} FROM users "
+        "WHERE email_verified = 1 "
+        "  AND trial_reminder_sent_at IS NULL "
+        "  AND (subscription_status IS NULL OR subscription_status NOT IN ('active','trialing')) "
+        "  AND created_at IS NOT NULL "
+        "  AND created_at > ? "
+        "  AND created_at <= ?",
+        (lower, upper),
+    )
+
+
+def mark_trial_reminder_sent(user_id: int):
+    """Stamp the user record so the cron doesn't re-send."""
+    import time
+    _execute(
+        "UPDATE users SET trial_reminder_sent_at = ? WHERE id = ?",
+        (time.time(), user_id),
+    )
+
+
+def clear_user_extracted_data(user_id: int) -> int:
+    """Wipe all persisted extracted rows for this user. Returns the count
+    of file records deleted."""
+    raw = _fetchone_dict(
+        "SELECT COUNT(*) AS c FROM user_extracted_data WHERE user_id = ?",
+        (user_id,),
+    )
+    count = int((raw or {}).get("c") or 0)
+    _execute("DELETE FROM user_extracted_data WHERE user_id = ?", (user_id,))
+    return count
 
 
 # Initialize on import

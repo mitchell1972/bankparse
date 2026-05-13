@@ -320,12 +320,21 @@ def test_home_redirects_to_landing():
 # -----------------------------------------------------------------------
 
 def test_home_authenticated():
-    """GET / with auth returns 200 (dashboard)."""
+    """GET / with auth: unverified user is bounced to /verify-email,
+    verified user lands on the dashboard. Verification gate added in PR #12."""
+    from database import mark_email_verified, get_user_by_email
     with TestClient(app, raise_server_exceptions=False) as client:
         reg_resp = _register(client, "home@example.com", "password1234")
         assert reg_resp.status_code == 200
         auth_cookie = reg_resp.cookies.get("bp_auth", "")
 
+        # Unverified → 302 to /verify-email
+        resp = client.get("/", cookies={"bp_auth": auth_cookie}, follow_redirects=False)
+        assert resp.status_code == 302
+        assert "/verify-email" in resp.headers.get("location", "")
+
+        # Verified → 200 dashboard
+        mark_email_verified(get_user_by_email("home@example.com")["id"])
         resp = client.get("/", cookies={"bp_auth": auth_cookie}, follow_redirects=False)
         assert resp.status_code == 200
 

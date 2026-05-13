@@ -1,0 +1,65 @@
+name: tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  unit:
+    name: Unit tests (pytest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install runtime deps
+        run: pip install -r requirements.txt
+
+      - name: Install test deps
+        run: pip install pytest pytest-asyncio
+
+      - name: Run unit tests
+        run: pytest tests/ --ignore=tests/e2e -q
+        env:
+          SECRET_KEY: test-secret-key
+          STRIPE_SECRET_KEY: ''
+          ANTHROPIC_API_KEY: ''
+
+  e2e:
+    name: End-to-end (Playwright)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dev deps
+        run: pip install -r requirements-dev.txt
+
+      - name: Install Playwright browser
+        run: playwright install --with-deps chromium
+
+      - name: Run E2E tests
+        run: pytest tests/e2e/ -q --browser chromium
+        env:
+          SECRET_KEY: test-secret-key
+          STRIPE_SECRET_KEY: ''
+          ANTHROPIC_API_KEY: ''
+          RESEND_API_KEY: ''
+          TEST_MODE_ENABLED: '1'
+
+      - name: Upload Playwright trace on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces
+          path: test-results/
+          if-no-files-found: ignore

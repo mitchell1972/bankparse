@@ -108,61 +108,79 @@ def test_unlimited_admin_bypasses_verification():
 
 
 # ---------------------------------------------------------------------------
-# Free tier: file-count caps
+# Free tier: 7-day trial
 # ---------------------------------------------------------------------------
 
-def test_free_tier_allows_one_statement_then_blocks():
-    """Free tier = 1 statement / month. Second call same month = blocked."""
+def test_free_tier_within_trial_window_can_parse_statements():
+    """User registered within the last 7 days can parse statements unlimited."""
     import core
-    import database
-    user = _make_user("free1@example.com")
+    user = _make_user("trial-stmt@example.com")
     with patch("core.get_user_tier", return_value="free"):
+        # First call
         allowed, _, reason, _ = core.check_can_use(user, "statement")
         assert allowed is True
         assert reason == "ok"
-
-        # Simulate the statement having been consumed
-        database.increment_monthly_statements(user["id"], 1)
-
-        allowed, _, reason, _ = core.check_can_use(user, "statement")
-        assert allowed is False
-        assert reason == "free_statements_cap"
+        # Second, third, fourth call — still allowed, no monthly cap
+        for _ in range(3):
+            allowed, _, reason, _ = core.check_can_use(user, "statement")
+            assert allowed is True
+            assert reason == "ok"
 
 
-def test_free_tier_allows_one_receipt_then_blocks():
-    """Free tier = 1 receipt / month. Second call same month = blocked."""
+def test_free_tier_within_trial_window_can_parse_receipts():
+    """Same trial window applies to receipts — no per-month cap."""
+    import core
+    user = _make_user("trial-rcpt@example.com")
+    with patch("core.get_user_tier", return_value="free"):
+        for _ in range(4):
+            allowed, _, reason, _ = core.check_can_use(user, "receipt")
+            assert allowed is True
+            assert reason == "ok"
+
+
+def test_free_tier_trial_expired_blocks_statements_and_receipts():
+    """A user whose created_at is older than 7 days is blocked on both modes
+    with reason 'trial_expired'."""
     import core
     import database
-    user = _make_user("free2@example.com")
+    import time
+
+    user = _make_user("trial-expired@example.com")
+    # Backdate created_at by 8 days
+    database._execute(
+        "UPDATE users SET created_at = ? WHERE id = ?",
+        (time.time() - 8 * 86400, user["id"]),
+    )
+    user = database.get_user_by_id(user["id"])
+
     with patch("core.get_user_tier", return_value="free"):
-        allowed, _, reason, _ = core.check_can_use(user, "receipt")
-        assert allowed is True
-
-        database.increment_monthly_receipts(user["id"], 1)
-
-        allowed, _, reason, _ = core.check_can_use(user, "receipt")
-        assert allowed is False
-        assert reason == "free_receipts_cap"
-
-
-def test_free_tier_statements_and_receipts_are_independent():
-    """Using the one free statement does not consume the one free receipt."""
-    import core
-    import database
-    user = _make_user("free3@example.com")
-    with patch("core.get_user_tier", return_value="free"):
-        # Use the one free statement
-        database.increment_monthly_statements(user["id"], 1)
-
-        # Statement is blocked
         allowed, _, reason, _ = core.check_can_use(user, "statement")
         assert allowed is False
-        assert reason == "free_statements_cap"
+        assert reason == "trial_expired"
 
-        # But receipt is still allowed
         allowed, _, reason, _ = core.check_can_use(user, "receipt")
-        assert allowed is True
-        assert reason == "ok"
+        assert allowed is False
+        assert reason == "trial_expired"
+
+
+def test_trial_days_remaining_counts_down():
+    """trial_days_remaining returns 7 for a fresh user and 0 for an old one."""
+    import core
+    import database
+    import time
+
+    fresh = _make_user("fresh@example.com")
+    assert core.trial_days_remaining(fresh) == core.TRIAL_DAYS
+    assert core.is_trial_active(fresh) is True
+
+    old = _make_user("old@example.com")
+    database._execute(
+        "UPDATE users SET created_at = ? WHERE id = ?",
+        (time.time() - 8 * 86400, old["id"]),
+    )
+    old = database.get_user_by_id(old["id"])
+    assert core.trial_days_remaining(old) == 0
+    assert core.is_trial_active(old) is False
 
 
 # ---------------------------------------------------------------------------

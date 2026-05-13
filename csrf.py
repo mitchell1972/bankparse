@@ -70,8 +70,11 @@ class CSRFMiddleware(BaseHTTPMiddleware):
                 set_csrf_cookie(response, token)
             return response
 
-        # State-changing methods — validate CSRF (skip exempt paths)
-        if request.url.path in CSRF_EXEMPT_PATHS:
+        # State-changing methods — validate CSRF (skip exempt paths).
+        # /api/test/* is exempt — those endpoints are only enabled when
+        # TEST_MODE_ENABLED=1 (404 in prod), called from CI test runners,
+        # never from real browsers.
+        if request.url.path in CSRF_EXEMPT_PATHS or request.url.path.startswith("/api/test/"):
             return await call_next(request)
 
         if not validate_csrf(request):
