@@ -1923,6 +1923,14 @@ BLOG_POSTS = {
         "template": "blog/convert-chase-uk-statement-to-excel.html",
         "keywords": "Chase UK statement to Excel, convert Chase bank statement, Chase UK PDF to Excel, Chase UK PDF to CSV, Chase bank statement converter, Chase UK to Xero, Chase UK to QuickBooks, Chase reward cashback statement",
     },
+    "convert-virgin-money-statement-to-excel": {
+        "title": "How to Convert Virgin Money Bank Statements to Excel (2026 Guide)",
+        "description": "Virgin Money statements inherit formatting quirks from legacy Clydesdale and Yorkshire Bank systems. Step-by-step guide for UK accountants to convert Virgin Money bank statements to Excel cleanly — including legacy-format accounts.",
+        "date": "2026-05-13",
+        "author": "BankScan AI Team",
+        "template": "blog/convert-virgin-money-statement-to-excel.html",
+        "keywords": "Virgin Money statement to Excel, convert Virgin Money bank statement, Virgin Money PDF to Excel, Virgin Money PDF to CSV, Virgin Money statement converter, Virgin Money to Xero, Virgin Money to QuickBooks, Clydesdale Bank statement to Excel, Yorkshire Bank statement to Excel",
+    },
 }
 
 
