@@ -171,6 +171,10 @@ async def home(request: Request):
     user = get_current_user(request)
     if not user:
         return RedirectResponse(url="/landing", status_code=302)
+    # An unverified user can't parse anyway — route them to /verify-email
+    # rather than letting them land on the upload UI and bounce off /api/parse.
+    if not is_email_verified(user["id"]):
+        return RedirectResponse(url="/verify-email", status_code=302)
     return templates.TemplateResponse(request, "index.html")
 
 
