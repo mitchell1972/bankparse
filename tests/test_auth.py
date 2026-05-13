@@ -178,6 +178,54 @@ def test_login_nonexistent_email():
         assert resp.status_code == 401
 
 
+def test_login_unverified_email_triggers_otp_and_verify_url():
+    """An unverified user logging in gets a fresh OTP and a verify_url so the
+    frontend can route them to /verify-email automatically."""
+    from unittest.mock import patch
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        _register(client, "unverified@example.com", "password1234")
+
+        # Register also sends an OTP; reset the mock just for the login call.
+        with patch("app.send_otp_email", return_value=True) as mock_send:
+            resp = _login(client, "unverified@example.com", "password1234")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "ok"
+        assert data["email"] == "unverified@example.com"
+        assert data.get("email_verification_required") is True
+        assert data.get("verify_url") == "/verify-email"
+
+        mock_send.assert_called_once()
+        sent_to_email, sent_code = mock_send.call_args.args
+        assert sent_to_email == "unverified@example.com"
+        assert len(sent_code) == 6 and sent_code.isdigit()
+
+
+def test_login_verified_email_skips_otp():
+    """A verified user logging in does NOT receive a new OTP and the response
+    has no verify_url — they should land on the dashboard, not /verify-email."""
+    from unittest.mock import patch
+    from database import mark_email_verified, get_user_by_email
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        _register(client, "verified@example.com", "password1234")
+        user = get_user_by_email("verified@example.com")
+        mark_email_verified(user["id"])
+
+        with patch("app.send_otp_email", return_value=True) as mock_send:
+            resp = _login(client, "verified@example.com", "password1234")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "ok"
+        assert data["email"] == "verified@example.com"
+        assert "email_verification_required" not in data
+        assert "verify_url" not in data
+        mock_send.assert_not_called()
+
+
 def test_logout():
     """Login then POST /api/logout clears cookie, GET / redirects to /landing."""
     with TestClient(app, raise_server_exceptions=False) as client:
