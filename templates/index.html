@@ -2521,6 +2521,8 @@
         }
         accumulatedStatements = [];
         accumulatedReceipts = [];
+        sessionTotalBytes = 0;
+        updateAccumulatedBanner();
 
         // Hide all results
         document.getElementById('statementResults').classList.remove('show');
