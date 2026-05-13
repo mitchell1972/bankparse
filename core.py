@@ -89,12 +89,6 @@ INTUIT_AVAILABLE = bool(INTUIT_CLIENT_ID and INTUIT_CLIENT_SECRET)
 # check_can_use, not by counting files.
 TRIAL_DAYS = 7
 
-# Total bytes a user can have accumulated in their session store before they
-# must hit "Clear & Upload New". Designed to be tight enough that a few
-# parsed statements + receipts fit, loose enough that an honest quarterly
-# workflow doesn't trip it.
-SESSION_MAX_BYTES = 25 * 1024 * 1024  # 25 MB
-
 TIER_LIMITS = {
     "free": {
         "monthly_statements": None,

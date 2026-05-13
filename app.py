@@ -40,13 +40,9 @@ from database import (
     get_monthly_statements, increment_monthly_statements,
     get_monthly_receipts, increment_monthly_receipts,
     get_credit_balance, mark_email_verified, is_email_verified,
-    save_extracted_data, get_user_extracted_files, get_user_extracted_rows,
-    get_user_extracted_summary, clear_user_extracted_data,
-    get_user_extracted_total_bytes,
-    find_users_due_trial_reminder, mark_trial_reminder_sent,
     _fetchall_dicts,
 )
-from otp import generate_otp, send_otp_email, send_trial_reminder_email
+from otp import generate_otp, send_otp_email
 from seo_pages import SEO_PAGES
 
 from core import (
@@ -73,8 +69,6 @@ from core import (
     record_ai_spend, QUOTA_REASON_MESSAGES,
     # Trial helpers
     trial_days_remaining, is_trial_active,
-    # Session cap
-    SESSION_MAX_BYTES,
 )
 
 # Re-import stripe if available (needed for direct Stripe API calls in routes)
@@ -542,155 +536,6 @@ async def get_usage_status(request: Request):
     })
 
 
-# ---------------------------------------------------------------------------
-# Persisted cumulative extraction — survives logout, only cleared by the
-# explicit "Clear & Upload New" button.
-# ---------------------------------------------------------------------------
-
-@app.get("/api/extracted-data")
-async def get_extracted_data(request: Request):
-    user = get_current_user(request)
-    if not user:
-        raise HTTPException(status_code=401, detail="Authentication required.")
-
-    statement_files = get_user_extracted_files(user["id"], "statement")
-    receipt_files = get_user_extracted_files(user["id"], "receipt")
-    statement_rows = [row for f in statement_files for row in f["rows"]]
-    receipt_rows = [row for f in receipt_files for row in f["rows"]]
-    total_bytes = get_user_extracted_total_bytes(user["id"])
-    return JSONResponse({
-        "statements": {
-            "rows": statement_rows,
-            "files": [
-                {"id": f["id"], "filename": f["source_filename"],
-                 "row_count": f["row_count"], "parsed_at": f["parsed_at"]}
-                for f in statement_files
-            ],
-        },
-        "receipts": {
-            "rows": receipt_rows,
-            "files": [
-                {"id": f["id"], "filename": f["source_filename"],
-                 "row_count": f["row_count"], "parsed_at": f["parsed_at"]}
-                for f in receipt_files
-            ],
-        },
-        "total_size_bytes": total_bytes,
-        "session_max_bytes": SESSION_MAX_BYTES,
-    })
-
-
-@app.post("/api/extracted-data/clear")
-async def clear_extracted_data(request: Request):
-    user = get_current_user(request)
-    if not user:
-        raise HTTPException(status_code=401, detail="Authentication required.")
-
-    deleted = clear_user_extracted_data(user["id"])
-    return JSONResponse({"status": "ok", "files_cleared": deleted})
-
-
-@app.get("/api/extracted-data/download")
-async def download_cumulative_xlsx(request: Request, mode: str):
-    """Build a fresh XLSX from all the user's accumulated rows for one mode."""
-    user = get_current_user(request)
-    if not user:
-        raise HTTPException(status_code=401, detail="Authentication required.")
-    if mode not in ("statement", "receipt"):
-        raise HTTPException(status_code=400, detail="mode must be 'statement' or 'receipt'.")
-
-    rows = get_user_extracted_rows(user["id"], mode)
-    if not rows:
-        raise HTTPException(status_code=404, detail="No extracted data to download.")
-
-    job_id = str(uuid.uuid4())[:8]
-    if mode == "statement":
-        output_filename = f"cumulative_statements_{job_id}.xlsx"
-        output_path = OUTPUT_DIR / output_filename
-        # xlsx_exporter expects a `result` dict shape; rebuild a minimal one
-        export_to_xlsx({"transactions": rows, "summary": {}, "metadata": {}}, str(output_path))
-    else:
-        output_filename = f"cumulative_receipts_{job_id}.xlsx"
-        output_path = OUTPUT_DIR / output_filename
-        export_receipt_to_xlsx({"items": rows, "totals": {}, "metadata": {}}, str(output_path))
-
-    track_output_file(output_filename)
-    return JSONResponse({"download_url": f"/downloads/{output_filename}"})
-
-
-# ---------------------------------------------------------------------------
-# Cron: day-5 trial reminder
-# ---------------------------------------------------------------------------
-# Vercel hits this endpoint on the schedule in vercel.json (`crons`). The
-# request carries Authorization: Bearer ${CRON_SECRET} — see Vercel docs.
-# On Railway / local you can hit it manually with the same header.
-# ---------------------------------------------------------------------------
-
-# ---------------------------------------------------------------------------
-# Test-mode endpoints — only enabled when TEST_MODE_ENABLED=1.
-# Used by Playwright to read OTPs and simulate trial expiry without
-# touching real email or waiting 7 days. Disabled in prod.
-# ---------------------------------------------------------------------------
-
-def _test_mode_guard():
-    if os.environ.get("TEST_MODE_ENABLED", "") != "1":
-        raise HTTPException(status_code=404, detail="Not found")
-
-
-@app.get("/api/test/peek-otp")
-async def test_peek_otp(email: str):
-    _test_mode_guard()
-    from database import _fetchone_dict
-    row = _fetchone_dict(
-        "SELECT code FROM otp_codes WHERE email = ? ORDER BY created_at DESC LIMIT 1",
-        (email.strip().lower(),),
-    )
-    if not row:
-        raise HTTPException(status_code=404, detail="No OTP for this email")
-    return JSONResponse({"email": email, "code": row["code"]})
-
-
-@app.post("/api/test/age-user")
-async def test_age_user(request: Request):
-    _test_mode_guard()
-    body = await request.json()
-    email = (body.get("email") or "").strip().lower()
-    days_ago = float(body.get("days_ago") or 0)
-    if not email:
-        raise HTTPException(status_code=400, detail="email required")
-    from database import _execute
-    import time
-    new_created = time.time() - days_ago * 86400.0
-    _execute("UPDATE users SET created_at = ? WHERE email = ?", (new_created, email))
-    return JSONResponse({"email": email, "days_ago": days_ago, "new_created_at": new_created})
-
-
-@app.get("/api/cron/trial-reminders")
-async def cron_trial_reminders(request: Request):
-    expected = os.environ.get("CRON_SECRET", "")
-    if expected:
-        auth = request.headers.get("authorization", "")
-        if auth != f"Bearer {expected}":
-            raise HTTPException(status_code=401, detail="Unauthorized")
-
-    users = find_users_due_trial_reminder()
-    sent = 0
-    failed = 0
-    for u in users:
-        try:
-            ok = send_trial_reminder_email(u["email"], days_left=2)
-        except Exception:
-            logger.exception("Trial reminder send raised for user %s", u["id"])
-            ok = False
-        if ok:
-            mark_trial_reminder_sent(u["id"])
-            sent += 1
-        else:
-            failed += 1
-
-    return JSONResponse({"status": "ok", "candidates": len(users), "sent": sent, "failed": failed})
-
-
 @app.post("/api/restore/request")
 @limiter.limit("3/minute")
 async def restore_request_otp(request: Request):
@@ -827,13 +672,6 @@ async def parse_statement(request: Request, file: UploadFile = File(...)):
     if len(contents) > 20 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="File too large. Maximum size is 20MB.")
 
-    # Cumulative session cap — total bytes already stored + this file must
-    # stay under SESSION_MAX_BYTES. User can lift it by clicking "Clear &
-    # Upload New" on the dashboard.
-    existing_bytes = get_user_extracted_total_bytes(user["id"])
-    if existing_bytes + len(contents) > SESSION_MAX_BYTES:
-        raise HTTPException(status_code=413, detail="SESSION_LIMIT_EXCEEDED")
-
     if not ANTHROPIC_API_KEY and filename.endswith(".pdf"):
         raise HTTPException(status_code=501, detail="AI parsing is not configured on this server.")
 
@@ -873,17 +711,6 @@ async def parse_statement(request: Request, file: UploadFile = File(...)):
 
         # Increment monthly statement count for all tiers
         increment_monthly_statements(user["id"], 1)
-
-        # Persist the extracted rows on the user account so the dashboard can
-        # show cumulative totals across uploads, surviving logout. Cleared
-        # only when the user clicks "Clear & Upload New".
-        try:
-            save_extracted_data(
-                user["id"], "statement", safe_filename,
-                result["transactions"], source_size_bytes=len(contents),
-            )
-        except Exception:
-            logger.exception("Failed to persist extracted statement data for user %s", user["id"])
 
         # Deduct the exact AI cost from the user's monthly budget / credit balance.
         ai_usage = result.get("metadata", {}).get("ai_usage") or {}
@@ -936,11 +763,6 @@ async def parse_receipt_endpoint(request: Request, file: UploadFile = File(...))
     if len(contents) > 20 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="File too large. Maximum size is 20MB.")
 
-    # Cumulative session cap (see /api/parse).
-    existing_bytes = get_user_extracted_total_bytes(user["id"])
-    if existing_bytes + len(contents) > SESSION_MAX_BYTES:
-        raise HTTPException(status_code=413, detail="SESSION_LIMIT_EXCEEDED")
-
     if not ANTHROPIC_API_KEY:
         raise HTTPException(status_code=501, detail="AI parsing is not configured on this server.")
 
@@ -977,15 +799,6 @@ async def parse_receipt_endpoint(request: Request, file: UploadFile = File(...))
 
         # Increment monthly receipt count for all tiers
         increment_monthly_receipts(user["id"], 1)
-
-        # Persist the extracted line items on the user account (cumulative).
-        try:
-            save_extracted_data(
-                user["id"], "receipt", safe_filename,
-                result["items"], source_size_bytes=len(contents),
-            )
-        except Exception:
-            logger.exception("Failed to persist extracted receipt data for user %s", user["id"])
 
         # Deduct the exact AI cost from the user's monthly budget / credit balance.
         ai_usage = result.get("metadata", {}).get("ai_usage") or {}
@@ -2132,14 +1945,6 @@ BLOG_POSTS = {
         "author": "BankScan AI Team",
         "template": "blog/convert-virgin-money-statement-to-excel.html",
         "keywords": "Virgin Money statement to Excel, convert Virgin Money bank statement, Virgin Money PDF to Excel, Virgin Money PDF to CSV, Virgin Money statement converter, Virgin Money to Xero, Virgin Money to QuickBooks, Clydesdale Bank statement to Excel, Yorkshire Bank statement to Excel",
-    },
-    "import-bank-statements-into-xero-guide": {
-        "title": "How to Import Bank Statements into Xero — Complete UK Guide (2026)",
-        "description": "Step-by-step guide to importing any UK bank statement into Xero. Covers bank feeds vs manual import, CSV formatting requirements, common Xero import errors and fixes, bank-specific quirks, and how to pre-clean statements for Xero-compatible import.",
-        "date": "2026-05-14",
-        "author": "BankScan AI Team",
-        "template": "blog/import-bank-statements-into-xero-guide.html",
-        "keywords": "import bank statements into Xero, Xero bank statement import guide, how to upload bank statements to Xero, Xero bank feed not working, Xero CSV upload format, Xero PDF bank statement import, import bank statement to Xero without bank feed, Xero bank reconciliation import",
     },
 }
 
