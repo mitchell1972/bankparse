@@ -422,25 +422,43 @@ def test_unicode_filename():
 #     the 2nd should fail with 403 (monthly limit of 1 statement)
 # ---------------------------------------------------------------------------
 
-def test_free_tier_second_upload_blocked():
-    """Free tier allows 1 statement per month. The second upload returns 403."""
+def test_free_tier_within_trial_allows_repeat_uploads():
+    """Free tier is a 7-day trial (PR commit 1). Multiple uploads within the
+    window are allowed — no per-month file cap any more."""
     client, csrf = _authenticated_client()
     try:
-        # First upload -- should succeed
-        resp1 = _upload_file(
-            client, csrf, "/api/parse",
-            "statement1.csv", VALID_CSV_MULTI, "text/csv",
-        )
-        assert resp1.status_code == 200, (
-            f"First upload should succeed but got {resp1.status_code}: {resp1.text}"
+        for i in range(3):
+            resp = _upload_file(
+                client, csrf, "/api/parse",
+                f"statement{i}.csv", VALID_CSV_MULTI, "text/csv",
+            )
+            assert resp.status_code == 200, (
+                f"Upload {i+1} within trial window should succeed but got "
+                f"{resp.status_code}: {resp.text}"
+            )
+    finally:
+        client.__exit__(None, None, None)
+
+
+def test_free_tier_blocked_after_trial_expires():
+    """Once the user's created_at is more than 7 days back, /api/parse 403s
+    with TRIAL_EXPIRED."""
+    import database
+    import time
+
+    client, csrf = _authenticated_client()
+    try:
+        # Backdate the registered user 8 days
+        database._execute(
+            "UPDATE users SET created_at = ? WHERE email = ?",
+            (time.time() - 8 * 86400, "testuser@example.com"),
         )
 
-        # Second upload -- should be blocked (free tier: 1 statement/month)
-        resp2 = _upload_file(
+        resp = _upload_file(
             client, csrf, "/api/parse",
-            "statement2.csv", VALID_CSV_MULTI, "text/csv",
+            "stmt.csv", VALID_CSV_MULTI, "text/csv",
         )
-        assert resp2.status_code == 403
-        assert "FREE_LIMIT_REACHED" in resp2.json()["detail"]
+        assert resp.status_code == 403
+        assert "TRIAL_EXPIRED" in resp.json()["detail"]
     finally:
         client.__exit__(None, None, None)

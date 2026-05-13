@@ -443,14 +443,18 @@ def test_login_session_persists_across_requests():
 
 
 def test_login_session_persists_home_access():
-    """After login, GET / should return 200 (not redirect) on repeated requests."""
+    """After verified login, GET / should return 200 (not redirect) on repeated
+    requests. Verification gate (PR #12) makes the unverified case a 302 to
+    /verify-email — verify first, then check the dashboard stays accessible."""
+    from database import mark_email_verified, get_user_by_email
     with TestClient(app, raise_server_exceptions=False) as client:
         reg_resp = _register(client, "homepersist@example.com", "password1234")
         assert reg_resp.status_code == 200
+        mark_email_verified(get_user_by_email("homepersist@example.com")["id"])
 
         for i in range(3):
             resp = client.get("/", follow_redirects=False)
-            # Authenticated user should get 200 (the app page), not a redirect
+            # Verified, authenticated user should get 200, not a redirect
             assert resp.status_code == 200, (
                 f"Request {i+1}: expected 200 for authenticated home, got {resp.status_code}"
             )
