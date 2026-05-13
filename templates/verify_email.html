@@ -201,6 +201,11 @@
         const resendBtn = document.getElementById('resend-btn');
         const codeInput = document.getElementById('code');
 
+        function getCsrfToken() {
+            const match = document.cookie.match(/(?:^|;\s*)bp_csrf=([^;]*)/);
+            return match ? decodeURIComponent(match[1]) : '';
+        }
+
         function showMsg(text, type) {
             msgEl.textContent = text;
             msgEl.className = 'msg ' + type + ' visible';
@@ -219,7 +224,7 @@
             try {
                 const res = await fetch('/api/verify-email-code', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': getCsrfToken() },
                     body: JSON.stringify({ code: codeInput.value.trim() }),
                 });
                 const data = await res.json().catch(() => ({}));
@@ -238,7 +243,10 @@
             resendBtn.disabled = true;
             resendBtn.textContent = 'Sending...';
             try {
-                const res = await fetch('/api/verify-email/resend', { method: 'POST' });
+                const res = await fetch('/api/verify-email/resend', {
+                    method: 'POST',
+                    headers: { 'X-CSRF-Token': getCsrfToken() },
+                });
                 const data = await res.json().catch(() => ({}));
                 if (!res.ok) throw new Error(data.detail || 'Failed to resend code.');
                 showMsg('A new code has been sent. Check your inbox.', 'success');
