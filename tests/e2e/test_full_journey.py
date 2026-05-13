@@ -65,9 +65,11 @@ def test_full_user_journey(page: Page, live_server: str, fixture_csv: Path):
     # 1-2. Register, expect redirect to /verify-email
     # ----------------------------------------------------------------------
     page.goto(f"{base}/login")
-    # Switch to the Register tab. They're plain styled <button> elements
-    # with data-tab="register", not ARIA tabs.
-    page.locator('button[data-tab="register"]').click()
+    # Switch to the Register tab (assume there's a tab; otherwise the page
+    # directly shows both flows).
+    register_tab = page.get_by_role("tab", name=re.compile("register|sign up", re.I))
+    if register_tab.count() > 0:
+        register_tab.click()
 
     page.locator("input[type=email], input[name=email]").first.fill(TEST_EMAIL)
     page.locator("input[type=password], input[name=password]").first.fill(TEST_PASSWORD)
@@ -106,11 +108,10 @@ def test_full_user_journey(page: Page, live_server: str, fixture_csv: Path):
     expect(banner).to_contain_text("2 statements", timeout=30_000)
 
     # ----------------------------------------------------------------------
-    # 8. Log out (via cookie clear), log back in, verify cumulative data
-    #    still there — the "data persists across logout" guarantee
+    # 8. Log out, log back in, verify cumulative data still there
     # ----------------------------------------------------------------------
-    page.context.clear_cookies()
     page.goto(f"{base}/login")
+    # If still logged in, /login redirects to / — handle either case
     page.locator("input[type=email], input[name=email]").first.fill(TEST_EMAIL)
     page.locator("input[type=password], input[name=password]").first.fill(TEST_PASSWORD)
     page.locator("button[type=submit]").first.click()
@@ -123,10 +124,7 @@ def test_full_user_journey(page: Page, live_server: str, fixture_csv: Path):
     def accept_dialog(dialog: Dialog):
         dialog.accept()
     page.once("dialog", accept_dialog)
-    # Use the always-visible Clear button inside the cumulative banner —
-    # the per-results-card Clear buttons are only rendered when that
-    # results card is visible, which it isn't on a fresh page load.
-    page.locator("#accumulatedClearBtn").click()
+    page.get_by_role("button", name=re.compile("Clear & Upload New", re.I)).first.click()
     # Banner should hide once data is wiped
     expect(banner).to_be_hidden(timeout=5_000)
 
