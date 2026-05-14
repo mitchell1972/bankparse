@@ -7,7 +7,7 @@ import time
 import json
 from playwright.sync_api import sync_playwright
 
-BASE = "http://localhost:8000"
+BASE = "https://bankscanai.com"
 TS = str(int(time.time()))
 RESULTS = []
 

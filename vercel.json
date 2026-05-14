@@ -3,7 +3,8 @@
   "functions": {
     "api/index.py": {
       "maxDuration": 300,
-      "memory": 1024
+      "memory": 1024,
+      "maxRequestSize": 26214400
     },
     "api/debug.py": {
       "maxDuration": 10
