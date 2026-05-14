@@ -2133,6 +2133,14 @@ BLOG_POSTS = {
         "template": "blog/convert-virgin-money-statement-to-excel.html",
         "keywords": "Virgin Money statement to Excel, convert Virgin Money bank statement, Virgin Money PDF to Excel, Virgin Money PDF to CSV, Virgin Money statement converter, Virgin Money to Xero, Virgin Money to QuickBooks, Clydesdale Bank statement to Excel, Yorkshire Bank statement to Excel",
     },
+    "import-bank-statements-into-xero-guide": {
+        "title": "How to Import Bank Statements into Xero — Complete UK Guide (2026)",
+        "description": "Step-by-step guide to importing any UK bank statement into Xero. Covers bank feeds vs manual import, CSV formatting requirements, common Xero import errors and fixes, bank-specific quirks, and how to pre-clean statements for Xero-compatible import.",
+        "date": "2026-05-14",
+        "author": "BankScan AI Team",
+        "template": "blog/import-bank-statements-into-xero-guide.html",
+        "keywords": "import bank statements into Xero, Xero bank statement import guide, how to upload bank statements to Xero, Xero bank feed not working, Xero CSV upload format, Xero PDF bank statement import, import bank statement to Xero without bank feed, Xero bank reconciliation import",
+    },
 }
 
 
