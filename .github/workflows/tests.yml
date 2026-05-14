@@ -47,7 +47,23 @@ jobs:
       - name: Install Playwright browser
         run: playwright install --with-deps chromium
 
-      - name: Run E2E tests
+      - name: Start server for trial E2E
+        run: |
+          python -c "
+          import subprocess, time, os
+          os.environ['SECRET_KEY'] = 'test-secret-key'
+          os.environ['TEST_MODE_ENABLED'] = '1'
+          os.environ['ANTHROPIC_API_KEY'] = ''
+          os.environ['STRIPE_SECRET_KEY'] = ''
+          p = subprocess.Popen(['python', '-m', 'uvicorn', 'app:app', '--host', '0.0.0.0', '--port', '8000'])
+          time.sleep(5)
+          print('Server started')
+          "
+
+      - name: Run trial cumulative E2E test
+        run: BASE_URL=http://localhost:8000 python tests/e2e_trial_cumulative.py
+
+      - name: Run Playwright E2E tests
         run: pytest tests/e2e/ -q --browser chromium
         env:
           SECRET_KEY: test-secret-key
