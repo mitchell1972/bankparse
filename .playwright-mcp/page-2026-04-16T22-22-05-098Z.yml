@@ -1,0 +1,390 @@
+- generic:
+  - generic [ref=e3]:
+    - generic [ref=e8]:
+      - generic [ref=e14]:
+        - img "Meta symbol" [ref=e19]
+        - generic [ref=e29]:
+          - generic [ref=e34]:
+            - text: Get started with
+            - generic [ref=e35]: business tools from Meta
+          - generic [ref=e39]: By logging in, you can navigate to all business tools such as Meta Business Suite, Ads Manager and more to help you connect with your customers and get better business results.
+          - generic [ref=e43]: "Our business tools can help you:"
+          - list [ref=e49]:
+            - listitem [ref=e50]:
+              - generic [ref=e51]: •
+              - generic [ref=e52]: Save time by accessing everything that you need to manage your business across Facebook, Instagram and Messenger all in one place
+            - listitem [ref=e53]:
+              - generic [ref=e54]: •
+              - generic [ref=e55]: Connect with the people who matter most to your business using a single inbox
+            - listitem [ref=e56]:
+              - generic [ref=e57]: •
+              - generic [ref=e58]: Track what's working best with performance insights across Meta technologies
+      - generic [ref=e64]:
+        - generic [ref=e67]: Log in to Business Tools from Meta
+        - button "Log in with Facebook" [ref=e70] [cursor=pointer]:
+          - generic [ref=e71]:
+            - img [ref=e73]
+            - generic [ref=e76]: Log in with Facebook
+        - button "Log in with Instagram" [ref=e79] [cursor=pointer]:
+          - generic [ref=e80]:
+            - img [ref=e82]
+            - generic [ref=e85]: Log in with Instagram
+        - button "Create new account" [ref=e88] [cursor=pointer]:
+          - generic [ref=e91]: Create new account
+        - separator [ref=e93]
+        - button "Log in with a managed Meta account" [ref=e96] [cursor=pointer]:
+          - generic [ref=e99]: Log in with a managed Meta account
+        - img "Meta logo" [ref=e101]
+    - generic [ref=e109]:
+      - generic [ref=e115]:
+        - generic [ref=e116]:
+          - generic [ref=e118]:
+            - paragraph [ref=e120]:
+              - generic [ref=e121]: Meta technologies
+            - generic:
+              - link "Facebook" [ref=e123] [cursor=pointer]:
+                - /url: /business/marketing/facebook
+              - link "Instagram" [ref=e125] [cursor=pointer]:
+                - /url: /business/instagram
+              - link "Messenger" [ref=e127] [cursor=pointer]:
+                - /url: /business/marketing/messenger
+              - link "WhatsApp" [ref=e129] [cursor=pointer]:
+                - /url: /business/marketing/whatsapp
+              - link "Audience Network" [ref=e131] [cursor=pointer]:
+                - /url: /business/marketing/audience-network
+              - link "Meta Quest" [ref=e133] [cursor=pointer]:
+                - /url: https://www.meta.com/quest
+                - text: Meta
+                - generic [ref=e134]: Quest
+              - link "Workplace" [ref=e137] [cursor=pointer]:
+                - /url: https://www.workplace.com/
+                - generic [ref=e138]: Workplace
+              - link "Meta for Work" [ref=e141] [cursor=pointer]:
+                - /url: https://l.facebook.com/l.php?u=https%3A%2F%2Fforwork.meta.com%2F&h=AT5hJ4BUvIcvUM3kwUzufhhXYXM9pKNeY-6-QjpwJ9YHPgx8Gd5N638dSDbacfvFXXg8Rt8riRSy6I_8ea6E93F1LxC6BylkW4w-bd20nqhmR1oPlc0hikF0uyfjkmdfkSNVMkts8ylB9YvTJCFeWdhZcHXkC589NzImB05MgI0
+                - text: Meta for
+                - generic [ref=e142]: Work
+          - generic [ref=e145]:
+            - paragraph [ref=e147]:
+              - generic [ref=e148]: Tools
+            - generic:
+              - link "Free tools" [ref=e150] [cursor=pointer]:
+                - /url: /business/small-business/free-tools
+              - link "Facebook Pages" [ref=e152] [cursor=pointer]:
+                - /url: /business/tools/facebook-pages
+              - link "Instagram profiles" [ref=e154] [cursor=pointer]:
+                - /url: /business/profiles
+              - link "Stories" [ref=e156] [cursor=pointer]:
+                - /url: /business/ads/stories-ad-format
+              - link "Shops" [ref=e158] [cursor=pointer]:
+                - /url: /business/shops
+              - link "Meta Business Suite" [ref=e160] [cursor=pointer]:
+                - /url: https://www.facebook.com/business/tools/meta-business-suite
+              - link "Facebook ads" [ref=e162] [cursor=pointer]:
+                - /url: /business/tools/facebook-ads
+              - link "Messenger ads" [ref=e164] [cursor=pointer]:
+                - /url: /business/ads/messenger-ads
+              - link "Instagram ads" [ref=e166] [cursor=pointer]:
+                - /url: /business/instagram/advertising
+              - link "Video ads" [ref=e168] [cursor=pointer]:
+                - /url: /business/ads/video-ad-format
+              - link "Ads Manager" [ref=e170] [cursor=pointer]:
+                - /url: /business/tools/ads-manager
+        - generic [ref=e171]:
+          - generic [ref=e173]:
+            - paragraph [ref=e175]:
+              - generic [ref=e176]: Goals
+            - generic:
+              - link "Set up a Facebook Page" [ref=e178] [cursor=pointer]:
+                - /url: /business/tools/facebook-pages/get-started
+              - link "Build brand awareness" [ref=e180] [cursor=pointer]:
+                - /url: /business/goals/build-awareness
+              - link "Promote your local business" [ref=e182] [cursor=pointer]:
+                - /url: /business/goals/promote-local-business
+              - link "Grow online sales" [ref=e184] [cursor=pointer]:
+                - /url: /business/goals/increase-online-sales
+              - link "Promote your app" [ref=e186] [cursor=pointer]:
+                - /url: /business/goals/promote-app
+              - link "Generate leads" [ref=e188] [cursor=pointer]:
+                - /url: /business/goals/generate-leads
+              - link "Measure and optimise ads" [ref=e190] [cursor=pointer]:
+                - /url: /business/measurement
+              - link "Retarget existing customers" [ref=e192] [cursor=pointer]:
+                - /url: /business/goals/retargeting
+              - link "View all goals" [ref=e194] [cursor=pointer]:
+                - /url: /business/goals
+          - generic [ref=e196]:
+            - paragraph [ref=e198]:
+              - generic [ref=e199]: Business types
+            - generic:
+              - link "Small business" [ref=e201] [cursor=pointer]:
+                - /url: /business/small-business
+              - link "Large businesses" [ref=e203] [cursor=pointer]:
+                - /url: /business/industries
+              - link "Agency" [ref=e205] [cursor=pointer]:
+                - /url: /business/agencies
+              - link "Media and publisher" [ref=e207] [cursor=pointer]:
+                - /url: /formedia?ref=fb4b_footer
+                - text: Media and
+                - generic [ref=e208]: publisher
+              - link "Creator" [ref=e211] [cursor=pointer]:
+                - /url: /creators?ref=fb4b_footer
+                - generic [ref=e212]: Creator
+              - link "Developer" [ref=e215] [cursor=pointer]:
+                - /url: https://developers.facebook.com/?ref=fb4b_footer
+                - generic [ref=e216]: Developer
+              - link "Business partner" [ref=e219] [cursor=pointer]:
+                - /url: /business/marketing-partners/become-a-partner
+        - generic [ref=e220]:
+          - generic [ref=e222]:
+            - paragraph [ref=e224]:
+              - generic [ref=e225]: Industries
+            - generic:
+              - link "Automotive" [ref=e227] [cursor=pointer]:
+                - /url: /business/industries/automotive
+              - link "Consumer packaged goods" [ref=e229] [cursor=pointer]:
+                - /url: /business/industries/consumer-goods
+              - link "E-commerce" [ref=e231] [cursor=pointer]:
+                - /url: /business/industries/ecommerce
+              - link "Entertainment and media" [ref=e233] [cursor=pointer]:
+                - /url: /business/industries/entertainment
+              - link "Financial services" [ref=e235] [cursor=pointer]:
+                - /url: /business/industries/financial-services
+              - link "Gaming" [ref=e237] [cursor=pointer]:
+                - /url: /business/industries/gaming
+              - link "Property" [ref=e239] [cursor=pointer]:
+                - /url: /business/industries/real-estate
+              - link "Restaurants" [ref=e241] [cursor=pointer]:
+                - /url: /business/industries/restaurants
+              - link "Retail" [ref=e243] [cursor=pointer]:
+                - /url: /business/industries/retail
+              - link "Technology and telecom" [ref=e245] [cursor=pointer]:
+                - /url: /business/industries/technology-telecom
+              - link "Travel" [ref=e247] [cursor=pointer]:
+                - /url: /business/industries/travel
+          - generic [ref=e249]:
+            - paragraph [ref=e251]:
+              - generic [ref=e252]: Inspiration
+            - generic:
+              - link "Business news" [ref=e254] [cursor=pointer]:
+                - /url: /business/news
+              - link "Case studies" [ref=e256] [cursor=pointer]:
+                - /url: /business/success
+              - link "Events" [ref=e258] [cursor=pointer]:
+                - /url: /business/events
+              - link "Creative Hub" [ref=e260] [cursor=pointer]:
+                - /url: /business/inspiration/creative-hub
+        - generic [ref=e261]:
+          - generic [ref=e263]:
+            - paragraph [ref=e265]:
+              - generic [ref=e266]: Skills and training
+            - generic:
+              - link "Online learning" [ref=e268] [cursor=pointer]:
+                - /url: /business/learn
+              - link "Certification programmes" [ref=e270] [cursor=pointer]:
+                - /url: /business/learn/certification
+              - link "Webinars" [ref=e272] [cursor=pointer]:
+                - /url: /business/webinars
+          - generic [ref=e274]:
+            - paragraph [ref=e276]:
+              - generic [ref=e277]: Guides and resources
+            - generic:
+              - link "Ads guide" [ref=e279] [cursor=pointer]:
+                - /url: /business/ads-guide
+              - link "Brand safety and suitability" [ref=e281] [cursor=pointer]:
+                - /url: /business/brand-safety-and-suitability
+              - link "\"Click Here\" book" [ref=e283] [cursor=pointer]:
+                - /url: /business/click-here-alex-schultz-digital-marketing-advertising-book
+              - link "Media responsibility" [ref=e285] [cursor=pointer]:
+                - /url: /business/brand-safety/media-responsibility
+              - link "Sitemap" [ref=e287] [cursor=pointer]:
+                - /url: /business/sitemap
+          - generic [ref=e289]:
+            - paragraph [ref=e291]:
+              - generic [ref=e292]: Business Help Centre
+            - generic:
+              - link "Create and manage accounts" [ref=e294] [cursor=pointer]:
+                - /url: /business/help/148723649153231?ref=fbb_footer
+              - link "Publish and distribute content" [ref=e296] [cursor=pointer]:
+                - /url: /business/help/2094583417443686?ref=fbb_footer
+              - link "Advertise" [ref=e298] [cursor=pointer]:
+                - /url: /business/help/169249477193317?ref=fbb_footer
+              - link "Sell on Facebook and Instagram" [ref=e300] [cursor=pointer]:
+                - /url: /business/help/626723211000233?ref=fbb_footer
+              - link "Monetise your content or app" [ref=e302] [cursor=pointer]:
+                - /url: /business/help/227638664476590?ref=fbb_footer
+              - link "View all articles" [ref=e304] [cursor=pointer]:
+                - /url: /business/help?ref=fbb_footer
+      - generic [ref=e306]:
+        - link "© 2026 Meta" [ref=e308] [cursor=pointer]:
+          - /url: https://www.facebook.com/
+        - generic [ref=e309]:
+          - generic [ref=e310]:
+            - link "About" [ref=e311] [cursor=pointer]:
+              - /url: https://www.meta.com/about/
+            - link "Developers" [ref=e312] [cursor=pointer]:
+              - /url: https://developers.meta.com/
+            - link "Careers" [ref=e313] [cursor=pointer]:
+              - /url: https://l.facebook.com/l.php?u=https%3A%2F%2Fwww.metacareers.com%2F&h=AT7oWC7Vzctfn9wr3HRLZsL39CakD0uQ_xtbYKwqveQ_6olf5JC1M8NYltt5FjnqCL_3IcCUviTqL46xnmQAkC5vnm15U-hJKV6eCxwpwfXpqBwVRjkWAdMWL_PeeW9ZOjfHFMfr0XO8kXHAuYyAtgdS-AcWb-OBng74mbInIvQ
+            - link "Privacy" [ref=e314] [cursor=pointer]:
+              - /url: https://www.facebook.com/privacy/explanation
+            - link "Cookies" [ref=e315] [cursor=pointer]:
+              - /url: https://www.facebook.com/help/cookies
+            - link "Terms" [ref=e316] [cursor=pointer]:
+              - /url: https://www.facebook.com/policies/
+            - link "Help Centre" [ref=e317] [cursor=pointer]:
+              - /url: https://www.facebook.com/business/help/
+          - generic [ref=e318]:
+            - link "English (UK)" [ref=e319] [cursor=pointer]:
+              - /url: https://business.facebook.com/business/loginpage/?next=https%3A%2F%2Fbusiness.facebook.com%2Flatest%2Fcomposer%2F%3Fcontext_ref%3DHOME%26nav_ref%3Dinternal_nav%26ref%3Dbiz_web_home_create_post&login_options%5B0%5D=FB&login_options%5B1%5D=IG&login_options%5B2%5D=SSO&config_ref=biz_login_tool_flavor_mbs
+            - link "English (US)" [ref=e320] [cursor=pointer]:
+              - /url: https://business.facebook.com/business/loginpage/?next=https%3A%2F%2Fbusiness.facebook.com%2Flatest%2Fcomposer%2F%3Fcontext_ref%3DHOME%26nav_ref%3Dinternal_nav%26ref%3Dbiz_web_home_create_post&login_options%5B0%5D=FB&login_options%5B1%5D=IG&login_options%5B2%5D=SSO&config_ref=biz_login_tool_flavor_mbs
+            - link "Español" [ref=e321] [cursor=pointer]:
+              - /url: https://business.facebook.com/business/loginpage/?next=https%3A%2F%2Fbusiness.facebook.com%2Flatest%2Fcomposer%2F%3Fcontext_ref%3DHOME%26nav_ref%3Dinternal_nav%26ref%3Dbiz_web_home_create_post&login_options%5B0%5D=FB&login_options%5B1%5D=IG&login_options%5B2%5D=SSO&config_ref=biz_login_tool_flavor_mbs
+            - link "Português (Brasil)" [ref=e322] [cursor=pointer]:
+              - /url: https://business.facebook.com/business/loginpage/?next=https%3A%2F%2Fbusiness.facebook.com%2Flatest%2Fcomposer%2F%3Fcontext_ref%3DHOME%26nav_ref%3Dinternal_nav%26ref%3Dbiz_web_home_create_post&login_options%5B0%5D=FB&login_options%5B1%5D=IG&login_options%5B2%5D=SSO&config_ref=biz_login_tool_flavor_mbs
+            - link "Français (France)" [ref=e323] [cursor=pointer]:
+              - /url: https://business.facebook.com/business/loginpage/?next=https%3A%2F%2Fbusiness.facebook.com%2Flatest%2Fcomposer%2F%3Fcontext_ref%3DHOME%26nav_ref%3Dinternal_nav%26ref%3Dbiz_web_home_create_post&login_options%5B0%5D=FB&login_options%5B1%5D=IG&login_options%5B2%5D=SSO&config_ref=biz_login_tool_flavor_mbs
+            - link "Español (España)" [ref=e324] [cursor=pointer]:
+              - /url: https://business.facebook.com/business/loginpage/?next=https%3A%2F%2Fbusiness.facebook.com%2Flatest%2Fcomposer%2F%3Fcontext_ref%3DHOME%26nav_ref%3Dinternal_nav%26ref%3Dbiz_web_home_create_post&login_options%5B0%5D=FB&login_options%5B1%5D=IG&login_options%5B2%5D=SSO&config_ref=biz_login_tool_flavor_mbs
+            - button "More languages" [ref=e325] [cursor=pointer]: More languages
+  - dialog [ref=e329]:
+    - generic [ref=e333]:
+      - generic [ref=e334]:
+        - button [active] [ref=e337] [cursor=pointer]
+        - generic [ref=e341]: Allow the use of cookies by Facebook on this browser?
+      - generic [ref=e342]:
+        - generic [ref=e343]:
+          - paragraph [ref=e344]:
+            - text: We use cookies and similar technologies to help provide and improve content on
+            - link "Meta Products" [ref=e345] [cursor=pointer]:
+              - /url: https://www.facebook.com/help/1561485474074139
+            - text: . We also use them to provide a safer experience by using information that we receive from cookies on and off Facebook, and to provide and improve Meta Products for people who have an account.
+          - list [ref=e346]:
+            - listitem [ref=e347]:
+              - generic [ref=e348]: "Essential cookies: These cookies are required to use Meta Products and are necessary for our sites to work as intended."
+            - listitem [ref=e349]:
+              - generic [ref=e350]: "Cookies from other companies: We use these cookies to show you ads off Meta Products and to provide features such as maps and videos on Meta Products. These cookies are optional."
+          - paragraph [ref=e351]:
+            - text: You have control over the optional cookies that we use. Learn more about cookies and how we use them, and review or change your choices at any time in our
+            - link "Cookies Policy" [ref=e352] [cursor=pointer]:
+              - /url: https://www.facebook.com/privacy/policies/cookies
+            - text: .
+          - separator [ref=e353]
+        - generic [ref=e354]:
+          - heading "About cookies" [level=2] [ref=e355]
+          - generic [ref=e356]:
+            - generic "What are cookies?" [ref=e357]:
+              - img "background image" [ref=e358]
+              - generic [ref=e359]:
+                - generic [ref=e360]: What are cookies?
+                - button "Learn more" [ref=e361] [cursor=pointer]
+            - generic "Why do we use cookies?" [ref=e362]:
+              - img "background image" [ref=e363]
+              - generic [ref=e364]:
+                - generic [ref=e365]: Why do we use cookies?
+                - button "Learn more" [ref=e366] [cursor=pointer]
+            - generic "What are Meta Products?" [ref=e367]:
+              - img "background image" [ref=e368]
+              - generic [ref=e369]:
+                - generic [ref=e370]: What are Meta Products?
+                - button "Learn more" [ref=e371] [cursor=pointer]
+            - generic "Your cookie choices" [ref=e372]:
+              - img "background image" [ref=e373]
+              - generic [ref=e374]:
+                - generic [ref=e375]: Your cookie choices
+                - button "Learn more" [ref=e376] [cursor=pointer]
+          - separator [ref=e377]
+        - generic [ref=e378]:
+          - heading "Cookies from other companies" [level=2] [ref=e379]
+          - paragraph [ref=e380]:
+            - text: We use cookies from
+            - link "other companies" [ref=e381] [cursor=pointer]:
+              - /url: https://www.facebook.com/privacy/policies/cookies/?annotations[0]=explanation%2F3_companies_list
+            - text: in order to show you ads off our Products, and provide features such as maps, payment services and video.
+          - generic [ref=e382]:
+            - generic [ref=e383]:
+              - button "How we use these cookies" [ref=e384] [cursor=pointer]:
+                - generic [ref=e387]: How we use these cookies
+              - generic [ref=e390]:
+                - generic [ref=e391]: "We use cookies from other companies on our Products:"
+                - list [ref=e393]:
+                  - listitem [ref=e394]:
+                    - generic [ref=e395]: To show you ads about our Products and features on other companies' apps and websites.
+                  - listitem [ref=e396]:
+                    - generic [ref=e397]: To provide features on our Products such as maps, payment services and video.
+                  - listitem [ref=e398]:
+                    - generic [ref=e399]: For analytics.
+            - generic [ref=e400]:
+              - button "If you allow these cookies" [ref=e401] [cursor=pointer]:
+                - generic [ref=e404]: If you allow these cookies
+              - list [ref=e409]:
+                - listitem [ref=e410]:
+                  - generic [ref=e411]: Features that you use on Meta Products will not be affected.
+                - listitem [ref=e412]:
+                  - generic [ref=e413]: We'll be able to better personalise ads for you off Meta Products, and measure their performance.
+                - listitem [ref=e414]:
+                  - generic [ref=e415]: Other companies will receive information about you by using their cookies.
+            - generic [ref=e416]:
+              - button "If you don't allow these cookies" [ref=e417] [cursor=pointer]:
+                - generic [ref=e420]: If you don't allow these cookies
+              - list [ref=e425]:
+                - listitem [ref=e426]:
+                  - generic [ref=e427]: Some features on our products may not work.
+                - listitem [ref=e428]:
+                  - generic [ref=e429]: We won't use cookies from other companies to personalise ads for you off Meta products, or measure their performance.
+        - generic [ref=e430]:
+          - heading "Other ways you can control your information" [level=2] [ref=e432]
+          - generic [ref=e433]:
+            - button "Manage your ad experience in Accounts Centre" [ref=e434] [cursor=pointer]:
+              - generic [ref=e437]: Manage your ad experience in Accounts Centre
+            - generic [ref=e442]:
+              - paragraph [ref=e443]: You can manage your ad experience by visiting the following settings.
+              - paragraph [ref=e444]: Ad preferences
+              - paragraph [ref=e445]: In your ad preferences, you can choose whether we show you ads and make choices about the information used to show you ads.
+              - paragraph [ref=e446]: Ad settings
+              - paragraph [ref=e447]:
+                - text: If we show you ads, we use data that advertisers and other partners provide us with about your activity off Meta Company Products, including websites and apps, to show you better ads. You can control whether we use this data to show you ads in your
+                - link "ad settings" [ref=e448] [cursor=pointer]:
+                  - /url: https://www.facebook.com/settings/ads/
+                - text: .
+          - generic [ref=e449]:
+            - button "More information about online advertising" [ref=e450] [cursor=pointer]:
+              - generic [ref=e453]: More information about online advertising
+            - paragraph [ref=e459]:
+              - text: You can opt out of seeing online interest-based ads from Meta and other participating companies through the
+              - link "Digital Advertising Alliance" [ref=e460] [cursor=pointer]:
+                - /url: https://l.facebook.com/l.php?u=https%3A%2F%2Foptout.aboutads.info%2F&h=AT5R-_ScC5BV0u1ny_ArSpnQ-SgEoO6vvpl2H3EuPsgdJltIM0QebMqiG84iGsgpVIFwD9MJ_ja7IzEj4MxkWwGhPSvcLdpKl_21t75iAGzWv8x1_aJmW3wsQIPzlGZ6MmltyEwrh9K-8w5R1dfggBWctU_v7EPOYMF9TlAu6AY
+              - text: in the US, the
+              - link "Digital Advertising Alliance of Canada" [ref=e461] [cursor=pointer]:
+                - /url: https://l.facebook.com/l.php?u=https%3A%2F%2Fyouradchoices.ca%2F&h=AT4G9avbfLTleqeN9_YxFtGFrtjDu9NleIXM_PUEhubpG0QOimYuTK_qByU6cc0wkIqCgXU-G6aEc6h1nHmji0iYpsizixAxs-la5HWzQXe-s91mJgcRdG-N0-xzi7E8LM0Xy9bV-PvC1cHknCVsThkwPPekCBiQjsZ4cPprJ6M
+              - text: in Canada or the
+              - link "European Interactive Digital Advertising Alliance" [ref=e462] [cursor=pointer]:
+                - /url: https://l.facebook.com/l.php?u=https%3A%2F%2Fwww.youronlinechoices.com%2F&h=AT7G7E2bB2BhXxR4KFCcfrsd7oAEwR2L4nOydjhSUNB8-ixAaCO3zk7SDMQUT9Pzf4f5B_-8oxFsheM3GnLgGu3PZuLd3hsvFj8OLyn5fVtbyiwDrHzZC-fRdYGdMxJJ6xMZGJ_k_APifZgeh7lUhxQA5BIIH_zjg1y8aUGzVRMhbUD8emClIiIR
+              - text: in Europe, or through your mobile device settings, if you are using Android, iOS 13 or an earlier version of iOS. Please note that ad blockers and tools that restrict our cookie use may interfere with these controls.
+          - generic [ref=e463]:
+            - button "Controlling cookies with browser settings" [ref=e464] [cursor=pointer]:
+              - generic [ref=e467]: Controlling cookies with browser settings
+            - generic [ref=e472]:
+              - paragraph [ref=e473]: Your browser or device may offer settings that allow you to choose whether browser cookies are set and to delete them. These controls vary by browser, and manufacturers may change both the settings they make available and how they work at any time. As of 5 October 2020, you may find additional information about the controls offered by popular browsers at the links below. Certain parts of Meta Products may not work properly if you have disabled browser cookies. Please be aware that these controls are distinct from the controls that Facebook offers.
+              - list [ref=e474]:
+                - listitem [ref=e475]:
+                  - link "Google Chrome" [ref=e476] [cursor=pointer]:
+                    - /url: https://l.facebook.com/l.php?u=https%3A%2F%2Fsupport.google.com%2Fchrome%2Fanswer%2F95647&h=AT73BrY3JnmQs1RWGlMxf57cBZ0ZfYNpJw7RW-IBTMFlriQHyK0q0KCiWqvsIlXpYQagEpmqggg7dAgPkO6cnScw3dNMSxhxO_AUjgibTzbmRNZfzJ1oMOvcIyVGHdVm3Xd-bl_W9W9AxYFbjO2stVOJpI0UDEeyEs2BozgeUS4
+                - listitem [ref=e477]:
+                  - link "Internet Explorer" [ref=e478] [cursor=pointer]:
+                    - /url: https://l.facebook.com/l.php?u=https%3A%2F%2Fsupport.microsoft.com%2Fen-ie%2Fhelp%2F17442%2Fwindows-internet-explorer-delete-manage-cookies&h=AT4E3V10WA39qE-AXFoRyqwKGJ_5K7D1FT1ngcYoW2xgjLYDoEQEz20AcTXyvBavfEKFyzmQF0Ef9s2B8MA6qpbLTzPfcCof99eiN-E4pM-Gduijeipi_jS5E73o2PPKLfPEJS5XDXOQZkkBHtGQdXyNAsFftqf0oC6UhHX3YmE
+                - listitem [ref=e479]:
+                  - link "Firefox" [ref=e480] [cursor=pointer]:
+                    - /url: https://l.facebook.com/l.php?u=https%3A%2F%2Fsupport.mozilla.org%2Fen-US%2Fkb%2Fenable-and-disable-cookies-website-preferences&h=AT53eXo5N-B_PnNxRTbs8o02yEpaSt-n2OsQHeDATmVWc-5kJna89le7TkeJSLAIOb5_JySYQk5RStl-439okzxqgjB68o97085ychxn91GXk1tOhR5LIJqo7OQ7SQUFmo1rYVjYlO3wEAtdiigLPbHApiSew2VBF4G78KD9FJw
+                - listitem [ref=e481]:
+                  - link "Safari" [ref=e482] [cursor=pointer]:
+                    - /url: https://l.facebook.com/l.php?u=https%3A%2F%2Fsupport.apple.com%2Fen-ie%2Fguide%2Fsafari%2Fsfri11471%2Fmac&h=AT4Hjj0W2D5fPGiN16jfDY9dqgrDdQmeEpdv_lDnogjYOPVq70CYrUr-rUBfBTDHkf-QzH67I-wEECbKn-Uq82ReGjH5h4ezE3c_NgOC9rbGV1upN7_cEGxsxb6bfzH2NjcPxWNNBCSoverAVsF2J1i6ejEeHHLTRIzD5_RRyuk
+                - listitem [ref=e483]:
+                  - link "Safari mobile" [ref=e484] [cursor=pointer]:
+                    - /url: https://l.facebook.com/l.php?u=https%3A%2F%2Fsupport.apple.com%2Fen-us%2FHT201265&h=AT6V5eWfYpOgf6NzZTF2RkiR81UW8ekuT20_jwHsURLzVI3b8968AMVFAPGXzrJNkGIzGoIK7TFky33xO6Uc8zlKcmNxijIyf-8_ufHXsVpyvuFgoC8Ql-qlmRca14sgezzEpd7pTlhGdotgMkck-aYBw6J0FIhUZuNcs2sjqqc
+                - listitem [ref=e485]:
+                  - link "Opera" [ref=e486] [cursor=pointer]:
+                    - /url: https://l.facebook.com/l.php?u=https%3A%2F%2Fblogs.opera.com%2Fnews%2F2015%2F08%2Fhow-to-manage-cookies-in-opera%2F&h=AT66v5orrn60mr54SalK-v8FcMhfNKakzpwcMt1QJ6xuMOne-FzqZZv4fdh_XcbsNoSWIdLAr0QZQjtgEniToIm6y2Xi0FV0T1W7hs8p8qTJ9j5iythJ2Ix4zb_8fNY1tog8n-6Hlnfrj5rG75oESDuIoQrzhsoU_RblMRCvHPM
+      - generic [ref=e487]:
+        - button "Decline optional cookies" [ref=e488] [cursor=pointer]
+        - button "Allow all cookies" [ref=e489] [cursor=pointer]

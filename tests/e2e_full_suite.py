@@ -7,7 +7,7 @@ import time
 import json
 from playwright.sync_api import sync_playwright
 
-BASE = "https://bankscanai.com"
+BASE = "http://localhost:8000"
 TS = str(int(time.time()))
 RESULTS = []
 
@@ -17,12 +17,19 @@ def log(name, passed, detail=""):
     print(f"  [{status}] {name}" + (f" — {detail}" if detail else ""))
 
 def get_session(email, password):
-    """Register + login, return session with cookies."""
+    """Register + login + verify email, return session with cookies."""
     s = requests.Session()
     s.get(f"{BASE}/login")
     csrf = s.cookies.get("bp_csrf", "")
     h = {"Content-Type": "application/json", "X-CSRF-Token": csrf}
-    s.post(f"{BASE}/api/register", json={"email": email, "password": password}, headers=h)
+    r1 = s.post(f"{BASE}/api/register", json={"email": email, "password": password}, headers=h)
+    
+    # Fetch and verify OTP (test mode)
+    r_peek = s.get(f"{BASE}/api/test/peek-otp?email={email}")
+    if r_peek.status_code == 200:
+        otp_code = r_peek.json().get("code", "")
+        s.post(f"{BASE}/api/verify-email-code", json={"email": email, "code": otp_code}, headers=h)
+    
     r = s.post(f"{BASE}/api/login", json={"email": email, "password": password}, headers=h)
     return s, h, r.status_code == 200
 
@@ -65,10 +72,10 @@ with sync_playwright() as p:
 
     # 1.6 Prices correct
     content = page.content()
-    log("1.6 Starter £7.99", "7.99" in content)
-    log("1.7 Pro £24.99", "24.99" in content)
-    log("1.8 Business £59.99", "59.99" in content)
-    log("1.9 Enterprise £149", "149" in content)
+    log("1.6 Starter $9.99", "9.99" in content)
+    log("1.7 Pro $24.99", "24.99" in content)
+    log("1.8 Business $59.99", "59.99" in content)
+    log("1.9 Enterprise $149", "149" in content)
 
     # 1.10 Try Free goes to /login (not loop)
     hero_btn.click()
@@ -132,23 +139,29 @@ log("3.1 Register succeeds", r.status_code == 200, r.json().get("email", ""))
 r = s.post(f"{BASE}/api/register", json={"email": email1, "password": "TestPass123!"}, headers=h)
 log("3.2 Duplicate register → 409", r.status_code == 409)
 
-# 3.3 Login
+# 3.3 Verify email (test mode)
+r_peek = s.get(f"{BASE}/api/test/peek-otp?email={email1}")
+if r_peek.status_code == 200:
+    otp_code = r_peek.json().get("code", "")
+    s.post(f"{BASE}/api/verify-email-code", json={"email": email1, "code": otp_code}, headers=h)
+
+# 3.4 Login
 r = s.post(f"{BASE}/api/login", json={"email": email1, "password": "TestPass123!"}, headers=h)
-log("3.3 Login succeeds", r.status_code == 200)
-log("3.4 Auth cookie set", "bp_auth" in s.cookies.get_dict())
+log("3.4 Login succeeds", r.status_code == 200)
+log("3.5 Auth cookie set", "bp_auth" in s.cookies.get_dict())
 
-# 3.5 Wrong password
+# 3.6 Wrong password
 r = s.post(f"{BASE}/api/login", json={"email": email1, "password": "WrongPass!"}, headers=h)
-log("3.5 Wrong password → 401", r.status_code == 401)
+log("3.6 Wrong password → 401", r.status_code == 401)
 
-# 3.6 Short password register
+# 3.7 Short password register
 email2 = f"e2e_short_{TS}@test.com"
 r = s.post(f"{BASE}/api/register", json={"email": email2, "password": "123"}, headers=h)
-log("3.6 Short password → 400", r.status_code == 400)
+log("3.7 Short password → 400", r.status_code == 400)
 
-# 3.7 Invalid email register
+# 3.8 Invalid email register
 r = s.post(f"{BASE}/api/register", json={"email": "notanemail", "password": "TestPass123!"}, headers=h)
-log("3.7 Invalid email → 400", r.status_code == 400)
+log("3.8 Invalid email → 400", r.status_code == 400)
 
 # =============================================
 # SECTION 4: FREE TIER LIMITS
@@ -163,27 +176,29 @@ log("4.1 Free user created", ok)
 r = s3.get(f"{BASE}/api/usage", headers=h3)
 usage = r.json()
 log("4.2 Tier is free", usage.get("tier") == "free", f"tier={usage.get('tier')}")
-log("4.3 Statement limit = 1", usage.get("statements_limit") == 1)
-log("4.4 Receipt limit = 1", usage.get("receipts_limit") == 1)
+log("4.3 Trial active", usage.get("trial_active") == True, f"trial_active={usage.get('trial_active')}")
+log("4.4 Trial days remaining > 0", usage.get("trial_days_remaining") and usage.get("trial_days_remaining") > 0, f"days_remaining={usage.get('trial_days_remaining')}")
+log("4.5 Statement limit is None (no cap)", usage.get("statements_limit") is None, f"limit={usage.get('statements_limit')}")
+log("4.6 Receipt limit is None (no cap)", usage.get("receipts_limit") is None, f"limit={usage.get('receipts_limit')}")
 
-# Upload CSV statement
+# Upload CSV statement (should succeed during trial)
 csv_data = "Date,Description,Amount\n01/01/2025,Test Transaction,-50.00\n02/01/2025,Salary,1500.00"
 files = {"file": ("test.csv", csv_data.encode(), "text/csv")}
 r = s3.post(f"{BASE}/api/parse", files=files, headers={"X-CSRF-Token": h3.get("X-CSRF-Token", "")})
-log("4.5 First statement upload → 200", r.status_code == 200, f"status={r.status_code}")
+log("4.7 First statement upload → 200", r.status_code == 200, f"status={r.status_code}")
 
-# Second upload should be blocked
+# Second upload should also succeed (no file-count cap)
 files2 = {"file": ("test2.csv", csv_data.encode(), "text/csv")}
 r = s3.post(f"{BASE}/api/parse", files=files2, headers={"X-CSRF-Token": h3.get("X-CSRF-Token", "")})
-log("4.6 Second statement → 403", r.status_code == 403, f"status={r.status_code}")
+log("4.8 Second statement → 200", r.status_code == 200, f"status={r.status_code}")
 
-# Bulk blocked
+# Bulk blocked (free tier has bulk_max_files=0)
 r = s3.post(f"{BASE}/api/parse-receipts-bulk", files={"files": ("r.csv", b"x", "text/csv")}, headers={"X-CSRF-Token": h3.get("X-CSRF-Token", "")})
-log("4.7 Bulk upload → 403", r.status_code in [403, 401], f"status={r.status_code}")
+log("4.9 Bulk upload → 403", r.status_code in [403, 401], f"status={r.status_code}")
 
 # Chat blocked
 r = s3.post(f"{BASE}/api/chat", json={"message": "test", "context_type": "statement", "context_data": {}}, headers=h3)
-log("4.8 AI Chat → 403", r.status_code == 403, f"status={r.status_code}")
+log("4.10 AI Chat → 403", r.status_code == 403, f"status={r.status_code}")
 
 # =============================================
 # SECTION 5: CONFIG & PRICING ENDPOINT
@@ -195,7 +210,7 @@ config = r.json()
 plans = config.get("plans", {})
 
 log("5.1 Config has 4 plans", len(plans) == 4, list(plans.keys()))
-log("5.2 Starter price £7.99", "7.99" in str(plans.get("starter", {}).get("price", "")))
+log("5.2 Starter price $9.99", "9.99" in str(plans.get("starter", {}).get("price", "")))
 log("5.3 Pro price £24.99", "24.99" in str(plans.get("pro", {}).get("price", "")))
 log("5.4 Business price £59.99", "59.99" in str(plans.get("business", {}).get("price", "")))
 log("5.5 Enterprise price £149", "149" in str(plans.get("enterprise", {}).get("price", "")))
