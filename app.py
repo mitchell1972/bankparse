@@ -179,13 +179,10 @@ async def home(request: Request):
     user = get_current_user(request)
     if not user:
         return RedirectResponse(url="/landing", status_code=302)
-    # Free-tier users can access the full app during their 7-day trial
-    # without email verification. After trial, unverified users are routed
-    # to /verify-email. Non-free (paid) tiers require verification always.
+    # Unverified users are routed to /verify-email as a prompt,
+    # but can bypass during their free trial via the page's skip link.
     if not is_email_verified(user["id"]):
-        tier = get_user_tier(user)
-        if tier != "free" or not is_trial_active(user):
-            return RedirectResponse(url="/verify-email", status_code=302)
+        return RedirectResponse(url="/verify-email", status_code=302)
     return templates.TemplateResponse(request, "index.html")
 
 
@@ -318,21 +315,20 @@ async def credits_page(request: Request):
 async def verify_email_page(request: Request):
     """Email verification page. Logged-in users only. Non-indexed.
 
-    Shown after signup or whenever a user tries to parse while unverified.
-    Verified users, free-tier trial users, and admins skip this and go to
-    the dashboard.
+    Shown after signup. During the free trial, a "Continue to dashboard"
+    skip link lets users use the full product without verifying first.
     """
     user = get_current_user(request)
     if not user:
         return RedirectResponse(url="/login?next=/verify-email", status_code=302)
-    tier = get_user_tier(user)
-    trial_bypass = tier == "free" and is_trial_active(user)
-    if is_email_verified(user["id"]) or trial_bypass:
+    if is_email_verified(user["id"]):
         return RedirectResponse(url="/", status_code=302)
+    tier = get_user_tier(user)
     return templates.TemplateResponse(
         request,
         "verify_email.html",
-        {"email": user["email"]},
+        {"email": user["email"],
+         "trial_active": tier == "free" and is_trial_active(user)},
     )
 
 

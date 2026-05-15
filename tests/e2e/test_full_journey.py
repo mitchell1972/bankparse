@@ -62,9 +62,8 @@ def test_full_user_journey(page: Page, live_server: str, fixture_csv: Path):
     base = live_server
 
     # ----------------------------------------------------------------------
-    # 1-2. Register — trial users go straight to dashboard (full 7-day access
-    #      without email verification). The OTP is still sent but not required
-    #      for parsing during the trial window.
+    # 1-2. Register, expect redirect to /verify-email (verification prompt
+    #      always shown; API allows parsing during trial without verifying).
     # ----------------------------------------------------------------------
     page.goto(f"{base}/login")
     # Switch to the Register tab. They're plain styled <button> elements
@@ -75,7 +74,18 @@ def test_full_user_journey(page: Page, live_server: str, fixture_csv: Path):
     page.locator("input[type=password], input[name=password]").first.fill(TEST_PASSWORD)
     page.locator("button[type=submit], button#submitBtn").first.click()
 
-    # Trial users land on dashboard directly (not forced to verify-email)
+    expect(page).to_have_url(re.compile(r"/verify-email"), timeout=10_000)
+
+    # ----------------------------------------------------------------------
+    # 3-4. Read OTP, submit, expect dashboard
+    # ----------------------------------------------------------------------
+    code = _peek_otp(base, TEST_EMAIL)
+    assert len(code) == 6 and code.isdigit()
+
+    page.locator("input#code, input[name=code]").first.fill(code)
+    page.locator("button#verify-btn, button[type=submit]").first.click()
+
+    # After verify, the page redirects to / — wait for it
     expect(page).to_have_url(re.compile(rf"^{re.escape(base)}/?(\?.*)?$"), timeout=10_000)
 
     # ----------------------------------------------------------------------
