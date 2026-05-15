@@ -857,11 +857,18 @@ def parse_receipts_bulk(file_paths: list[str]) -> dict:
         bulk_out += int(usage.get("output_tokens", 0))
 
         # Build a slim receipt summary for the receipts list
+        fn = Path(fp).name
+        try:
+            source_bytes = fp.stat().st_size if isinstance(fp, Path) else Path(fp).stat().st_size
+        except Exception:
+            source_bytes = 0
         receipt_summary = {
+            "filename": fn,
             "store_name": store_name,
             "date": receipt_date,
             "items": result.get("items", []),
             "total": result.get("totals", {}).get("total", 0),
+            "source_size_bytes": source_bytes,
         }
         if "error" in result.get("metadata", {}):
             receipt_summary["error"] = result["metadata"]["error"]
@@ -949,11 +956,14 @@ def parse_statements_bulk(file_paths: list[str]) -> dict:
             tx["bank"] = bank_name
 
         statements.append({
+            "filename": source_name,
             "source": source_name,
             "bank_name": bank_name,
             "transaction_count": len(result.get("transactions", [])),
+            "transactions": result.get("transactions", []),
             "summary": result.get("summary", {}),
             "metadata": result.get("metadata", {}),
+            "source_size_bytes": Path(fp).stat().st_size if Path(fp).exists() else 0,
         })
 
         all_transactions.extend(result.get("transactions", []))

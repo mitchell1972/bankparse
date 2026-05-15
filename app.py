@@ -1124,6 +1124,18 @@ async def parse_receipts_bulk_endpoint(request: Request, files: list[UploadFile]
                 success=True,
             )
 
+        # Persist each receipt's items so the dashboard shows cumulative
+        # totals across uploads. Cleared only by "Clear & Upload New".
+        try:
+            for receipt in bulk_result["receipts"]:
+                save_extracted_data(
+                    user["id"], "receipt", receipt.get("filename", ""),
+                    receipt.get("items", []),
+                    source_size_bytes=receipt.get("source_size_bytes", 0),
+                )
+        except Exception:
+            logger.exception("Failed to persist bulk receipt data for user %s", user["id"])
+
         return JSONResponse({
             "receipts": bulk_result["receipts"],
             "combined_items": bulk_result["combined_items"],
@@ -1230,6 +1242,18 @@ async def parse_statements_bulk_endpoint(request: Request, files: list[UploadFil
                 int(bulk_usage.get("output_tokens", 0)),
                 success=True,
             )
+
+        # Persist each statement's transactions so the dashboard shows cumulative
+        # totals across uploads. Cleared only by "Clear & Upload New".
+        try:
+            for stmt in bulk_result["statements"]:
+                save_extracted_data(
+                    user["id"], "statement", stmt.get("filename", ""),
+                    stmt.get("transactions", []),
+                    source_size_bytes=stmt.get("source_size_bytes", 0),
+                )
+        except Exception:
+            logger.exception("Failed to persist bulk statement data for user %s", user["id"])
 
         return JSONResponse({
             "statements": bulk_result["statements"],
