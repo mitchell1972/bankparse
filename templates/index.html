@@ -1893,7 +1893,7 @@
                 } else {
                     const text = await response.text();
                     if (response.status === 413 || text.includes('Request En')) {
-                        errMsg = 'Files too large. Please upload fewer or smaller files (max 4.5MB total).';
+                        errMsg = 'Files too large. Your cumulative uploads have reached the 25MB session limit. Click \'Clear & Upload New\' to start fresh.';
                     } else if (response.status === 504) {
                         errMsg = 'Request timed out. Try uploading fewer files at once.';
                     } else {

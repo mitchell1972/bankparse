@@ -110,10 +110,20 @@ def test_home_redirects_to_login():
 
 
 def test_home_unverified_redirects_to_verify_email():
-    """A logged-in user whose email isn't verified is bounced from / to
-    /verify-email instead of seeing the upload UI and bouncing off /api/parse."""
+    """A logged-in user whose email isn't verified AND trial has expired
+    is bounced from / to /verify-email. During trial they see the dashboard."""
+    from database import _execute
+    import time
     with TestClient(app, raise_server_exceptions=False) as client:
         _register(client, "unverified-home@example.com", "password1234")
+        # Trial active → dashboard (200), not verify-email
+        resp = client.get("/", follow_redirects=False)
+        assert resp.status_code == 200
+        # Age past trial → redirect to verify-email
+        from database import get_user_by_email
+        uid = get_user_by_email("unverified-home@example.com")["id"]
+        _execute("UPDATE users SET created_at = ? WHERE id = ?",
+                 (time.time() - 86400 * 8, uid))
         resp = client.get("/", follow_redirects=False)
         assert resp.status_code == 302
         assert "/verify-email" in resp.headers.get("location", "")

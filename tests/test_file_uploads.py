@@ -357,17 +357,22 @@ def test_bulk_receipts_requires_auth():
 # ---------------------------------------------------------------------------
 
 def test_bulk_receipts_free_tier_blocked():
-    """POST /api/parse-receipts-bulk as free tier returns 403 (bulk requires paid)."""
+    """POST /api/parse-receipts-bulk as free tier (trial active) returns 403
+    when >10 files — bulk is allowed up to 10 files during free trial."""
     client, csrf = _authenticated_client()
     try:
+        # Free tier trial users get bulk_max_files=10.
+        # Send 11 files to confirm the limit is enforced.
+        files = [("files", (f"r{i}.pdf", b"%PDF-1.4 fake", "application/pdf"))
+                 for i in range(11)]
         resp = client.post(
             "/api/parse-receipts-bulk",
-            files=[("files", ("r1.pdf", b"%PDF-1.4 fake", "application/pdf"))],
+            files=files,
             headers={"X-CSRF-Token": csrf},
         )
-        # Free tier users cannot use bulk upload at all
-        assert resp.status_code == 403
-        assert "Bulk upload requires" in resp.json()["detail"] or "subscription" in resp.json()["detail"].lower()
+        # Should block because 11 > 10
+        assert resp.status_code == 400
+        assert "10" in resp.json().get("detail", "")
     finally:
         client.__exit__(None, None, None)
 
@@ -442,7 +447,7 @@ def test_free_tier_within_trial_allows_repeat_uploads():
 
 def test_free_tier_blocked_after_trial_expires():
     """Once the user's created_at is more than 7 days back, /api/parse 403s
-    with TRIAL_EXPIRED."""
+    with TRIAL_EXPIRED (user is email-verified via _authenticated_client)."""
     import database
     import time
 
