@@ -10,16 +10,16 @@ def test_currency_fmt_usd():
     assert _currency_fmt({"currency": "USD"}) == "$#,##0.00"
 
 
-def test_currency_fmt_unknown_falls_back_to_usd():
-    assert _currency_fmt({"currency": "XYZ"}) == "$#,##0.00"
+def test_currency_fmt_unknown_falls_back_to_plain():
+    assert _currency_fmt({"currency": "XYZ"}) == "#,##0.00"
 
 
 def test_currency_fmt_none_metadata():
-    assert _currency_fmt(None) == "$#,##0.00"
+    assert _currency_fmt(None) == "#,##0.00"
 
 
 def test_currency_fmt_empty_dict():
-    assert _currency_fmt({}) == "$#,##0.00"
+    assert _currency_fmt({}) == "#,##0.00"
 
 
 def test_bulk_receipt_no_metadata_does_not_crash(tmp_path):

@@ -610,9 +610,8 @@ async def download_cumulative_xlsx(request: Request, mode: str, currency: str = 
     if not rows:
         raise HTTPException(status_code=404, detail="No extracted data to download.")
 
-    # Use the currency the frontend detected from AI results.
-    # Falls back to GBP (primary market) when not provided.
-    cur = currency.strip().upper() or "GBP"
+    # Currency passed from the frontend (detected from AI response).
+    # When nothing is known, leave blank — XLSX will use plain numbers.
 
     job_id = str(uuid.uuid4())[:8]
     if mode == "statement":
@@ -1323,7 +1322,7 @@ def _guess_currency(receipt_rows: list, statement_rows: list) -> str:
             for gbp_store in _GBP_STORES:
                 if gbp_store in store_field:
                     return "GBP"
-    return "GBP"  # Default: UK-primary app
+    return ""  # Unknown — let the frontend leave amounts unadorned
 
 
 def _format_chat_context(context_type: str, context_data: dict) -> str:

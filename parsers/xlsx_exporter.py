@@ -38,11 +38,14 @@ _CURRENCY_FORMATS = {
     "SGD": 'S$#,##0.00',
     "HKD": 'HK$#,##0.00',
 }
-_DEFAULT_FMT = '$#,##0.00'
+_DEFAULT_FMT = '#,##0.00'  # no currency symbol when unknown
 
 
 def _currency_fmt(metadata: dict | None = None) -> str:
-    """Return the Excel number-format string for the parsed currency, default to $"""
+    """Return the Excel number-format string for the parsed currency.
+
+    Returns a plain number format when currency can't be determined.
+    """
     cur = (metadata or {}).get("currency", "").upper()
     return _CURRENCY_FORMATS.get(cur, _DEFAULT_FMT)
 

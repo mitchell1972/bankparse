@@ -1706,7 +1706,10 @@
     }
 
     function formatCurrency(amount) {
-        const symbol = CURRENCY_SYMBOLS[sessionCurrency] || '£';
+        if (!sessionCurrency || !CURRENCY_SYMBOLS[sessionCurrency]) {
+            return Math.abs(amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        }
+        const symbol = CURRENCY_SYMBOLS[sessionCurrency] || '';
         return symbol + Math.abs(amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     }
 
