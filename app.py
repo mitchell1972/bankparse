@@ -577,6 +577,9 @@ async def get_extracted_data(request: Request):
         },
         "total_size_bytes": total_bytes,
         "session_max_bytes": SESSION_MAX_BYTES,
+        # Heuristically detect currency from the most recent parsed data.
+        # British store names strongly suggest GBP.
+        "currency": _guess_currency(receipt_rows, statement_rows),
     })
 
 
@@ -591,8 +594,12 @@ async def clear_extracted_data(request: Request):
 
 
 @app.get("/api/extracted-data/download")
-async def download_cumulative_xlsx(request: Request, mode: str):
-    """Build a fresh XLSX from all the user's accumulated rows for one mode."""
+async def download_cumulative_xlsx(request: Request, mode: str, currency: str = ""):
+    """Build a fresh XLSX from all the user's accumulated rows for one mode.
+
+    Accepts an optional `currency` query param (e.g. GBP, USD) so the frontend
+    can pass the currency it detected from the AI response.
+    """
     user = get_current_user(request)
     if not user:
         raise HTTPException(status_code=401, detail="Authentication required.")
@@ -603,19 +610,21 @@ async def download_cumulative_xlsx(request: Request, mode: str):
     if not rows:
         raise HTTPException(status_code=404, detail="No extracted data to download.")
 
+    # Use the currency the frontend detected from AI results.
+    # Falls back to GBP (primary market) when not provided.
+    cur = currency.strip().upper() or "GBP"
+
     job_id = str(uuid.uuid4())[:8]
     if mode == "statement":
         output_filename = f"cumulative_statements_{job_id}.xlsx"
         output_path = OUTPUT_DIR / output_filename
-        # Build a minimal result dict the exporter expects
         export_to_xlsx(
-            {"transactions": rows, "summary": {}, "metadata": {"bank_name": "Cumulative Export"}},
+            {"transactions": rows, "summary": {}, "metadata": {"bank_name": "Cumulative Export", "currency": cur}},
             str(output_path),
         )
     else:
         output_filename = f"cumulative_receipts_{job_id}.xlsx"
         output_path = OUTPUT_DIR / output_filename
-        # Compute totals from the flattened rows
         grand_total = round(sum(float(r.get("total_price", 0) or 0) for r in rows), 2)
         export_receipt_to_xlsx(
             {
@@ -624,6 +633,7 @@ async def download_cumulative_xlsx(request: Request, mode: str):
                 "metadata": {
                     "store_name": "Cumulative Receipts",
                     "item_count": len(rows),
+                    "currency": cur,
                 },
             },
             str(output_path),
@@ -1293,6 +1303,28 @@ async def parse_statements_bulk_endpoint(request: Request, files: list[UploadFil
 # ==========================================================================
 # AI Chat API
 # ==========================================================================
+
+# ---- helpers ----
+
+_GBP_STORES = {"tesco", "sainsbury", "waitrose", "marks", "spencer", "m&s",
+                "boots", "asda", "morrisons", "aldi", "lidl", "co-op", "coop",
+                "iceland", "poundland", "wilko", "superdrug", "homebase",
+                "b&q", "screwfix", "argos", "john lewis", "next", "primark",
+                "debenhams", "house of fraser", "currys", "pc world",
+                "greggs", "pret", "costa", "nero", "wethers", "spoons",
+                "nandos", "itsu", "wasabi", "wagamama"}
+
+def _guess_currency(receipt_rows: list, statement_rows: list) -> str:
+    """Heuristic: if store names look British, return GBP."""
+    store_field = None
+    for row in receipt_rows:
+        store_field = row.get("store", row.get("store_name", "")).lower()
+        if store_field:
+            for gbp_store in _GBP_STORES:
+                if gbp_store in store_field:
+                    return "GBP"
+    return "GBP"  # Default: UK-primary app
+
 
 def _format_chat_context(context_type: str, context_data: dict) -> str:
     """Format parsed results into readable text for the chat system prompt.

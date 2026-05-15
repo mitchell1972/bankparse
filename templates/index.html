@@ -2056,6 +2056,7 @@
             accumulatedReceipts = (data.receipts && data.receipts.files) || [];
             sessionTotalBytes = data.total_size_bytes || 0;
             if (data.session_max_bytes) sessionMaxBytes = data.session_max_bytes;
+            if (data.currency && CURRENCY_SYMBOLS[data.currency]) sessionCurrency = data.currency;
             updateAccumulatedBanner();
         } catch (e) {
             console.log('Accumulated data fetch failed (offline?)');
@@ -2560,7 +2561,7 @@
         btn.disabled = true;
         btn.textContent = 'Building...';
         try {
-            const res = await fetch(`/api/extracted-data/download?mode=${mode}`);
+            const res = await fetch(`/api/extracted-data/download?mode=${mode}&currency=${sessionCurrency}`);
             if (!res.ok) {
                 const err = await res.json().catch(() => ({detail:'Export failed'}));
                 alert(err.detail || 'Export failed.');
