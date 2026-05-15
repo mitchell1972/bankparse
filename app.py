@@ -2133,6 +2133,22 @@ BLOG_POSTS = {
         "template": "blog/convert-virgin-money-statement-to-excel.html",
         "keywords": "Virgin Money statement to Excel, convert Virgin Money bank statement, Virgin Money PDF to Excel, Virgin Money PDF to CSV, Virgin Money statement converter, Virgin Money to Xero, Virgin Money to QuickBooks, Clydesdale Bank statement to Excel, Yorkshire Bank statement to Excel",
     },
+    "convert-cooperative-bank-statement-to-excel": {
+        "title": "How to Convert Co-operative Bank Statements to Excel (2026 Guide)",
+        "description": "Co-operative Bank statements use a traditional Debit/Credit/Balance three-column layout that breaks most generic PDF converters. Step-by-step guide for UK accountants to convert Co-operative Bank statements to Excel, CSV, or Google Sheets cleanly.",
+        "date": "2026-05-15",
+        "author": "BankScan AI Team",
+        "template": "blog/convert-cooperative-bank-statement-to-excel.html",
+        "keywords": "Co-operative Bank statement to Excel, convert Co-operative Bank statement, Co-op Bank PDF to Excel, Co-operative Bank PDF to CSV, Co-operative Bank statement converter, Co-operative Bank to Xero, Co-operative Bank to QuickBooks",
+    },
+    "import-bank-statements-into-xero-guide": {
+        "title": "How to Import Bank Statements into Xero — Complete UK Guide (2026)",
+        "description": "Step-by-step guide to importing any UK bank statement into Xero. Covers bank feeds vs manual import, CSV formatting requirements, common Xero import errors and fixes, bank-specific quirks, and how to pre-clean statements for Xero-compatible import.",
+        "date": "2026-05-14",
+        "author": "BankScan AI Team",
+        "template": "blog/import-bank-statements-into-xero-guide.html",
+        "keywords": "import bank statements into Xero, Xero bank statement import guide, how to upload bank statements to Xero, Xero bank feed not working, Xero CSV upload format, Xero PDF bank statement import, import bank statement to Xero without bank feed, Xero bank reconciliation import",
+    },
 }
 
 
