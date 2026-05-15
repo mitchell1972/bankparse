@@ -612,6 +612,7 @@ async def download_cumulative_xlsx(request: Request, mode: str, currency: str = 
 
     # Currency passed from the frontend (detected from AI response).
     # When nothing is known, leave blank — XLSX will use plain numbers.
+    cur = currency.strip().upper()
 
     job_id = str(uuid.uuid4())[:8]
     if mode == "statement":

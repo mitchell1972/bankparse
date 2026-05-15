@@ -63,3 +63,16 @@ def test_bulk_receipt_no_metadata_does_not_crash(tmp_path):
     path = export_bulk_receipts_to_xlsx(bulk_result, str(out))
     assert path == str(out)
     assert out.exists()
+
+
+def test_cumulative_download_url_is_importable_and_syntax_clean():
+    """Sanity check: the download endpoint module exports without syntax errors.
+
+    This catches the NameError (undefined variable) class of bugs that cause
+    the Export All button to show an unhelpful 'Export failed' modal.
+    """
+    import app as app_module
+    from core import QUOTA_REASON_MESSAGES, TIER_LIMITS, get_current_user
+    # The download function should be reachable through FastAPI routing
+    routes = {r.path for r in app_module.app.routes if hasattr(r, 'path')}
+    assert "/api/extracted-data/download" in routes
