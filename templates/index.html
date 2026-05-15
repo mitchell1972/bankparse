@@ -808,10 +808,16 @@
     <div id="accumulatedBanner"
          style="display:none; margin:0.75rem 0; padding:0.6rem 0.9rem; background:#F0F4F8; border-left:4px solid #1B4F72; border-radius:6px; font-size:0.85rem; color:#3a4f64; display:none; align-items:center; justify-content:space-between; gap:1rem; flex-wrap:wrap;">
         <span id="accumulatedBannerText"></span>
-        <button id="accumulatedClearBtn" type="button" onclick="clearAndReset()"
-                style="padding:0.4rem 0.8rem; background:#1B4F72; color:white; border:none; border-radius:4px; cursor:pointer; font-size:0.8rem; font-weight:600;">
-            Clear &amp; Upload New
-        </button>
+        <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
+            <button id="accumulatedExportBtn" type="button" onclick="downloadCumulativeXlsx()"
+                    style="padding:0.4rem 0.8rem; background:#2E86C1; color:white; border:none; border-radius:4px; cursor:pointer; font-size:0.8rem; font-weight:600;">
+                ⬇ Export All
+            </button>
+            <button id="accumulatedClearBtn" type="button" onclick="clearAndReset()"
+                    style="padding:0.4rem 0.8rem; background:#1B4F72; color:white; border:none; border-radius:4px; cursor:pointer; font-size:0.8rem; font-weight:600;">
+                Clear &amp; Upload New
+            </button>
+        </div>
     </div>
 
     <!-- Paywall -->
@@ -2505,6 +2511,29 @@
             note.textContent = `Page ${receiptItemPage} of ${totalPages}. Download the spreadsheet for all items.`;
         } else {
             note.textContent = '';
+        }
+    }
+
+    async function downloadCumulativeXlsx() {
+        const mode = currentMode === 'receipt' ? 'receipt' : 'statement';
+        const btn = document.getElementById('accumulatedExportBtn');
+        const origText = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = 'Building...';
+        try {
+            const res = await fetch(`/api/extracted-data/download?mode=${mode}`);
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({detail:'Export failed'}));
+                alert(err.detail || 'Export failed.');
+                return;
+            }
+            const data = await res.json();
+            window.location.href = data.download_url;
+        } catch (e) {
+            alert('Network error. Try again.');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = origText;
         }
     }
 

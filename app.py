@@ -607,12 +607,27 @@ async def download_cumulative_xlsx(request: Request, mode: str):
     if mode == "statement":
         output_filename = f"cumulative_statements_{job_id}.xlsx"
         output_path = OUTPUT_DIR / output_filename
-        # xlsx_exporter expects a `result` dict shape; rebuild a minimal one
-        export_to_xlsx({"transactions": rows, "summary": {}, "metadata": {}}, str(output_path))
+        # Build a minimal result dict the exporter expects
+        export_to_xlsx(
+            {"transactions": rows, "summary": {}, "metadata": {"bank_name": "Cumulative Export"}},
+            str(output_path),
+        )
     else:
         output_filename = f"cumulative_receipts_{job_id}.xlsx"
         output_path = OUTPUT_DIR / output_filename
-        export_receipt_to_xlsx({"items": rows, "totals": {}, "metadata": {}}, str(output_path))
+        # Compute totals from the flattened rows
+        grand_total = round(sum(float(r.get("total_price", 0) or 0) for r in rows), 2)
+        export_receipt_to_xlsx(
+            {
+                "items": rows,
+                "totals": {"total": grand_total, "tax": 0, "subtotal": grand_total},
+                "metadata": {
+                    "store_name": "Cumulative Receipts",
+                    "item_count": len(rows),
+                },
+            },
+            str(output_path),
+        )
 
     track_output_file(output_filename)
     return JSONResponse({"download_url": f"/downloads/{output_filename}"})
