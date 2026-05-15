@@ -401,17 +401,11 @@ def check_can_use(user: dict, mode: str, num_pages: int = 1) -> tuple[bool, str,
 
     estimated_cost = ai_pricing.estimated_call_cost_gbp(mode, num_pages)
 
-    # 1. Email verification — free-tier users can parse during their 7-day
-    #    trial without verification so they experience the full product.
-    #    All other tiers require verification immediately. UNLIMITED_EMAILS
-    #    (admin) bypass this entirely.
+    # 1. Email verification — applies to EVERY tier including free.
+    #    UNLIMITED_EMAILS (admin) bypass this.
     email = (user.get("email") or "").lower()
-    email_verified = is_email_verified(user_id)
     if email not in UNLIMITED_EMAILS:
-        # Free tier: skip verification during active trial
-        if tier == "free" and is_trial_active(user):
-            pass  # allow — full trial experience
-        elif not email_verified:
+        if not is_email_verified(user_id):
             return False, tier, "email_unverified", estimated_cost
 
     # 2. Global daily ceiling — hard fail across the whole service.

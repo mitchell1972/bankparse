@@ -315,20 +315,18 @@ async def credits_page(request: Request):
 async def verify_email_page(request: Request):
     """Email verification page. Logged-in users only. Non-indexed.
 
-    Shown after signup. During the free trial, a "Continue to dashboard"
-    skip link lets users use the full product without verifying first.
+    Shown after signup or whenever a user tries to parse while unverified.
+    All users must verify their email before using the app.
     """
     user = get_current_user(request)
     if not user:
         return RedirectResponse(url="/login?next=/verify-email", status_code=302)
     if is_email_verified(user["id"]):
         return RedirectResponse(url="/", status_code=302)
-    tier = get_user_tier(user)
     return templates.TemplateResponse(
         request,
         "verify_email.html",
-        {"email": user["email"],
-         "trial_active": tier == "free" and is_trial_active(user)},
+        {"email": user["email"]},
     )
 
 

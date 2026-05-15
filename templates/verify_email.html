@@ -189,13 +189,6 @@
             <button type="button" class="resend-btn" id="resend-btn">Resend code</button>
         </div>
 
-        {% if trial_active %}
-        <p style="text-align:center; margin-top:1rem;">
-            <a href="/" style="color:var(--primary-light); font-weight:600; text-decoration:none; font-size:0.95rem;">Continue to dashboard →</a>
-            <br><span style="color:var(--muted); font-size:0.8rem;">You can verify later — your 7-day trial gives you full access now.</span>
-        </p>
-        {% endif %}
-
         <p class="footer-text">
             Wrong address? <a href="/api/logout" onclick="event.preventDefault(); fetch('/api/logout',{method:'POST'}).then(()=>location.href='/login');">Sign out</a>
         </p>
