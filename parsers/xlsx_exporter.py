@@ -381,8 +381,10 @@ def export_bulk_receipts_to_xlsx(bulk_result: dict, output_path: str) -> str:
     receipts_data = bulk_result.get("receipts", [])
     metadata = bulk_result.get("metadata", {})
     for r in receipts_data:
-        rm = r.get("metadata") if isinstance(r, dict) else {}
-        if rm.get("currency"):
+        if not isinstance(r, dict):
+            continue
+        rm = r.get("metadata")
+        if rm and isinstance(rm, dict) and rm.get("currency"):
             metadata = rm
             break
 
@@ -505,7 +507,7 @@ def export_bulk_receipts_to_xlsx(bulk_result: dict, output_path: str) -> str:
     ws2.row_dimensions[summary_header_row].height = 25
 
     # One row per receipt
-    receipts = bulk_result.get("receipts", [])
+    receipts = [r for r in bulk_result.get("receipts", []) if isinstance(r, dict)]
     for i, receipt in enumerate(receipts):
         row = summary_header_row + 1 + i
         use_alt = i % 2 == 1
@@ -570,8 +572,10 @@ def export_bulk_statements_to_xlsx(bulk_result: dict, output_path: str) -> str:
     stmts_data = bulk_result.get("statements", [])
     metadata = bulk_result.get("metadata", {})
     for s in stmts_data:
-        sm = s.get("metadata") if isinstance(s, dict) else {}
-        if sm.get("currency"):
+        if not isinstance(s, dict):
+            continue
+        sm = s.get("metadata")
+        if sm and isinstance(sm, dict) and sm.get("currency"):
             metadata = sm
             break
 
@@ -667,7 +671,8 @@ def export_bulk_statements_to_xlsx(bulk_result: dict, output_path: str) -> str:
         cell.fill = PRIMARY_FILL
         cell.alignment = Alignment(horizontal="center", vertical="center")
 
-    for i, stmt in enumerate(bulk_result.get("statements", [])):
+    statements = [s for s in bulk_result.get("statements", []) if isinstance(s, dict)]
+    for i, stmt in enumerate(statements):
         row = s_row + 1 + i
         s = stmt.get("summary", {})
         ws2.cell(row=row, column=1, value=stmt.get("source", "")).font = NORMAL_FONT

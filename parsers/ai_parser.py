@@ -869,6 +869,7 @@ def parse_receipts_bulk(file_paths: list[str]) -> dict:
             "items": result.get("items", []),
             "total": result.get("totals", {}).get("total", 0),
             "source_size_bytes": source_bytes,
+            "metadata": result.get("metadata", {}),
         }
         if "error" in result.get("metadata", {}):
             receipt_summary["error"] = result["metadata"]["error"]
