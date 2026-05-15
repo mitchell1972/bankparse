@@ -1669,8 +1669,45 @@
         return (bytes / 1048576).toFixed(1) + ' MB';
     }
 
+    const CURRENCY_SYMBOLS = {
+        'GBP': '£', 'USD': '$', 'EUR': '€', 'CAD': 'C$', 'AUD': 'A$',
+        'JPY': '¥', 'INR': '₹', 'CHF': 'CHF', 'NZD': 'NZ$', 'SEK': 'kr',
+        'NOK': 'kr', 'DKK': 'kr', 'ZAR': 'R', 'SGD': 'S$', 'HKD': 'HK$',
+    };
+
+    let sessionCurrency = 'GBP';  // detected from parsed results, defaults to GBP
+
+    function detectCurrency(data) {
+        // Pull currency from the AI-parsed metadata if available
+        const meta = (data && data.metadata) || {};
+        if (meta.currency && CURRENCY_SYMBOLS[meta.currency]) {
+            sessionCurrency = meta.currency;
+        }
+        // For bulk receipts, check the results per-receipt
+        if (data && data.receipts) {
+            for (const r of data.receipts) {
+                const rm = (r && r.metadata) || {};
+                if (rm.currency && CURRENCY_SYMBOLS[rm.currency]) {
+                    sessionCurrency = rm.currency;
+                    break;
+                }
+            }
+        }
+        // For bulk statements, check the results per-statement
+        if (data && data.statements) {
+            for (const s of data.statements) {
+                const sm = (s && s.metadata) || {};
+                if (sm.currency && CURRENCY_SYMBOLS[sm.currency]) {
+                    sessionCurrency = sm.currency;
+                    break;
+                }
+            }
+        }
+    }
+
     function formatCurrency(amount) {
-        return '$' + Math.abs(amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        const symbol = CURRENCY_SYMBOLS[sessionCurrency] || '£';
+        return symbol + Math.abs(amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     }
 
     const IMAGE_EXTS = ['png','jpg','jpeg','tiff','tif','bmp','webp','heic','heif'];
@@ -2043,6 +2080,7 @@
     }
 
     function showStatementResults(data) {
+        detectCurrency(data);
         const { summary, transactions, download_url } = data;
 
         document.getElementById('statCount').textContent = summary.total_transactions;
@@ -2445,6 +2483,7 @@
     }
 
     function showReceiptResults(data) {
+        detectCurrency(data);
         const { items, totals, metadata, download_url } = data;
 
         document.getElementById('receiptStore').textContent = metadata.store_name || '\u2014';
@@ -2604,6 +2643,7 @@
     }
 
     function showBulkStatementResults(data) {
+        detectCurrency(data);
         const { all_transactions, summary, statement_count, download_url } = data;
 
         document.getElementById('bulkStmtCount').textContent = statement_count;
@@ -2637,6 +2677,7 @@
     }
 
     function showBulkReceiptResults(data) {
+        detectCurrency(data);
         const { combined_items, grand_total, receipt_count, total_items, download_url } = data;
 
         document.getElementById('bulkReceiptCount').textContent = receipt_count;

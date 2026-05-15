@@ -20,6 +20,32 @@ THIN_BORDER = Border(
     bottom=Side(style="thin", color="D5D8DC"),
 )
 
+# Currency format strings keyed by ISO code
+_CURRENCY_FORMATS = {
+    "GBP": '£#,##0.00',
+    "USD": '$#,##0.00',
+    "EUR": '€#,##0.00',
+    "CAD": 'C$#,##0.00',
+    "AUD": 'A$#,##0.00',
+    "JPY": '¥#,##0',
+    "INR": '₹#,##0.00',
+    "CHF": 'CHF#,##0.00',
+    "NZD": 'NZ$#,##0.00',
+    "SEK": 'kr#,##0.00',
+    "NOK": 'kr#,##0.00',
+    "DKK": 'kr#,##0.00',
+    "ZAR": 'R#,##0.00',
+    "SGD": 'S$#,##0.00',
+    "HKD": 'HK$#,##0.00',
+}
+_DEFAULT_FMT = '$#,##0.00'
+
+
+def _currency_fmt(metadata: dict | None = None) -> str:
+    """Return the Excel number-format string for the parsed currency, default to $"""
+    cur = (metadata or {}).get("currency", "").upper()
+    return _CURRENCY_FORMATS.get(cur, _DEFAULT_FMT)
+
 
 def export_to_xlsx(data: dict, output_path: str) -> str:
     """
@@ -46,25 +72,26 @@ def export_to_xlsx(data: dict, output_path: str) -> str:
 
     # Summary section
     summary = data.get("summary", {})
+    metadata = data.get("metadata", {})
     ws["A3"] = "Total Transactions:"
     ws["B3"] = summary.get("total_transactions", 0)
     ws["A3"].font = SUMMARY_FONT
 
     ws["A4"] = "Total Credits:"
     ws["B4"] = summary.get("total_credits", 0)
-    ws["B4"].number_format = '$#,##0.00'
+    ws["B4"].number_format = _currency_fmt(metadata)
     ws["A4"].font = SUMMARY_FONT
     ws["B4"].font = CREDIT_FONT
 
     ws["A5"] = "Total Debits:"
     ws["B5"] = summary.get("total_debits", 0)
-    ws["B5"].number_format = '$#,##0.00'
+    ws["B5"].number_format = _currency_fmt(metadata)
     ws["A5"].font = SUMMARY_FONT
     ws["B5"].font = DEBIT_FONT
 
     ws["A6"] = "Net:"
     ws["B6"] = summary.get("net", 0)
-    ws["B6"].number_format = '$#,##0.00'
+    ws["B6"].number_format = _currency_fmt(metadata)
     ws["A6"].font = SUMMARY_FONT
 
     # Headers
@@ -97,7 +124,7 @@ def export_to_xlsx(data: dict, output_path: str) -> str:
         debit_cell = ws.cell(row=row, column=4)
         if tx.get("debit"):
             debit_cell.value = tx["debit"]
-            debit_cell.number_format = '$#,##0.00'
+            debit_cell.number_format = _currency_fmt(metadata)
             debit_cell.font = DEBIT_FONT
         else:
             debit_cell.font = NORMAL_FONT
@@ -106,21 +133,21 @@ def export_to_xlsx(data: dict, output_path: str) -> str:
         credit_cell = ws.cell(row=row, column=5)
         if tx.get("credit"):
             credit_cell.value = tx["credit"]
-            credit_cell.number_format = '$#,##0.00'
+            credit_cell.number_format = _currency_fmt(metadata)
             credit_cell.font = CREDIT_FONT
         else:
             credit_cell.font = NORMAL_FONT
 
         # Amount
         amount_cell = ws.cell(row=row, column=6, value=tx["amount"])
-        amount_cell.number_format = '$#,##0.00'
+        amount_cell.number_format = _currency_fmt(metadata)
         amount_cell.font = CREDIT_FONT if tx["amount"] >= 0 else DEBIT_FONT
 
         # Balance
         balance_cell = ws.cell(row=row, column=7)
         if tx.get("balance") is not None:
             balance_cell.value = tx["balance"]
-            balance_cell.number_format = '$#,##0.00'
+            balance_cell.number_format = _currency_fmt(metadata)
         balance_cell.font = NORMAL_FONT
 
         # Alternating row border
@@ -158,7 +185,7 @@ def export_to_xlsx(data: dict, output_path: str) -> str:
         ws2.cell(row=i, column=1, value=label).font = SUMMARY_FONT
         val_cell = ws2.cell(row=i, column=2, value=value)
         if isinstance(value, (int, float)) and i > 3:
-            val_cell.number_format = '$#,##0.00'
+            val_cell.number_format = _currency_fmt(metadata)
         val_cell.font = SUMMARY_FONT
 
     # Monthly breakdown if enough data
@@ -188,10 +215,10 @@ def export_to_xlsx(data: dict, output_path: str) -> str:
                 r = row_offset + 2 + i
                 ws2.cell(row=r, column=1, value=month)
                 ws2.cell(row=r, column=2, value=vals["count"])
-                ws2.cell(row=r, column=3, value=round(vals["credits"], 2)).number_format = '$#,##0.00'
-                ws2.cell(row=r, column=4, value=round(vals["debits"], 2)).number_format = '$#,##0.00'
+                ws2.cell(row=r, column=3, value=round(vals["credits"], 2)).number_format = _currency_fmt(metadata)
+                ws2.cell(row=r, column=4, value=round(vals["debits"], 2)).number_format = _currency_fmt(metadata)
                 net = round(vals["credits"] + vals["debits"], 2)
-                ws2.cell(row=r, column=5, value=net).number_format = '$#,##0.00'
+                ws2.cell(row=r, column=5, value=net).number_format = _currency_fmt(metadata)
 
     ws2.column_dimensions["A"].width = 25
     ws2.column_dimensions["B"].width = 18
@@ -270,11 +297,11 @@ def export_receipt_to_xlsx(data: dict, output_path: str) -> str:
         ws.cell(row=row, column=3).alignment = Alignment(horizontal="center")
 
         unit_cell = ws.cell(row=row, column=4, value=item["unit_price"])
-        unit_cell.number_format = '$#,##0.00'
+        unit_cell.number_format = _currency_fmt(metadata)
         unit_cell.font = NORMAL_FONT
 
         total_cell = ws.cell(row=row, column=5, value=item["total_price"])
-        total_cell.number_format = '$#,##0.00'
+        total_cell.number_format = _currency_fmt(metadata)
         total_cell.font = NORMAL_FONT
 
         for col in range(1, 6):
@@ -307,7 +334,7 @@ def export_receipt_to_xlsx(data: dict, output_path: str) -> str:
         label_cell.fill = TOTALS_FILL
 
         val_cell = ws.cell(row=r, column=5, value=value)
-        val_cell.number_format = '$#,##0.00'
+        val_cell.number_format = _currency_fmt(metadata)
         val_cell.fill = TOTALS_FILL
         if label == "TOTAL":
             val_cell.font = Font(name="Calibri", bold=True, size=12, color="1B4F72")
@@ -349,6 +376,15 @@ def export_bulk_receipts_to_xlsx(bulk_result: dict, output_path: str) -> str:
         Path to the created file
     """
     wb = Workbook()
+
+    # Attempt to detect currency from the first receipt that reports one
+    receipts_data = bulk_result.get("receipts", [])
+    metadata = bulk_result.get("metadata", {})
+    for r in receipts_data:
+        rm = r.get("metadata") if isinstance(r, dict) else {}
+        if rm.get("currency"):
+            metadata = rm
+            break
 
     # Styling
     PURPLE_FILL = PatternFill(start_color="8E44AD", end_color="8E44AD", fill_type="solid")
@@ -407,13 +443,13 @@ def export_bulk_receipts_to_xlsx(bulk_result: dict, output_path: str) -> str:
             qty_cell.fill = ALT_ROW_FILL
 
         unit_cell = ws1.cell(row=row, column=5, value=item.get("unit_price", 0))
-        unit_cell.number_format = '$#,##0.00'
+        unit_cell.number_format = _currency_fmt(metadata)
         unit_cell.font = NORMAL_FONT
         if use_alt:
             unit_cell.fill = ALT_ROW_FILL
 
         total_cell = ws1.cell(row=row, column=6, value=item.get("total_price", 0))
-        total_cell.number_format = '$#,##0.00'
+        total_cell.number_format = _currency_fmt(metadata)
         total_cell.font = NORMAL_FONT
         if use_alt:
             total_cell.fill = ALT_ROW_FILL
@@ -430,7 +466,7 @@ def export_bulk_receipts_to_xlsx(bulk_result: dict, output_path: str) -> str:
         label_cell.alignment = Alignment(horizontal="right")
 
         total_val_cell = ws1.cell(row=grand_row, column=6, value=bulk_result.get("grand_total", 0))
-        total_val_cell.number_format = '$#,##0.00'
+        total_val_cell.number_format = _currency_fmt(metadata)
         total_val_cell.font = GRAND_TOTAL_FONT
         total_val_cell.fill = GRAND_TOTAL_FILL
 
@@ -491,7 +527,7 @@ def export_bulk_receipts_to_xlsx(bulk_result: dict, output_path: str) -> str:
             count_cell.fill = ALT_ROW_FILL
 
         total_cell = ws2.cell(row=row, column=4, value=receipt.get("total", 0))
-        total_cell.number_format = '$#,##0.00'
+        total_cell.number_format = _currency_fmt(metadata)
         total_cell.font = NORMAL_FONT
         if use_alt:
             total_cell.fill = ALT_ROW_FILL
@@ -508,7 +544,7 @@ def export_bulk_receipts_to_xlsx(bulk_result: dict, output_path: str) -> str:
         label_cell.alignment = Alignment(horizontal="right")
 
         total_val_cell = ws2.cell(row=grand_row, column=4, value=bulk_result.get("grand_total", 0))
-        total_val_cell.number_format = '$#,##0.00'
+        total_val_cell.number_format = _currency_fmt(metadata)
         total_val_cell.font = GRAND_TOTAL_FONT
         total_val_cell.fill = GRAND_TOTAL_FILL
 
@@ -529,6 +565,15 @@ def export_bulk_statements_to_xlsx(bulk_result: dict, output_path: str) -> str:
     Sheet 2 — "Summary": One row per statement with totals.
     """
     wb = Workbook()
+
+    # Attempt to detect currency from the first statement that reports one
+    stmts_data = bulk_result.get("statements", [])
+    metadata = bulk_result.get("metadata", {})
+    for s in stmts_data:
+        sm = s.get("metadata") if isinstance(s, dict) else {}
+        if sm.get("currency"):
+            metadata = sm
+            break
 
     PRIMARY_FILL = PatternFill(start_color="1B4F72", end_color="1B4F72", fill_type="solid")
     PRIMARY_FONT = Font(name="Calibri", bold=True, color="FFFFFF", size=11)
@@ -568,13 +613,13 @@ def export_bulk_statements_to_xlsx(bulk_result: dict, output_path: str) -> str:
 
         amt = tx.get("amount", 0)
         amt_cell = ws1.cell(row=row, column=5, value=amt)
-        amt_cell.number_format = '$#,##0.00'
+        amt_cell.number_format = _currency_fmt(metadata)
         amt_cell.font = CREDIT_FONT if amt >= 0 else DEBIT_FONT
 
         bal = tx.get("balance")
         bal_cell = ws1.cell(row=row, column=6, value=bal if bal is not None else "")
         if bal is not None:
-            bal_cell.number_format = '$#,##0.00'
+            bal_cell.number_format = _currency_fmt(metadata)
         bal_cell.font = NORMAL_FONT
 
         ws1.cell(row=row, column=7, value=tx.get("bank", "")).font = NORMAL_FONT
@@ -592,7 +637,7 @@ def export_bulk_statements_to_xlsx(bulk_result: dict, output_path: str) -> str:
             ws1.cell(row=sr, column=3, value=label).font = TOTAL_FONT_STYLE
             ws1.cell(row=sr, column=3).fill = TOTAL_FILL
             v_cell = ws1.cell(row=sr, column=5, value=summary.get(key, 0))
-            v_cell.number_format = '$#,##0.00'
+            v_cell.number_format = _currency_fmt(metadata)
             v_cell.font = Font(name="Calibri", bold=True, size=12, color=color)
             v_cell.fill = TOTAL_FILL
             sr += 1
@@ -629,10 +674,10 @@ def export_bulk_statements_to_xlsx(bulk_result: dict, output_path: str) -> str:
         ws2.cell(row=row, column=2, value=stmt.get("bank_name", "")).font = NORMAL_FONT
         ws2.cell(row=row, column=3, value=stmt.get("transaction_count", 0)).font = NORMAL_FONT
         cr = ws2.cell(row=row, column=4, value=s.get("total_credits", 0))
-        cr.number_format = '$#,##0.00'
+        cr.number_format = _currency_fmt(metadata)
         cr.font = CREDIT_FONT
         dr = ws2.cell(row=row, column=5, value=s.get("total_debits", 0))
-        dr.number_format = '$#,##0.00'
+        dr.number_format = _currency_fmt(metadata)
         dr.font = DEBIT_FONT
         if i % 2 == 1:
             for c in range(1, 6):
