@@ -2220,6 +2220,14 @@ BLOG_POSTS = {
         "template": "blog/import-bank-statements-into-xero-guide.html",
         "keywords": "import bank statements into Xero, Xero bank statement import guide, how to upload bank statements to Xero, Xero bank feed not working, Xero CSV upload format, Xero PDF bank statement import, import bank statement to Xero without bank feed, Xero bank reconciliation import",
     },
+    "bank-statement-automation-sole-practitioners": {
+        "title": "Bank Statement Automation for Sole Practitioners — The Complete UK Guide (2026)",
+        "description": "As a sole practitioner, every hour spent typing bank statements is an hour you can't bill. Practical guide covering unique solo-practice challenges, time-cost comparisons, automation options ranked by solo-friendliness, and a start-today workflow for self-employed bookkeepers and accountants.",
+        "date": "2026-05-16",
+        "author": "BankScan AI Team",
+        "template": "blog/bank-statement-automation-sole-practitioners.html",
+        "keywords": "bank statement automation sole practitioner UK, automate bank statements for self-employed bookkeeper, sole trader bookkeeping automation, bank statement converter for sole practitioners, save time bookkeeping sole practice, PDF bank statement automation small practice",
+    },
 }
 
 
