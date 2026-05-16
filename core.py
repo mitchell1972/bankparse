@@ -153,12 +153,14 @@ TIER_LIMITS = {
 FREE_STATEMENT_LIMIT = ai_pricing.FREE_MONTHLY_STATEMENTS
 FREE_RECEIPT_LIMIT = ai_pricing.FREE_MONTHLY_RECEIPTS
 
-# --- Test/admin accounts (bypass free tier limits) ---
-UNLIMITED_EMAILS = set(
+# --- Test/admin accounts (bypass free tier limits, see /admin) ---
+# Founder accounts are always admin; UNLIMITED_EMAILS env var adds more.
+_ADMIN_DEFAULTS = {"mitchell_agoma@yahoo.co.uk", "mitchellagoma@gmail.com"}
+UNLIMITED_EMAILS = _ADMIN_DEFAULTS | {
     e.strip().lower() for e in
-    os.environ.get("UNLIMITED_EMAILS", "mitchell_agoma@yahoo.co.uk").split(",")
+    os.environ.get("UNLIMITED_EMAILS", "").split(",")
     if e.strip()
-)
+}
 
 # --- Auth cookie config ---
 AUTH_COOKIE = "bp_auth"
