@@ -18,11 +18,12 @@ TURSO_URL = os.environ.get("TURSO_DATABASE_URL", "")
 TURSO_TOKEN = os.environ.get("TURSO_AUTH_TOKEN", "")
 USE_TURSO = bool(TURSO_URL and TURSO_TOKEN)
 
-# Boot diagnostic — prints to stdout (captured by Railway) so we can confirm
-# the runtime is actually seeing the env vars. Safe to remove once verified.
+# Boot diagnostic — confirms env vars are reaching the runtime.
 print(
-    f"[BOOT][db] USE_TURSO={USE_TURSO} "
-    f"URL_len={len(TURSO_URL)} TOKEN_len={len(TURSO_TOKEN)}",
+    f"[BOOT][env] USE_TURSO={USE_TURSO} "
+    f"TURSO_URL_len={len(TURSO_URL)} TURSO_TOKEN_len={len(TURSO_TOKEN)} "
+    f"ANTHROPIC_KEY_len={len(os.environ.get('ANTHROPIC_API_KEY', ''))} "
+    f"RESEND_KEY_len={len(os.environ.get('RESEND_API_KEY', ''))}",
     flush=True,
 )
 
