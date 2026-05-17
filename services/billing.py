@@ -78,6 +78,22 @@ def create_trial_checkout_session(
 
     customer_id = _get_or_create_customer(user)
 
+    # Belt-and-suspenders: even if our local DB thinks the user has no
+    # subscription, never spin up a trial on top of an existing active /
+    # trialing / past_due Stripe subscription. Protects paying customers
+    # from accidental double-billing if the local subscription_status fell
+    # out of sync (e.g. a missed webhook).
+    existing_subs = stripe.Subscription.list(
+        customer=customer_id, status="all", limit=10,
+    )
+    blocking = [s for s in existing_subs.data if s.status in ("active", "trialing", "past_due")]
+    if blocking:
+        logger.warning(
+            "Refusing trial checkout for user %s — Stripe customer %s already has %d active/trialing/past_due subscription(s)",
+            user["id"], customer_id, len(blocking),
+        )
+        raise ValueError("customer already has an active subscription")
+
     session = stripe.checkout.Session.create(
         customer=customer_id,
         mode="subscription",
