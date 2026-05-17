@@ -446,11 +446,14 @@ def test_login_session_persists_home_access():
     """After verified login, GET / should return 200 (not redirect) on repeated
     requests. Verification gate (PR #12) makes the unverified case a 302 to
     /verify-email — verify first, then check the dashboard stays accessible."""
-    from database import mark_email_verified, get_user_by_email
+    from database import mark_email_verified, get_user_by_email, update_user
     with TestClient(app, raise_server_exceptions=False) as client:
         reg_resp = _register(client, "homepersist@example.com", "password1234")
         assert reg_resp.status_code == 200
-        mark_email_verified(get_user_by_email("homepersist@example.com")["id"])
+        u = get_user_by_email("homepersist@example.com")
+        mark_email_verified(u["id"])
+        # Grandfather so they skip the new card-on-file gate.
+        update_user(u["id"], grandfathered_trial=1)
 
         for i in range(3):
             resp = client.get("/", follow_redirects=False)

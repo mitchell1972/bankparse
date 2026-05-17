@@ -134,6 +134,10 @@ def _authenticated_client():
     user = _db.get_user_by_email(email)
     assert user is not None, "Registration did not create a user"
     _db.mark_email_verified(user["id"])
+    # Pre-card-on-file behaviour: grandfather the test user so legacy
+    # 7-days-from-registration trial applies. New Stripe-driven trial is
+    # exercised in tests/test_billing_trial.py.
+    _db.update_user(user["id"], grandfathered_trial=1)
     csrf = client.cookies.get("bp_csrf", "")
     return client, csrf
 

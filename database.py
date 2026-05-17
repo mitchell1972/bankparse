@@ -115,7 +115,7 @@ def _execute_insert(sql: str, params: tuple = ()) -> int:
         return cursor.lastrowid
 
 
-_USER_COLS = "id, email, password_hash, stripe_customer_id, statements_used, receipts_used, subscription_status, subscription_checked_at, chat_count, chat_date, scans_this_month, scan_month, statements_this_month, receipts_this_month, usage_month, email_verified, ai_credit_balance_gbp, ai_spend_this_month, created_at, trial_reminder_sent_at"
+_USER_COLS = "id, email, password_hash, stripe_customer_id, stripe_subscription_id, statements_used, receipts_used, subscription_status, subscription_checked_at, chat_count, chat_date, scans_this_month, scan_month, statements_this_month, receipts_this_month, usage_month, email_verified, ai_credit_balance_gbp, ai_spend_this_month, created_at, trial_reminder_sent_at, trial_end_at, grandfathered_trial"
 
 
 # --- Schema ---
@@ -199,6 +199,13 @@ def init_db():
             row_count INTEGER NOT NULL DEFAULT 0,
             parsed_at REAL DEFAULT (strftime('%s', 'now'))
         )""",
+        # Webhook idempotency — Stripe retries failed deliveries for up to 3 days,
+        # so every handler must be safely replayable. We dedupe on event.id.
+        """CREATE TABLE IF NOT EXISTS processed_webhooks (
+            event_id TEXT PRIMARY KEY,
+            event_type TEXT NOT NULL,
+            received_at REAL NOT NULL
+        )""",
         "CREATE INDEX IF NOT EXISTS idx_extracted_user_mode ON user_extracted_data(user_id, mode)",
         "CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)",
         "CREATE INDEX IF NOT EXISTS idx_users_stripe ON users(stripe_customer_id)",
@@ -227,11 +234,37 @@ def init_db():
         ("ai_credit_balance_gbp", "REAL DEFAULT 0"),
         ("ai_spend_this_month", "REAL DEFAULT 0"),
         ("trial_reminder_sent_at", "REAL DEFAULT NULL"),
+        # Card-on-file trial (Stripe Subscription with trial_period_days):
+        ("stripe_subscription_id", "TEXT DEFAULT NULL"),
+        ("trial_end_at", "REAL DEFAULT NULL"),
+        ("grandfathered_trial", "INTEGER DEFAULT 0"),
     ]:
         try:
             _execute(f"ALTER TABLE users ADD COLUMN {col} {col_def}")
         except Exception:
             pass  # Column already exists
+
+    # One-shot grandfather backfill: every user that existed before the
+    # card-on-file flow shipped keeps the legacy 7-days-from-registration trial
+    # and is never force-walled into entering a card retroactively. New users
+    # (signups after the cutoff below) default to grandfathered_trial=0 and
+    # are routed through Stripe Checkout for card collection.
+    #
+    # Cutoff is fixed at the migration-design time (2026-05-18 00:00 UTC).
+    # Anyone with created_at < cutoff is grandfathered; anyone created after
+    # the deploy uses the new flow. Idempotent: re-running the UPDATE is a
+    # no-op because the WHERE clause excludes already-flagged rows.
+    GRANDFATHER_CUTOFF = 1779062400.0  # 2026-05-18T00:00:00Z
+    try:
+        _execute(
+            "UPDATE users SET grandfathered_trial = 1 "
+            "WHERE grandfathered_trial = 0 "
+            "  AND created_at IS NOT NULL "
+            "  AND created_at < ?",
+            (GRANDFATHER_CUTOFF,),
+        )
+    except Exception:
+        logger.exception("grandfather backfill failed (non-fatal)")
 
     # Migrate user_extracted_data — source_size_bytes added in commit 3
     try:
@@ -263,7 +296,7 @@ def get_user_by_stripe_customer(stripe_customer_id: str) -> dict | None:
 
 
 def update_user(user_id: int, **kwargs):
-    allowed = {"stripe_customer_id", "statements_used", "receipts_used", "email", "password_hash", "subscription_status", "subscription_checked_at", "chat_count", "chat_date", "scans_this_month", "scan_month", "statements_this_month", "receipts_this_month", "usage_month", "email_verified", "ai_credit_balance_gbp", "ai_spend_this_month"}
+    allowed = {"stripe_customer_id", "stripe_subscription_id", "statements_used", "receipts_used", "email", "password_hash", "subscription_status", "subscription_checked_at", "chat_count", "chat_date", "scans_this_month", "scan_month", "statements_this_month", "receipts_this_month", "usage_month", "email_verified", "ai_credit_balance_gbp", "ai_spend_this_month", "trial_end_at", "grandfathered_trial"}
     fields = {k: v for k, v in kwargs.items() if k in allowed}
     if not fields:
         return

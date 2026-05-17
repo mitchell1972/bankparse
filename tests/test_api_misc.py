@@ -321,8 +321,8 @@ def test_home_redirects_to_landing():
 
 def test_home_authenticated():
     """GET / with auth: unverified user is bounced to /verify-email,
-    verified user lands on the dashboard."""
-    from database import mark_email_verified, get_user_by_email
+    verified+grandfathered user lands on the dashboard."""
+    from database import mark_email_verified, get_user_by_email, update_user
     with TestClient(app, raise_server_exceptions=False) as client:
         reg_resp = _register(client, "home@example.com", "password1234")
         assert reg_resp.status_code == 200
@@ -333,8 +333,12 @@ def test_home_authenticated():
         assert resp.status_code == 302
         assert "/verify-email" in resp.headers.get("location", "")
 
-        # Verified → 200 dashboard
-        mark_email_verified(get_user_by_email("home@example.com")["id"])
+        # Verified user — flag as grandfathered so they skip the new
+        # card-on-file gate (the /start-trial redirect is exercised in
+        # tests/test_billing_trial.py).
+        user = get_user_by_email("home@example.com")
+        mark_email_verified(user["id"])
+        update_user(user["id"], grandfathered_trial=1)
         resp = client.get("/", cookies={"bp_auth": auth_cookie}, follow_redirects=False)
         assert resp.status_code == 200
 

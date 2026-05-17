@@ -229,8 +229,12 @@
                 });
                 const data = await res.json().catch(() => ({}));
                 if (!res.ok) throw new Error(data.detail || 'Verification failed.');
-                showMsg('Email verified — redirecting to dashboard...', 'success');
-                setTimeout(() => { window.location.href = '/'; }, 800);
+                const next = data.redirect_to || '/';
+                const label = next === '/start-trial'
+                    ? 'Email verified — set up your free trial...'
+                    : 'Email verified — redirecting...';
+                showMsg(label, 'success');
+                setTimeout(() => { window.location.href = next; }, 800);
             } catch (err) {
                 showMsg(err.message || 'Verification failed.', 'error');
                 verifyBtn.disabled = false;

@@ -69,12 +69,19 @@ def clean_db():
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _make_user(email: str = "user@example.com", verified: bool = True) -> dict:
-    """Insert a verified user and return the fresh user dict."""
+def _make_user(email: str = "user@example.com", verified: bool = True, grandfathered: bool = True) -> dict:
+    """Insert a verified user and return the fresh user dict.
+
+    ``grandfathered`` defaults to True so these legacy budget/trial tests
+    continue to exercise the 7-days-from-registration rule. The new
+    card-on-file trial path is covered in test_billing_trial.py.
+    """
     import database
     user_id = database.create_user(email, "pwhash")
     if verified:
         database.mark_email_verified(user_id)
+    if grandfathered:
+        database.update_user(user_id, grandfathered_trial=1)
     return database.get_user_by_id(user_id)
 
 
