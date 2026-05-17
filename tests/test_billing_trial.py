@@ -301,3 +301,39 @@ def test_payment_failed_flips_to_past_due():
     billing.handle_payment_failed({"customer": "cus_pastdue"})
     fresh = database.get_user_by_id(user["id"])
     assert fresh["subscription_status"] == "past_due"
+
+
+# --- stale customer id defense ----------------------------------------------
+
+def test_get_or_create_customer_recreates_on_stale_id():
+    """If users.stripe_customer_id points at a customer that no longer exists
+    in this Stripe account (e.g. left over from test-mode keys), we null it
+    out and create a fresh one. Without this defense the live Stripe checkout
+    creation fails with 'No such customer' and we wrongly surface "Could not
+    start trial" to the user."""
+    from services import billing
+    import database
+    import stripe as stripe_sdk
+
+    user = _make_user("stale@example.com")
+    database.update_user(user["id"], stripe_customer_id="cus_STALE_test_mode")
+    user = database.get_user_by_id(user["id"])
+
+    fresh_customer = MagicMock(id="cus_FRESH_live")
+
+    with patch("services.billing._stripe") as factory:
+        mock_stripe = MagicMock()
+        # First retrieve raises InvalidRequestError "No such customer"
+        mock_stripe.Customer.retrieve.side_effect = stripe_sdk.error.InvalidRequestError(
+            "No such customer: 'cus_STALE_test_mode'", param="customer"
+        )
+        mock_stripe.Customer.create.return_value = fresh_customer
+        # Expose the SDK's error classes on the mock so the SUT can `except`
+        mock_stripe.error = stripe_sdk.error
+        factory.return_value = mock_stripe
+
+        result = billing._get_or_create_customer(user)
+
+    assert result == "cus_FRESH_live"
+    persisted = database.get_user_by_id(user["id"])
+    assert persisted["stripe_customer_id"] == "cus_FRESH_live"
