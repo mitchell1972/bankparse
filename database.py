@@ -18,6 +18,14 @@ TURSO_URL = os.environ.get("TURSO_DATABASE_URL", "")
 TURSO_TOKEN = os.environ.get("TURSO_AUTH_TOKEN", "")
 USE_TURSO = bool(TURSO_URL and TURSO_TOKEN)
 
+# Boot diagnostic — prints to stdout (captured by Railway) so we can confirm
+# the runtime is actually seeing the env vars. Safe to remove once verified.
+print(
+    f"[BOOT][db] USE_TURSO={USE_TURSO} "
+    f"URL_len={len(TURSO_URL)} TOKEN_len={len(TURSO_TOKEN)}",
+    flush=True,
+)
+
 _turso_client = None
 _sqlite_conn = None
 
