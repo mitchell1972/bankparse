@@ -58,6 +58,16 @@ def _age_user(base_url: str, email: str, days_ago: float) -> None:
     r.raise_for_status()
 
 
+def _grandfather_user(base_url: str, email: str) -> None:
+    """Flip grandfathered_trial=1 so the user lands on the legacy
+    7-days-from-signup trial path instead of being routed to /start-trial
+    for card collection. Required for legacy-flow e2e since the
+    card-on-file path requires real Stripe Checkout."""
+    r = httpx.post(f"{base_url}/api/test/grandfather-user",
+                   json={"email": email, "grandfathered": True}, timeout=5.0)
+    r.raise_for_status()
+
+
 def test_full_user_journey(page: Page, live_server: str, fixture_csv: Path):
     base = live_server
 
@@ -77,6 +87,12 @@ def test_full_user_journey(page: Page, live_server: str, fixture_csv: Path):
     # The frontend JS sets window.location.href after register — wait for it.
     # Playwright may capture the final URL after server-side redirect chains.
     page.wait_for_timeout(3000)
+
+    # This test exercises the LEGACY 7-days-from-signup trial flow. The new
+    # card-on-file path requires going through Stripe Checkout which is
+    # tested separately. Grandfather the test user so /api/verify-email-code
+    # redirects to / instead of /start-trial.
+    _grandfather_user(base, TEST_EMAIL)
     current_url = page.url
     # At this point we should be on /verify-email or the landing page.
     # If we're on /, the user was verified already or is anonymous.

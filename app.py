@@ -734,6 +734,49 @@ async def test_age_user(request: Request):
     return JSONResponse({"email": email, "days_ago": days_ago, "new_created_at": new_created})
 
 
+@app.post("/api/test/grandfather-user")
+async def test_grandfather_user(request: Request):
+    """Test-only: flip grandfathered_trial on a user so e2e tests can opt into
+    the legacy 7-days-from-signup trial path (skipping the Stripe Checkout
+    requirement). Guarded by TEST_MODE_ENABLED."""
+    _test_mode_guard()
+    body = await request.json()
+    email = (body.get("email") or "").strip().lower()
+    grandfathered = 1 if body.get("grandfathered", True) else 0
+    if not email:
+        raise HTTPException(status_code=400, detail="email required")
+    from database import _execute
+    _execute("UPDATE users SET grandfathered_trial = ? WHERE email = ?", (grandfathered, email))
+    return JSONResponse({"email": email, "grandfathered_trial": grandfathered})
+
+
+@app.post("/api/test/set-subscription-state")
+async def test_set_subscription_state(request: Request):
+    """Test-only: write subscription_status / stripe_subscription_id /
+    trial_end_at directly on a user row, simulating a Stripe webhook delivery
+    for the card-on-file trial flow. Lets e2e tests cover the
+    post-Checkout-completed state without hitting real Stripe."""
+    _test_mode_guard()
+    body = await request.json()
+    email = (body.get("email") or "").strip().lower()
+    if not email:
+        raise HTTPException(status_code=400, detail="email required")
+    fields = {}
+    if "subscription_status" in body:
+        fields["subscription_status"] = body["subscription_status"]
+    if "stripe_subscription_id" in body:
+        fields["stripe_subscription_id"] = body["stripe_subscription_id"]
+    if "trial_end_at" in body:
+        fields["trial_end_at"] = float(body["trial_end_at"]) if body["trial_end_at"] is not None else None
+    from database import get_user_by_email, update_user
+    user = get_user_by_email(email)
+    if not user:
+        raise HTTPException(status_code=404, detail="user not found")
+    if fields:
+        update_user(user["id"], **fields)
+    return JSONResponse({"email": email, "updated": fields})
+
+
 @app.get("/api/cron/trial-reminders")
 async def cron_trial_reminders(request: Request):
     expected = os.environ.get("CRON_SECRET", "")
