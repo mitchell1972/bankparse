@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex, nofollow">
+    <title>Start your free trial — BankScan AI</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        :root {
+            --primary: #1B4F72;
+            --primary-light: #2E86C1;
+            --accent: #27AE60;
+            --danger: #E74C3C;
+            --bg: #F8F9FA;
+            --card: #FFFFFF;
+            --text: #2C3E50;
+            --muted: #7F8C8D;
+            --border: #E5E7EB;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem 1rem;
+        }
+        .card {
+            background: var(--card);
+            border-radius: 12px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.06);
+            max-width: 460px;
+            width: 100%;
+            padding: 2.5rem 2rem;
+            text-align: center;
+        }
+        h1 { color: var(--primary); font-size: 1.6rem; margin-bottom: 0.5rem; }
+        .lead { color: var(--muted); margin-bottom: 1.5rem; }
+        ul.benefits {
+            list-style: none;
+            text-align: left;
+            margin: 1.5rem 0;
+            padding-left: 0;
+        }
+        ul.benefits li {
+            padding: 0.45rem 0 0.45rem 1.8rem;
+            position: relative;
+        }
+        ul.benefits li::before {
+            content: "✓";
+            color: var(--accent);
+            font-weight: bold;
+            position: absolute;
+            left: 0;
+            top: 0.45rem;
+        }
+        button.primary {
+            background: var(--primary);
+            color: white;
+            border: 0;
+            border-radius: 6px;
+            padding: 0.9rem 1.5rem;
+            font-size: 1rem;
+            cursor: pointer;
+            width: 100%;
+            margin-top: 0.5rem;
+        }
+        button.primary:hover { background: var(--primary-light); }
+        button.primary:disabled { background: var(--muted); cursor: wait; }
+        .fineprint {
+            color: var(--muted);
+            font-size: 0.85rem;
+            line-height: 1.5;
+            margin-top: 1.5rem;
+        }
+        .error {
+            color: var(--danger);
+            background: #fdecea;
+            padding: 0.75rem 1rem;
+            border-radius: 6px;
+            margin-top: 1rem;
+            font-size: 0.9rem;
+            display: none;
+        }
+        .canceled-banner {
+            background: #fff8e1;
+            color: #8a6d3b;
+            padding: 0.75rem 1rem;
+            border-radius: 6px;
+            margin-bottom: 1.25rem;
+            font-size: 0.9rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h1>Start your 7-day free trial</h1>
+        <p class="lead">Full access to BankScan AI. We collect your card now but charge nothing for 7 days.</p>
+
+        <div id="canceled" class="canceled-banner" style="display:none">
+            Trial setup cancelled. No card has been saved. Try again when you're ready.
+        </div>
+
+        <ul class="benefits">
+            <li>AI-powered statement &amp; receipt parsing</li>
+            <li>Up to 25&nbsp;MB across uploaded files</li>
+            <li>Cancel any time during the trial — you won't be charged</li>
+            <li>Card stored securely by Stripe; we never see the number</li>
+        </ul>
+
+        <button class="primary" id="start-trial-btn">Start free trial →</button>
+
+        <div id="err" class="error"></div>
+
+        <p class="fineprint">
+            Card-on-file required to prevent serial-trial abuse. After 7 days you'll be charged for the Starter plan
+            (you can change plan or cancel anytime via Manage Billing).
+        </p>
+    </div>
+
+    <script>
+        // Show "canceled" banner if Stripe returned ?canceled=1
+        if (new URLSearchParams(location.search).get("canceled") === "1") {
+            document.getElementById("canceled").style.display = "block";
+        }
+
+        const btn = document.getElementById("start-trial-btn");
+        const errBox = document.getElementById("err");
+
+        async function getCsrfToken() {
+            // Match other forms in this app — cookie-derived double-submit token.
+            const m = document.cookie.match(/(?:^|;\s*)bp_csrf=([^;]+)/);
+            return m ? decodeURIComponent(m[1]) : "";
+        }
+
+        btn.addEventListener("click", async () => {
+            btn.disabled = true;
+            btn.textContent = "Redirecting to Stripe…";
+            errBox.style.display = "none";
+            try {
+                const res = await fetch("/api/billing/start-trial-checkout", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "X-CSRF-Token": await getCsrfToken(),
+                    },
+                });
+                const data = await res.json();
+                if (!res.ok) {
+                    throw new Error(data.detail || `HTTP ${res.status}`);
+                }
+                if (!data.checkout_url) {
+                    throw new Error("No checkout URL returned.");
+                }
+                window.location.href = data.checkout_url;
+            } catch (e) {
+                btn.disabled = false;
+                btn.textContent = "Start free trial →";
+                errBox.textContent = e.message || "Couldn't start trial. Please try again.";
+                errBox.style.display = "block";
+            }
+        });
+    </script>
+</body>
+</html>

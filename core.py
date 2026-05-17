@@ -351,11 +351,12 @@ def get_user_tier(user: dict) -> str:
     return "starter"
 
 
-def trial_days_remaining(user: dict) -> int:
-    """Days left on the 7-day free trial for this user.
+def _legacy_trial_days_remaining(user: dict) -> int:
+    """Pre-card-on-file rule: 7 days from users.created_at.
 
-    Returns 0 once the trial has ended. Returns TRIAL_DAYS for users without
-    a recorded created_at timestamp (treat as freshly created).
+    Only used for users with grandfathered_trial=1 (the 105 users registered
+    before the Stripe-driven trial shipped). New signups use the Stripe
+    subscription `trialing` status instead.
     """
     import time
 
@@ -364,13 +365,50 @@ def trial_days_remaining(user: dict) -> int:
         return TRIAL_DAYS
     elapsed_seconds = time.time() - float(created_at)
     elapsed_days = elapsed_seconds / 86400.0
-    remaining = TRIAL_DAYS - int(elapsed_days)
-    return max(remaining, 0)
+    return max(TRIAL_DAYS - int(elapsed_days), 0)
+
+
+def trial_days_remaining(user: dict) -> int:
+    """Days left on the trial — Stripe-driven for new users, legacy for grandfathered.
+
+    Returns 0 once the trial has ended. UNLIMITED_EMAILS admins always get
+    TRIAL_DAYS (their gate bypass happens elsewhere; this is just a display
+    value).
+    """
+    import time
+
+    if user.get("grandfathered_trial"):
+        return _legacy_trial_days_remaining(user)
+
+    # Stripe-driven trial: trialing status + trial_end_at in the future.
+    if user.get("subscription_status") == "trialing":
+        end = user.get("trial_end_at")
+        if end and float(end) > time.time():
+            remaining_seconds = float(end) - time.time()
+            return max(int(remaining_seconds / 86400.0) + 1, 1)
+        return 0
+
+    # Active subscribers don't have a meaningful "trial days remaining" — return 0,
+    # the UI distinguishes via subscription_status.
+    return 0
 
 
 def is_trial_active(user: dict) -> bool:
-    """True if the user is within their 7-day free trial window."""
-    return trial_days_remaining(user) > 0
+    """True if the user is within their free trial window.
+
+    Two paths:
+      - Grandfathered users (legacy 7-days-from-signup, no card required)
+      - New users with a Stripe subscription in `trialing` status with card on file
+    """
+    import time
+
+    if user.get("grandfathered_trial"):
+        return _legacy_trial_days_remaining(user) > 0
+
+    if user.get("subscription_status") != "trialing":
+        return False
+    end = user.get("trial_end_at")
+    return bool(end and float(end) > time.time())
 
 
 def check_can_use(user: dict, mode: str, num_pages: int = 1) -> tuple[bool, str, str, float]:
@@ -420,12 +458,25 @@ def check_can_use(user: dict, mode: str, num_pages: int = 1) -> tuple[bool, str,
     if user_today + estimated_cost > ai_pricing.AI_USER_DAILY_CAP_GBP:
         return False, tier, "user_daily_cap", estimated_cost
 
-    # 4. Free tier: 7-day trial from registration. UNLIMITED_EMAILS bypass
-    #    this so admin/test accounts can always parse.
+    # 4. Free tier: 7-day trial. UNLIMITED_EMAILS bypass so admin accounts
+    #    can always parse.
+    #
+    # Two paths split on `grandfathered_trial`:
+    #   - Grandfathered (registered before card-on-file shipped): legacy
+    #     7-days-from-signup rule, no card required. Expired → 'trial_expired'.
+    #   - New users: must complete Stripe Checkout to get into 'trialing'
+    #     status. Without a subscription_id → 'payment_method_required',
+    #     trial-window over → 'trial_expired'.
     if tier == "free":
-        if email not in UNLIMITED_EMAILS and not is_trial_active(user):
-            return False, tier, "trial_expired", estimated_cost
-        return True, tier, "ok", estimated_cost
+        if email in UNLIMITED_EMAILS:
+            return True, tier, "ok", estimated_cost
+        if is_trial_active(user):
+            return True, tier, "ok", estimated_cost
+        # Trial not active. Distinguish "never started" from "expired" so the
+        # UI can offer the right CTA (Add card vs Subscribe).
+        if not user.get("grandfathered_trial") and not user.get("stripe_subscription_id"):
+            return False, tier, "payment_method_required", estimated_cost
+        return False, tier, "trial_expired", estimated_cost
 
     # 5. Paid tier: spend-based budget check.
     #    If monthly budget is exhausted, the user's credit balance must cover
@@ -532,6 +583,7 @@ QUOTA_REASON_MESSAGES = {
     "ok": "OK",
     "email_unverified": "EMAIL_VERIFICATION_REQUIRED",
     "trial_expired": "TRIAL_EXPIRED",
+    "payment_method_required": "PAYMENT_METHOD_REQUIRED",
     # Kept for backward compat with any client JS that branches on the old codes
     "free_statements_cap": "FREE_LIMIT_REACHED",
     "free_receipts_cap": "FREE_LIMIT_REACHED",

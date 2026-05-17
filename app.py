@@ -179,10 +179,25 @@ async def home(request: Request):
     user = get_current_user(request)
     if not user:
         return RedirectResponse(url="/landing", status_code=302)
-    # Unverified users are routed to /verify-email as a prompt,
-    # but can bypass during their free trial via the page's skip link.
+    # Unverified users are routed to /verify-email first.
     if not is_email_verified(user["id"]):
         return RedirectResponse(url="/verify-email", status_code=302)
+    # New (non-grandfathered) users who haven't completed trial setup are sent
+    # to /start-trial before they reach the dashboard. UNLIMITED_EMAILS admins
+    # and grandfathered users skip this gate entirely. The optional
+    # ?trial=started query (returned from the Stripe success_url) lets the
+    # user land on the dashboard immediately after Stripe confirms checkout,
+    # even before the webhook updates subscription_status — Stripe redirects
+    # are guaranteed but webhooks have a few seconds of latency.
+    email = (user.get("email") or "").lower()
+    trial_started_flag = request.query_params.get("trial") == "started"
+    if (
+        not trial_started_flag
+        and email not in UNLIMITED_EMAILS
+        and not user.get("grandfathered_trial")
+        and user.get("subscription_status") not in ("trialing", "active", "past_due")
+    ):
+        return RedirectResponse(url="/start-trial", status_code=302)
     return templates.TemplateResponse(request, "index.html")
 
 
@@ -309,6 +324,26 @@ async def credits_page(request: Request):
             "packs": ai_pricing.CREDIT_PACKS,
         },
     )
+
+
+@app.get("/start-trial", response_class=HTMLResponse)
+async def start_trial_page(request: Request):
+    """Card-on-file trial setup page.
+
+    Shown after email verification for non-grandfathered users. Renders a
+    single 'Start 7-day free trial' button which POSTs to
+    ``/api/billing/start-trial-checkout``; the user is then bounced to
+    Stripe-hosted Checkout. Grandfathered or already-subscribed users are
+    routed straight to the dashboard.
+    """
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login?next=/start-trial", status_code=302)
+    if user.get("grandfathered_trial"):
+        return RedirectResponse(url="/", status_code=302)
+    if user.get("subscription_status") in ("trialing", "active"):
+        return RedirectResponse(url="/", status_code=302)
+    return templates.TemplateResponse(request, "start_trial.html")
 
 
 @app.get("/verify-email", response_class=HTMLResponse)
@@ -462,7 +497,16 @@ async def verify_email_code(request: Request):
         raise HTTPException(status_code=400, detail="Invalid or expired code.")
 
     mark_email_verified(user["id"])
-    return JSONResponse({"status": "ok", "verified": True})
+
+    # Where to send the user next?
+    #   - Grandfathered: straight to dashboard, legacy trial already active.
+    #   - Already subscribed (rare from this endpoint): dashboard.
+    #   - Everyone else: /start-trial to capture a card.
+    redirect_to = "/"
+    if not user.get("grandfathered_trial") and user.get("subscription_status") not in ("trialing", "active"):
+        redirect_to = "/start-trial"
+
+    return JSONResponse({"status": "ok", "verified": True, "redirect_to": redirect_to})
 
 
 @app.post("/api/verify-email/resend")
@@ -688,6 +732,49 @@ async def test_age_user(request: Request):
     new_created = time.time() - days_ago * 86400.0
     _execute("UPDATE users SET created_at = ? WHERE email = ?", (new_created, email))
     return JSONResponse({"email": email, "days_ago": days_ago, "new_created_at": new_created})
+
+
+@app.post("/api/test/grandfather-user")
+async def test_grandfather_user(request: Request):
+    """Test-only: flip grandfathered_trial on a user so e2e tests can opt into
+    the legacy 7-days-from-signup trial path (skipping the Stripe Checkout
+    requirement). Guarded by TEST_MODE_ENABLED."""
+    _test_mode_guard()
+    body = await request.json()
+    email = (body.get("email") or "").strip().lower()
+    grandfathered = 1 if body.get("grandfathered", True) else 0
+    if not email:
+        raise HTTPException(status_code=400, detail="email required")
+    from database import _execute
+    _execute("UPDATE users SET grandfathered_trial = ? WHERE email = ?", (grandfathered, email))
+    return JSONResponse({"email": email, "grandfathered_trial": grandfathered})
+
+
+@app.post("/api/test/set-subscription-state")
+async def test_set_subscription_state(request: Request):
+    """Test-only: write subscription_status / stripe_subscription_id /
+    trial_end_at directly on a user row, simulating a Stripe webhook delivery
+    for the card-on-file trial flow. Lets e2e tests cover the
+    post-Checkout-completed state without hitting real Stripe."""
+    _test_mode_guard()
+    body = await request.json()
+    email = (body.get("email") or "").strip().lower()
+    if not email:
+        raise HTTPException(status_code=400, detail="email required")
+    fields = {}
+    if "subscription_status" in body:
+        fields["subscription_status"] = body["subscription_status"]
+    if "stripe_subscription_id" in body:
+        fields["stripe_subscription_id"] = body["stripe_subscription_id"]
+    if "trial_end_at" in body:
+        fields["trial_end_at"] = float(body["trial_end_at"]) if body["trial_end_at"] is not None else None
+    from database import get_user_by_email, update_user
+    user = get_user_by_email(email)
+    if not user:
+        raise HTTPException(status_code=404, detail="user not found")
+    if fields:
+        update_user(user["id"], **fields)
+    return JSONResponse({"email": email, "updated": fields})
 
 
 @app.get("/api/cron/trial-reminders")
@@ -1486,6 +1573,54 @@ async def chat_endpoint(request: Request):
 # Stripe Billing Routes
 # ==========================================================================
 
+@app.post("/api/billing/start-trial-checkout")
+@limiter.limit("3/minute")
+async def start_trial_checkout(request: Request):
+    """Create a Stripe Checkout session in subscription mode with a 7-day trial.
+
+    Requires the user to be logged in and email-verified. Refuses if the user
+    already has a subscription (any status — they should use the customer
+    portal to manage it). Grandfathered users don't need this; the gate page
+    routes them away before they get here, but we re-check server-side.
+
+    Returns ``{"checkout_url": "https://checkout.stripe.com/..."}``; the
+    client redirects there. Stripe is the source of truth for state; we
+    don't optimistically mark trialing until the webhook fires.
+    """
+    if not STRIPE_AVAILABLE or not STRIPE_SECRET_KEY:
+        raise HTTPException(status_code=501, detail="Stripe is not configured.")
+
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required.")
+
+    if not is_email_verified(user["id"]):
+        raise HTTPException(status_code=403, detail="Please verify your email first.")
+
+    if user.get("grandfathered_trial"):
+        raise HTTPException(status_code=409, detail="You already have legacy trial access.")
+
+    if user.get("subscription_status") in ("trialing", "active"):
+        raise HTTPException(status_code=409, detail="You already have an active subscription.")
+
+    from services.billing import create_trial_checkout_session
+    origin = get_safe_origin(request)
+    try:
+        url = create_trial_checkout_session(
+            user=user,
+            success_url=f"{origin}/?trial=started",
+            cancel_url=f"{origin}/start-trial?canceled=1",
+        )
+    except ValueError as e:
+        logger.exception("Trial checkout misconfigured")
+        raise HTTPException(status_code=500, detail=f"Billing misconfigured: {e}")
+    except Exception:
+        logger.exception("Trial checkout creation failed for user %s", user["id"])
+        raise HTTPException(status_code=502, detail="Could not start trial. Please try again.")
+
+    return JSONResponse({"checkout_url": url})
+
+
 @app.post("/api/create-checkout")
 @limiter.limit("5/minute")
 async def create_checkout_session(request: Request):
@@ -1644,6 +1779,22 @@ async def verify_checkout_session(request: Request, session_id: str):
 
 @app.post("/api/stripe-webhook")
 async def stripe_webhook(request: Request):
+    """Stripe webhook dispatcher.
+
+    Idempotent — every event is deduped by ``event.id`` via the
+    ``processed_webhooks`` table so retries don't double-apply state changes.
+
+    Handled events:
+      - ``checkout.session.completed`` (mode=subscription) → trial start, set
+        trial_end_at + stripe_subscription_id. Delegated to
+        ``services.billing.handle_checkout_completed``.
+      - ``checkout.session.completed`` (mode=payment, ai_credit_pack) → credit
+        top-up (legacy path, retained inline).
+      - ``customer.subscription.updated`` / ``customer.subscription.deleted`` →
+        mirror status + trial_end_at from Stripe truth.
+      - ``invoice.payment_failed`` → mark past_due ahead of the subsequent
+        subscription.updated.
+    """
     if not STRIPE_AVAILABLE or not STRIPE_SECRET_KEY:
         return JSONResponse({"status": "ignored"})
 
@@ -1658,73 +1809,77 @@ async def stripe_webhook(request: Request):
     except (ValueError, stripe.error.SignatureVerificationError):
         raise HTTPException(status_code=400, detail="Invalid webhook signature.")
 
+    event_id = event.get("id", "")
     event_type = event.get("type", "")
     event_data = event.get("data", {}).get("object", {})
 
-    if event_type == "checkout.session.completed":
-        mode = event_data.get("mode", "")
-        metadata = event_data.get("metadata") or {}
-        customer_id = event_data.get("customer")
+    from services.billing import (
+        was_processed,
+        mark_processed,
+        handle_checkout_completed,
+        handle_subscription_lifecycle,
+        handle_payment_failed,
+    )
 
-        if mode == "payment" and metadata.get("purchase_type") == "ai_credit_pack":
-            # One-time credit pack purchase — top up ai_credit_balance_gbp
-            if event_data.get("payment_status") == "paid":
-                from database import add_credit_balance
-                try:
-                    amount_gbp = float(metadata.get("credit_amount_gbp", "0"))
-                except (TypeError, ValueError):
-                    amount_gbp = 0.0
-                user_id_str = metadata.get("user_id", "")
-                target_user = None
-                if user_id_str:
+    # Stripe retries failed webhooks for up to 3 days; dedup at the edge.
+    if was_processed(event_id):
+        return JSONResponse({"status": "ok", "duplicate": True})
+
+    try:
+        if event_type == "checkout.session.completed":
+            mode = event_data.get("mode", "")
+            metadata = event_data.get("metadata") or {}
+            customer_id = event_data.get("customer")
+
+            if mode == "payment" and metadata.get("purchase_type") == "ai_credit_pack":
+                # One-time credit pack purchase — top up ai_credit_balance_gbp
+                if event_data.get("payment_status") == "paid":
+                    from database import add_credit_balance
                     try:
-                        target_user = get_user_by_id(int(user_id_str))
+                        amount_gbp = float(metadata.get("credit_amount_gbp", "0"))
                     except (TypeError, ValueError):
-                        target_user = None
-                if not target_user and customer_id:
-                    target_user = get_user_by_stripe_customer(customer_id)
-                if target_user and amount_gbp > 0:
-                    add_credit_balance(target_user["id"], amount_gbp)
-                    logger.info(
-                        "Credited user %s with £%.2f AI credit pack (%s)",
-                        target_user["id"], amount_gbp, metadata.get("credit_pack", "?"),
-                    )
-                else:
-                    logger.warning(
-                        "Credit pack webhook: could not resolve user (customer=%s, metadata=%s)",
-                        customer_id, metadata,
-                    )
-        else:
-            # Subscription checkout — original path
-            user_email = None
-            if customer_id:
-                try:
-                    customer = stripe.Customer.retrieve(customer_id)
-                    user_email = customer.email
-                except Exception:
-                    pass
-            if user_email:
-                user = get_user_by_email(user_email)
-                if user:
-                    update_user(user["id"], stripe_customer_id=customer_id, subscription_status="active", subscription_checked_at=time.time())
+                        amount_gbp = 0.0
+                    user_id_str = metadata.get("user_id", "")
+                    target_user = None
+                    if user_id_str:
+                        try:
+                            target_user = get_user_by_id(int(user_id_str))
+                        except (TypeError, ValueError):
+                            target_user = None
+                    if not target_user and customer_id:
+                        target_user = get_user_by_stripe_customer(customer_id)
+                    if target_user and amount_gbp > 0:
+                        add_credit_balance(target_user["id"], amount_gbp)
+                        logger.info(
+                            "Credited user %s with £%.2f AI credit pack (%s)",
+                            target_user["id"], amount_gbp, metadata.get("credit_pack", "?"),
+                        )
+                    else:
+                        logger.warning(
+                            "Credit pack webhook: could not resolve user (customer=%s, metadata=%s)",
+                            customer_id, metadata,
+                        )
+            elif mode == "subscription":
+                # Card-on-file trial OR direct paid subscription. Delegate to
+                # billing service which fetches the subscription and writes
+                # the canonical state (subscription_id, trial_end_at, status).
+                handle_checkout_completed(event_data)
+            else:
+                logger.info("checkout.session.completed: unhandled mode=%s", mode)
 
-    elif event_type in ("customer.subscription.updated", "customer.subscription.deleted"):
-        sub_status = event_data.get("status", "")
-        customer_id = event_data.get("customer")
-        if customer_id:
-            # Find user by stripe_customer_id
-            user = get_user_by_stripe_customer(customer_id)
-            if user:
-                is_active = sub_status in ("active", "trialing")
-                update_user(user["id"], subscription_status="active" if is_active else "cancelled", subscription_checked_at=time.time())
+        elif event_type in ("customer.subscription.updated", "customer.subscription.deleted"):
+            handle_subscription_lifecycle(event_data)
 
-    elif event_type == "invoice.payment_failed":
-        customer_id = event_data.get("customer")
-        if customer_id:
-            user = get_user_by_stripe_customer(customer_id)
-            if user:
-                update_user(user["id"], subscription_status="past_due", subscription_checked_at=time.time())
+        elif event_type == "invoice.payment_failed":
+            handle_payment_failed(event_data)
 
+    except Exception:
+        # Don't mark processed on failure — Stripe will retry. Logging here
+        # so we have a record of which event_id failed.
+        logger.exception("Stripe webhook handler failed for event %s (%s)", event_id, event_type)
+        raise HTTPException(status_code=500, detail="Webhook handler failed.")
+
+    mark_processed(event_id, event_type)
     return JSONResponse({"status": "ok"})
 
 
