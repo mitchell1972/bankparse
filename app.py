@@ -2212,6 +2212,14 @@ BLOG_POSTS = {
         "template": "blog/convert-cooperative-bank-statement-to-excel.html",
         "keywords": "Co-operative Bank statement to Excel, convert Co-operative Bank statement, Co-op Bank PDF to Excel, Co-operative Bank PDF to CSV, Co-operative Bank statement converter, Co-operative Bank to Xero, Co-operative Bank to QuickBooks",
     },
+    "import-bank-statements-into-quickbooks-guide": {
+        "title": "How to Import Bank Statements into QuickBooks — Complete UK Guide (2026)",
+        "description": "Step-by-step guide to importing UK bank statements into QuickBooks Online and Desktop. Covers bank feeds vs manual upload, supported file formats, common QuickBooks import errors with bank-specific fixes for Barclays, HSBC, Monzo, NatWest, and Lloyds, plus how BankScan AI pre-cleans statements for QuickBooks-ready CSV import.",
+        "date": "2026-05-17",
+        "author": "BankScan AI Team",
+        "template": "blog/import-bank-statements-into-quickbooks-guide.html",
+        "keywords": "import bank statements into QuickBooks, QuickBooks bank statement import guide UK, how to upload bank statements to QuickBooks Online, QuickBooks CSV upload format, QuickBooks bank feed not working UK, convert bank statement for QuickBooks, QuickBooks PDF bank statement import",
+    },
     "import-bank-statements-into-xero-guide": {
         "title": "How to Import Bank Statements into Xero — Complete UK Guide (2026)",
         "description": "Step-by-step guide to importing any UK bank statement into Xero. Covers bank feeds vs manual import, CSV formatting requirements, common Xero import errors and fixes, bank-specific quirks, and how to pre-clean statements for Xero-compatible import.",
