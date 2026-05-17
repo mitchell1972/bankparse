@@ -1612,6 +1612,12 @@ async def start_trial_checkout(request: Request):
             cancel_url=f"{origin}/start-trial?canceled=1",
         )
     except ValueError as e:
+        msg = str(e)
+        # The service raises ValueError both for misconfiguration AND for
+        # "customer already has an active subscription" (Stripe-side guard).
+        # The latter is a 409, not a 500.
+        if "active subscription" in msg.lower():
+            raise HTTPException(status_code=409, detail="You already have an active subscription.")
         logger.exception("Trial checkout misconfigured")
         raise HTTPException(status_code=500, detail=f"Billing misconfigured: {e}")
     except Exception:

@@ -78,6 +78,22 @@ def create_trial_checkout_session(
 
     customer_id = _get_or_create_customer(user)
 
+    # Belt-and-suspenders: even if our local DB thinks the user has no
+    # subscription, never spin up a trial on top of an existing active /
+    # trialing / past_due Stripe subscription. Protects paying customers
+    # from accidental double-billing if the local subscription_status fell
+    # out of sync (e.g. a missed webhook).
+    existing_subs = stripe.Subscription.list(
+        customer=customer_id, status="all", limit=10,
+    )
+    blocking = [s for s in existing_subs.data if s.status in ("active", "trialing", "past_due")]
+    if blocking:
+        logger.warning(
+            "Refusing trial checkout for user %s — Stripe customer %s already has %d active/trialing/past_due subscription(s)",
+            user["id"], customer_id, len(blocking),
+        )
+        raise ValueError("customer already has an active subscription")
+
     session = stripe.checkout.Session.create(
         customer=customer_id,
         mode="subscription",
@@ -111,21 +127,39 @@ def create_trial_checkout_session(
 def _get_or_create_customer(user: dict) -> str:
     """Reuse the existing Stripe Customer for this user, or create one.
 
+    Defensively handles a stale customer_id that no longer exists in this
+    Stripe account (e.g. left over from when Railway was on test-mode keys
+    and the account has since been switched to live). On 'No such customer'
+    we null out the stored ID and create a fresh one.
+
     Email is the only identifying field — we never push PII beyond what's
     already in `users.email`.
     """
+    stripe = _stripe()
+    from database import update_user
+
     existing = user.get("stripe_customer_id")
     if existing:
-        return existing
+        try:
+            stripe.Customer.retrieve(existing)
+            return existing
+        except stripe.error.InvalidRequestError as e:
+            # Stale customer (test-mode reference, deleted in Stripe, or
+            # account switched). Drop it and fall through to create a new one.
+            if "No such customer" not in str(e):
+                raise
+            logger.warning(
+                "Stale stripe_customer_id %s for user %s — recreating.",
+                existing, user["id"],
+            )
+            update_user(user["id"], stripe_customer_id=None)
 
-    stripe = _stripe()
     # Don't trust user-provided email until verified; this service is only
     # called from a route that already gates on email_verified.
     customer = stripe.Customer.create(
         email=user["email"],
         metadata={"user_id": str(user["id"]), "source": "bankparse"},
     )
-    from database import update_user
     update_user(user["id"], stripe_customer_id=customer.id)
     return customer.id
 
