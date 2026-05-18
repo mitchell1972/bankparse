@@ -2397,6 +2397,14 @@ BLOG_POSTS = {
         "template": "blog/bank-statement-automation-sole-practitioners.html",
         "keywords": "bank statement automation sole practitioner UK, automate bank statements for self-employed bookkeeper, sole trader bookkeeping automation, bank statement converter for sole practitioners, save time bookkeeping sole practice, PDF bank statement automation small practice",
     },
+    "convert-scanned-bank-statements-to-excel": {
+        "title": "How to Convert Scanned Paper Bank Statements to Excel (2026 Guide)",
+        "description": "Scanned bank statements are image-based PDFs with no text layer — standard converters can't read them. Complete OCR guide for UK accountants and bookkeepers: tool comparison, step-by-step workflow, and common OCR errors to watch for.",
+        "date": "2026-05-18",
+        "author": "BankScan AI Team",
+        "template": "blog/convert-scanned-bank-statements-to-excel.html",
+        "keywords": "convert scanned bank statement to Excel, OCR bank statement to Excel, scanned PDF bank statement converter, paper bank statement to spreadsheet, convert image bank statement to Excel, OCR for bank statements UK, bank statement scanning to Excel",
+    },
 }
 
 
