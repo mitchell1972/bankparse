@@ -206,6 +206,46 @@ def init_db():
             event_type TEXT NOT NULL,
             received_at REAL NOT NULL
         )""",
+        # HMRC MTD ITSA — OAuth connections per user.
+        # Tokens are AES-GCM encrypted before storage (hmrc.services.crypto).
+        # Refresh tokens are rotated by HMRC on every use; this table is
+        # upserted on each refresh.
+        """CREATE TABLE IF NOT EXISTS hmrc_connections (
+            user_id INTEGER PRIMARY KEY,
+            access_token_enc TEXT NOT NULL,
+            refresh_token_enc TEXT NOT NULL,
+            expires_at REAL NOT NULL,
+            scope TEXT,
+            connected_at REAL NOT NULL,
+            updated_at REAL NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        )""",
+        # Per-session browser-collected fraud-prevention fields. Pairs with
+        # the server-collected fields on every outbound MTD call.
+        """CREATE TABLE IF NOT EXISTS hmrc_fraud_sessions (
+            session_id TEXT PRIMARY KEY,
+            fraud_context_json TEXT NOT NULL,
+            updated_at REAL NOT NULL
+        )""",
+        # Immutable audit log of every HMRC call we make. Required for
+        # software recognition — HMRC asks to see proof of submissions.
+        # Append-only; bearer tokens are stripped from stored headers.
+        """CREATE TABLE IF NOT EXISTS hmrc_submissions (
+            audit_id TEXT PRIMARY KEY,
+            user_id INTEGER NOT NULL,
+            endpoint TEXT NOT NULL,
+            method TEXT NOT NULL,
+            request_headers_json TEXT,
+            request_body_json TEXT,
+            response_status INTEGER NOT NULL,
+            response_headers_json TEXT,
+            response_body_json TEXT,
+            idempotency_key TEXT,
+            created_at REAL NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        )""",
+        "CREATE INDEX IF NOT EXISTS idx_hmrc_submissions_user ON hmrc_submissions(user_id, created_at DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_hmrc_submissions_idempotency ON hmrc_submissions(idempotency_key)",
         "CREATE INDEX IF NOT EXISTS idx_extracted_user_mode ON user_extracted_data(user_id, mode)",
         "CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)",
         "CREATE INDEX IF NOT EXISTS idx_users_stripe ON users(stripe_customer_id)",

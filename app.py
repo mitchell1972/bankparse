@@ -160,6 +160,23 @@ async def rate_limit_handler(request, exc):
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 app.mount("/downloads", StaticFiles(directory=str(OUTPUT_DIR)), name="downloads")
 
+# Serve /static/* (HMRC fraud-collect.js etc.) from the repo `static/` dir.
+_STATIC_DIR = BASE_DIR / "static"
+if _STATIC_DIR.exists():
+    app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
+
+# HMRC MTD ITSA integration — OAuth + fraud-context endpoints + connect page.
+# All routes are no-ops at runtime unless HMRC env is configured.
+try:
+    from hmrc.routers import oauth as _hmrc_oauth_router
+    from hmrc.routers import fraud_context as _hmrc_fraud_router
+    from hmrc.routers import pages as _hmrc_pages_router
+    app.include_router(_hmrc_oauth_router.router)
+    app.include_router(_hmrc_fraud_router.router)
+    app.include_router(_hmrc_pages_router.router)
+except Exception:
+    logger.exception("Failed to register HMRC routers — continuing without HMRC routes")
+
 
 # ==========================================================================
 # Page Routes
