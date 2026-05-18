@@ -310,6 +310,19 @@ def init_db():
     for stmt in stmts:
         _execute(stmt)
 
+    # Migrate: add hmrc_connections columns added after table creation.
+    # Storing the NINO + a JSON list of business IDs lets the obligations
+    # endpoint hit the real HMRC API without re-prompting the user every
+    # time. NINO is per-user PII — encrypted at rest the same way tokens are.
+    for col, col_def in [
+        ("nino_enc", "TEXT DEFAULT NULL"),
+        ("businesses_json", "TEXT DEFAULT NULL"),  # encrypted JSON list of business IDs
+    ]:
+        try:
+            _execute(f"ALTER TABLE hmrc_connections ADD COLUMN {col} {col_def}")
+        except Exception:
+            pass  # already added
+
     # Migrate: add columns if missing (existing databases)
     for col, col_def in [
         ("chat_count", "INTEGER DEFAULT 0"),
