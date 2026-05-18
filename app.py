@@ -656,12 +656,104 @@ async def clear_extracted_data(request: Request):
     return JSONResponse({"status": "ok", "files_cleared": deleted})
 
 
+def _build_hmrc_payload_for_rows(user: dict, rows: list[dict], business_type: str) -> dict:
+    """Classify a list of statement rows and return them annotated with HMRC
+    category data + an aggregate summary suitable for the XLSX exporter.
+
+    Resolution order per row (same as /api/hmrc/categorise):
+      1. User's saved override (★ saved)
+      2. Static regex rule (rule)
+      3. Fallback (low confidence 'other')
+    AI fallback is deliberately NOT called in the download path — it would
+    add seconds of latency to a click that's expected to be instant. The
+    interactive dashboard path is where AI fires; the user's corrections
+    saved there flow through to here via the overrides table.
+    """
+    from hmrc.repositories import overrides as _overrides
+    from hmrc.services import mapping as _mapping
+
+    bt = "property" if business_type == "property" else "se"
+
+    classify_fn = (
+        _mapping.classify_property if bt == "property"
+        else _mapping.classify_self_employment
+    )
+    user_full_name = (user.get("email") or "").split("@")[0]
+
+    annotated_rows = []
+    income: dict[str, float] = {}
+    expenses: dict[str, float] = {}
+    flagged: list[dict] = []
+    excluded: list[dict] = []
+
+    for r in rows:
+        desc = (r.get("description") or "").strip()
+        try:
+            amount = float(r.get("amount") or 0)
+        except (TypeError, ValueError):
+            amount = 0.0
+
+        ov = _overrides.lookup(user["id"], desc, bt)
+        if ov:
+            category, confidence, source = ov, 1.0, "override"
+            is_income = amount > 0
+            reasoning = "Your saved category for this merchant"
+        else:
+            cl = classify_fn(desc, amount, user_full_name=user_full_name)
+            category, confidence = cl.category, cl.confidence
+            is_income, reasoning = cl.is_income, cl.reasoning
+            source = "rule"
+
+        annotated_rows.append({
+            **r,
+            "hmrc_category": category,
+            "hmrc_confidence": confidence,
+            "hmrc_source": source,
+        })
+
+        if category == _mapping.EXCLUDE_OWNER_TRANSFER:
+            excluded.append({"description": desc, "amount": amount})
+            continue
+
+        bucket = income if is_income else expenses
+        bucket[category] = round(bucket.get(category, 0.0) + abs(amount), 2)
+        if confidence < 0.5:
+            flagged.append({"description": desc, "amount": amount, "reasoning": reasoning})
+
+    # Derive period from min/max date on the rows.
+    dates = sorted([r.get("date") for r in rows if r.get("date")])
+    period = {"start": dates[0], "end": dates[-1]} if dates else {}
+
+    return {
+        "rows": annotated_rows,
+        "summary": {
+            "business_type": bt,
+            "period": period,
+            "income": income,
+            "expenses": expenses,
+            "flagged_for_review": flagged,
+            "excluded": excluded,
+        },
+    }
+
+
 @app.get("/api/extracted-data/download")
-async def download_cumulative_xlsx(request: Request, mode: str, currency: str = ""):
+async def download_cumulative_xlsx(
+    request: Request,
+    mode: str,
+    currency: str = "",
+    business_type: str = "",
+):
     """Build a fresh XLSX from all the user's accumulated rows for one mode.
 
-    Accepts an optional `currency` query param (e.g. GBP, USD) so the frontend
-    can pass the currency it detected from the AI response.
+    Query params:
+      - mode: 'statement' or 'receipt'
+      - currency: e.g. 'GBP', 'USD' — for cell formatting only
+      - business_type: 'se' | 'property' | '' — when set on a statement
+        download we ALSO categorise each transaction against HMRC MTD ITSA
+        categories (using the user's saved overrides where they exist) and
+        add 'HMRC Category', 'Confidence', 'Source' columns + an
+        'HMRC Summary' sheet to the workbook.
     """
     user = get_current_user(request)
     if not user:
@@ -681,10 +773,23 @@ async def download_cumulative_xlsx(request: Request, mode: str, currency: str = 
     if mode == "statement":
         output_filename = f"cumulative_statements_{job_id}.xlsx"
         output_path = OUTPUT_DIR / output_filename
-        export_to_xlsx(
-            {"transactions": rows, "summary": {}, "metadata": {"bank_name": "Cumulative Export", "currency": cur}},
-            str(output_path),
-        )
+
+        # Optional HMRC categorisation. Only fires when the caller asked for
+        # a specific business_type. Uses the user's saved overrides where
+        # they exist (same logic as the dashboard categorise endpoint), so
+        # the spreadsheet reflects every correction they've made.
+        hmrc_payload = None
+        if business_type in ("se", "property"):
+            hmrc_payload = _build_hmrc_payload_for_rows(user, rows, business_type)
+
+        data = {
+            "transactions": rows if not hmrc_payload else hmrc_payload["rows"],
+            "summary": {},
+            "metadata": {"bank_name": "Cumulative Export", "currency": cur},
+        }
+        if hmrc_payload:
+            data["hmrc_summary"] = hmrc_payload["summary"]
+        export_to_xlsx(data, str(output_path))
     else:
         output_filename = f"cumulative_receipts_{job_id}.xlsx"
         output_path = OUTPUT_DIR / output_filename

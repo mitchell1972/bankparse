@@ -55,7 +55,18 @@ def export_to_xlsx(data: dict, output_path: str) -> str:
     Export parsed bank statement data to a formatted XLSX file.
 
     Args:
-        data: Dict with 'transactions', 'summary', and 'metadata' keys
+        data: Dict with these keys:
+            - 'transactions' — list of {date, description, type, debit, credit,
+              amount, balance}. Each row may ALSO include 'hmrc_category',
+              'hmrc_confidence', 'hmrc_source' keys; if present the exporter
+              renders three extra columns and a third "HMRC Summary" sheet.
+            - 'summary' — optional precomputed totals dict. When empty the
+              exporter computes totals from `transactions` (fixes the
+              cumulative-export totals=0 bug).
+            - 'metadata' — bank_name, currency.
+            - 'hmrc_summary' — optional dict {income: {...}, expenses: {...},
+              flagged_for_review: [...], excluded: [...], business_type, period}.
+              When provided, renders the HMRC Summary sheet.
         output_path: Path for the output XLSX file
 
     Returns:
@@ -67,15 +78,34 @@ def export_to_xlsx(data: dict, output_path: str) -> str:
     ws = wb.active
     ws.title = "Transactions"
 
+    transactions = data.get("transactions", [])
+    has_hmrc = bool(data.get("hmrc_summary")) or any(
+        ("hmrc_category" in tx) for tx in transactions
+    )
+
+    title_span = "A1:J1" if has_hmrc else "A1:G1"
+
     # Title row
-    ws.merge_cells("A1:G1")
+    ws.merge_cells(title_span)
     ws["A1"] = "Bank Statement - Transaction Report"
     ws["A1"].font = TITLE_FONT
     ws.row_dimensions[1].height = 30
 
-    # Summary section
-    summary = data.get("summary", {})
+    # Summary section — backfill totals from transactions if caller passed an
+    # empty summary (cumulative-export path used to leave this {} and the
+    # numbers showed as zero on every download).
+    summary = data.get("summary") or {}
     metadata = data.get("metadata", {})
+    if transactions and not summary.get("total_transactions"):
+        _credits = sum(float(t.get("credit") or 0) for t in transactions)
+        _debits = sum(float(t.get("debit") or 0) for t in transactions)
+        summary = {
+            "total_transactions": len(transactions),
+            "total_credits": round(_credits, 2),
+            "total_debits": round(_debits, 2),
+            "net": round(_credits - _debits, 2),
+        }
+
     ws["A3"] = "Total Transactions:"
     ws["B3"] = summary.get("total_transactions", 0)
     ws["A3"].font = SUMMARY_FONT
@@ -97,9 +127,12 @@ def export_to_xlsx(data: dict, output_path: str) -> str:
     ws["B6"].number_format = _currency_fmt(metadata)
     ws["A6"].font = SUMMARY_FONT
 
-    # Headers
+    # Headers — extra three columns when the rows carry HMRC data.
     headers = ["Date", "Description", "Type", "Debit", "Credit", "Amount", "Balance"]
+    if has_hmrc:
+        headers += ["HMRC Category", "Confidence", "Source"]
     header_row = 8
+    last_col = len(headers)
 
     for col, header in enumerate(headers, 1):
         cell = ws.cell(row=header_row, column=col, value=header)
@@ -110,7 +143,6 @@ def export_to_xlsx(data: dict, output_path: str) -> str:
     ws.row_dimensions[header_row].height = 25
 
     # Data rows
-    transactions = data.get("transactions", [])
     for i, tx in enumerate(transactions):
         row = header_row + 1 + i
 
@@ -153,12 +185,26 @@ def export_to_xlsx(data: dict, output_path: str) -> str:
             balance_cell.number_format = _currency_fmt(metadata)
         balance_cell.font = NORMAL_FONT
 
-        # Alternating row border
-        for col in range(1, 8):
+        # HMRC columns (only when present on the row)
+        if has_hmrc:
+            ws.cell(row=row, column=8, value=tx.get("hmrc_category", "")).font = NORMAL_FONT
+            conf = tx.get("hmrc_confidence")
+            if conf is not None:
+                conf_cell = ws.cell(row=row, column=9, value=float(conf))
+                conf_cell.number_format = "0%"
+                conf_cell.font = NORMAL_FONT
+            else:
+                ws.cell(row=row, column=9).font = NORMAL_FONT
+            ws.cell(row=row, column=10, value=tx.get("hmrc_source", "")).font = NORMAL_FONT
+
+        # Cell borders across every column we used
+        for col in range(1, last_col + 1):
             ws.cell(row=row, column=col).border = THIN_BORDER
 
     # Column widths
     col_widths = [12, 45, 12, 14, 14, 14, 14]
+    if has_hmrc:
+        col_widths += [22, 12, 14]
     for i, width in enumerate(col_widths, 1):
         ws.column_dimensions[get_column_letter(i)].width = width
 
@@ -168,7 +214,7 @@ def export_to_xlsx(data: dict, output_path: str) -> str:
     # Auto-filter
     if transactions:
         last_row = header_row + len(transactions)
-        ws.auto_filter.ref = f"A{header_row}:G{last_row}"
+        ws.auto_filter.ref = f"A{header_row}:{get_column_letter(last_col)}{last_row}"
 
     # ── Summary Sheet ──
     ws2 = wb.create_sheet("Summary")
@@ -229,9 +275,169 @@ def export_to_xlsx(data: dict, output_path: str) -> str:
     ws2.column_dimensions["D"].width = 18
     ws2.column_dimensions["E"].width = 18
 
+    # ── HMRC Summary sheet ──
+    # Only added when the caller passed a `hmrc_summary` dict produced by
+    # `hmrc.services.mapping.aggregate_self_employment` / `_property`.
+    hmrc_summary = data.get("hmrc_summary")
+    if hmrc_summary:
+        _add_hmrc_summary_sheet(wb, hmrc_summary, metadata)
+
     # Save
     wb.save(output_path)
     return output_path
+
+
+# Human-friendly labels per HMRC category code. Mirrors the dropdowns in
+# templates/index.html so the spreadsheet matches what users see in the UI.
+_HMRC_SE_LABELS = {
+    "turnover": "Turnover (income)",
+    "otherIncome": "Other income",
+    "costOfGoodsBought": "Cost of goods bought",
+    "cisPaymentsToSubcontractors": "CIS subcontractor payments",
+    "staffCosts": "Staff costs / wages",
+    "travelCosts": "Travel / fuel / parking",
+    "premisesRunningCosts": "Premises (rent / utilities)",
+    "maintenanceCosts": "Repairs & maintenance",
+    "adminCosts": "Admin / office / software",
+    "advertisingCosts": "Advertising / marketing",
+    "businessEntertainmentCosts": "Business entertainment",
+    "interest": "Interest on borrowing",
+    "financialCharges": "Bank / financial charges",
+    "badDebt": "Bad debt written off",
+    "professionalFees": "Professional / legal fees",
+    "depreciation": "Depreciation",
+    "other": "Other expense",
+    "_owner_transfer": "Owner transfer (excluded)",
+}
+_HMRC_PROP_LABELS = {
+    "rentIncome": "Rent income",
+    "premiumsOfLeaseGrant": "Premiums of lease grant",
+    "otherIncome": "Other property income",
+    "premisesRunningCosts": "Premises running costs",
+    "repairsAndMaintenance": "Repairs & maintenance",
+    "financialCosts": "Financial costs (commercial)",
+    "professionalFees": "Professional fees",
+    "costOfServices": "Cost of services",
+    "travelCosts": "Travel",
+    "other": "Other expense",
+    "residentialFinancialCost": "Residential mortgage interest (restricted)",
+    "_owner_transfer": "Owner transfer (excluded)",
+}
+
+
+def _add_hmrc_summary_sheet(wb, hmrc: dict, metadata: dict) -> None:
+    """Build the 'HMRC Summary' sheet — the draft quarterly P&L.
+
+    This is what an accountant or HMRC inspector will care about most.
+    Shows period, income by category, expenses by category, net profit,
+    a rough basic-rate tax estimate, and counts of flagged + excluded rows.
+    """
+    biz_type = hmrc.get("business_type", "se")
+    labels = _HMRC_PROP_LABELS if biz_type == "property" else _HMRC_SE_LABELS
+    biz_label = "UK Property (landlord)" if biz_type == "property" else "Self-Employment (sole trader)"
+
+    ws = wb.create_sheet("HMRC Summary")
+    ws.merge_cells("A1:C1")
+    ws["A1"] = "HMRC Quarterly Submission Draft"
+    ws["A1"].font = TITLE_FONT
+    ws.row_dimensions[1].height = 28
+
+    period = hmrc.get("period") or {}
+    ws["A3"] = "Business type:"
+    ws["B3"] = biz_label
+    ws["A3"].font = SUMMARY_FONT
+    ws["A4"] = "Period:"
+    if period.get("start") and period.get("end"):
+        ws["B4"] = f"{period['start']} to {period['end']}"
+    else:
+        ws["B4"] = "—"
+    ws["A4"].font = SUMMARY_FONT
+
+    income = hmrc.get("income") or {}
+    expenses = hmrc.get("expenses") or {}
+    flagged = hmrc.get("flagged_for_review") or []
+    excluded = hmrc.get("excluded") or []
+
+    total_income = round(sum(income.values()), 2)
+    total_expenses = round(sum(expenses.values()), 2)
+    net_profit = round(total_income - total_expenses, 2)
+
+    fmt = _currency_fmt(metadata)
+
+    row = 6
+    ws.cell(row=row, column=1, value="INCOME").font = TITLE_FONT
+    ws.cell(row=row, column=1).fill = HEADER_FILL
+    ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=2)
+    row += 1
+    if not income:
+        ws.cell(row=row, column=1, value="(no income categorised)").font = NORMAL_FONT
+        row += 1
+    for cat, val in sorted(income.items(), key=lambda kv: -kv[1]):
+        ws.cell(row=row, column=1, value=labels.get(cat, cat)).font = NORMAL_FONT
+        v_cell = ws.cell(row=row, column=2, value=val)
+        v_cell.number_format = fmt
+        v_cell.font = CREDIT_FONT
+        row += 1
+    total_i_cell = ws.cell(row=row, column=1, value="Total income")
+    total_i_cell.font = SUMMARY_FONT
+    v_cell = ws.cell(row=row, column=2, value=total_income)
+    v_cell.number_format = fmt
+    v_cell.font = SUMMARY_FONT
+    row += 2
+
+    ws.cell(row=row, column=1, value="EXPENSES").font = TITLE_FONT
+    ws.cell(row=row, column=1).fill = HEADER_FILL
+    ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=2)
+    row += 1
+    if not expenses:
+        ws.cell(row=row, column=1, value="(no expenses categorised)").font = NORMAL_FONT
+        row += 1
+    for cat, val in sorted(expenses.items(), key=lambda kv: -kv[1]):
+        ws.cell(row=row, column=1, value=labels.get(cat, cat)).font = NORMAL_FONT
+        v_cell = ws.cell(row=row, column=2, value=val)
+        v_cell.number_format = fmt
+        v_cell.font = DEBIT_FONT
+        row += 1
+    total_e_cell = ws.cell(row=row, column=1, value="Total expenses")
+    total_e_cell.font = SUMMARY_FONT
+    v_cell = ws.cell(row=row, column=2, value=total_expenses)
+    v_cell.number_format = fmt
+    v_cell.font = SUMMARY_FONT
+    row += 2
+
+    ws.cell(row=row, column=1, value="NET PROFIT").font = TITLE_FONT
+    v_cell = ws.cell(row=row, column=2, value=net_profit)
+    v_cell.number_format = fmt
+    v_cell.font = TITLE_FONT
+    row += 1
+
+    # Rough basic-rate (20%) tax estimate. ITSA is more nuanced (personal
+    # allowance, NICs, higher-rate bands) but this gives users a ballpark
+    # number to plan against; the real number comes from HMRC's
+    # Individual Calculations API once we submit.
+    rough_tax = round(max(net_profit, 0) * 0.20, 2)
+    ws.cell(row=row, column=1, value="Estimated tax (rough, basic rate 20%)").font = NORMAL_FONT
+    v_cell = ws.cell(row=row, column=2, value=rough_tax)
+    v_cell.number_format = fmt
+    v_cell.font = NORMAL_FONT
+    row += 2
+
+    notes = []
+    if flagged:
+        notes.append(f"{len(flagged)} transaction{'s' if len(flagged) != 1 else ''} flagged for review (low confidence).")
+    if excluded:
+        notes.append(f"{len(excluded)} owner transfer{'s' if len(excluded) != 1 else ''} excluded from totals.")
+    notes.append(
+        "This sheet is a draft. Final tax figure comes from HMRC's "
+        "Individual Calculations API after submission."
+    )
+    for note in notes:
+        ws.cell(row=row, column=1, value=note).font = NORMAL_FONT
+        ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=2)
+        row += 1
+
+    ws.column_dimensions["A"].width = 40
+    ws.column_dimensions["B"].width = 18
 
 
 def export_receipt_to_xlsx(data: dict, output_path: str) -> str:
