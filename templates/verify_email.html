@@ -190,7 +190,7 @@
         </div>
 
         <p class="footer-text">
-            Wrong address? <a href="/api/logout" onclick="event.preventDefault(); fetch('/api/logout',{method:'POST'}).then(()=>location.href='/login');">Sign out</a>
+            Wrong address? <a href="#" id="signout-link">Sign out</a>
         </p>
     </div>
 
@@ -229,12 +229,8 @@
                 });
                 const data = await res.json().catch(() => ({}));
                 if (!res.ok) throw new Error(data.detail || 'Verification failed.');
-                const next = data.redirect_to || '/';
-                const label = next === '/start-trial'
-                    ? 'Email verified — set up your free trial...'
-                    : 'Email verified — redirecting...';
-                showMsg(label, 'success');
-                setTimeout(() => { window.location.href = next; }, 800);
+                showMsg('Email verified — redirecting to dashboard...', 'success');
+                setTimeout(() => { window.location.href = '/'; }, 800);
             } catch (err) {
                 showMsg(err.message || 'Verification failed.', 'error');
                 verifyBtn.disabled = false;
@@ -263,6 +259,25 @@
                 }, 2000);
             }
         });
+
+        // Sign-out link — was broken because it POSTed /api/logout without
+        // the X-CSRF-Token header, so the CSRF middleware rejected it (403)
+        // and the redirect never fired. Send the header and redirect on both
+        // success and failure (the cookie is already cleared on the server
+        // side if the request reached the handler).
+        const signoutLink = document.getElementById('signout-link');
+        if (signoutLink) {
+            signoutLink.addEventListener('click', async (e) => {
+                e.preventDefault();
+                try {
+                    await fetch('/api/logout', {
+                        method: 'POST',
+                        headers: { 'X-CSRF-Token': getCsrfToken() },
+                    });
+                } catch (_) { /* network error → still bounce to login */ }
+                window.location.href = '/login';
+            });
+        }
     </script>
 </body>
 </html>
