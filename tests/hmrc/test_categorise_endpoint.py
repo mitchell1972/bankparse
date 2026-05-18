@@ -85,6 +85,8 @@ def _client_with_user(email="cat-test@example.com"):
 # --- Endpoint tests --------------------------------------------------------
 
 def test_categorise_returns_one_hmrc_block_per_row():
+    """With AI disabled, rules cover the obvious cases (TV licence → admin,
+    MiPermit → travel, Stripe → turnover)."""
     client, csrf = _client_with_user()
     rows = [
         {"date": "2025-12-22", "description": "DD TV LICENCE MBP", "amount": -14.95},

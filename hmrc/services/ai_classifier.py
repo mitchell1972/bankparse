@@ -58,18 +58,22 @@ def _categories_for(business_type: str) -> list[str]:
     return _PROP_CATEGORIES if business_type == "property" else _SE_CATEGORIES
 
 
-def reclassify_batch(rows: list[dict], business_type: str = "se") -> list[_mapping.Classification]:
-    """Re-classify a batch of (description, amount) rows with Claude Haiku.
+def classify_batch(rows: list[dict], business_type: str = "se") -> list[_mapping.Classification]:
+    """Classify a batch of (description, amount) rows with Claude Haiku.
 
-    Returns a list of Classification, same length as `rows`, in the same order.
-    On any error, returns a list of `Classification(category='_other_*', confidence=0.0)`.
-    Caller decides whether to trust low-confidence Claude output or fall back.
+    Returns a list of Classification, same length as `rows`, same order.
+    On any error, returns 'other' with confidence 0 (caller falls back).
+
+    Synchronous — for parallel use, call from `asyncio.to_thread()`.
     """
-    if not is_enabled() or not rows:
+    if not rows:
+        return []
+    if not is_enabled():
         return [_mapping.Classification(
             category=_mapping.SE_EXPENSE_OTHER if business_type != "property" else _mapping.PROP_EXPENSE_OTHER,
-            confidence=0.0, is_income=False, reasoning="AI classifier disabled",
-        ) for _ in rows]
+            confidence=0.0, is_income=float(r.get("amount") or 0) > 0,
+            reasoning="AI classifier disabled",
+        ) for r in rows]
 
     try:
         import anthropic  # type: ignore

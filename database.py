@@ -261,6 +261,22 @@ def init_db():
             FOREIGN KEY (user_id) REFERENCES users(id)
         )""",
         "CREATE INDEX IF NOT EXISTS idx_hmrc_overrides_user ON hmrc_merchant_overrides(user_id)",
+        # Global merchant → HMRC category cache. Populated by the AI classifier
+        # whenever it produces a high-confidence result for a new merchant key.
+        # Shared across ALL users — when one user's statement has Costa Coffee
+        # classified, every subsequent user gets that classification for free.
+        # User overrides take precedence over this cache; this cache takes
+        # precedence over a fresh AI call.
+        """CREATE TABLE IF NOT EXISTS hmrc_merchant_cache (
+            merchant_key TEXT NOT NULL,
+            business_type TEXT NOT NULL,
+            category TEXT NOT NULL,
+            confidence REAL NOT NULL,
+            reasoning TEXT,
+            hits INTEGER NOT NULL DEFAULT 1,
+            updated_at REAL NOT NULL,
+            PRIMARY KEY (merchant_key, business_type)
+        )""",
         "CREATE INDEX IF NOT EXISTS idx_extracted_user_mode ON user_extracted_data(user_id, mode)",
         "CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)",
         "CREATE INDEX IF NOT EXISTS idx_users_stripe ON users(stripe_customer_id)",
