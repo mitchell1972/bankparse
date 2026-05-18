@@ -173,11 +173,13 @@ try:
     from hmrc.routers import pages as _hmrc_pages_router
     from hmrc.routers import categorise as _hmrc_categorise_router
     from hmrc.routers import obligations as _hmrc_obligations_router
+    from hmrc.routers import business_details as _hmrc_business_details_router
     app.include_router(_hmrc_oauth_router.router)
     app.include_router(_hmrc_fraud_router.router)
     app.include_router(_hmrc_pages_router.router)
     app.include_router(_hmrc_categorise_router.router)
     app.include_router(_hmrc_obligations_router.router)
+    app.include_router(_hmrc_business_details_router.router)
 except Exception:
     logger.exception("Failed to register HMRC routers — continuing without HMRC routes")
 

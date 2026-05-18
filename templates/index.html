@@ -1003,6 +1003,26 @@
                     <h4 style="margin:0; font-size:0.95rem; color:#2C3E50;">Your HMRC deadlines</h4>
                     <span id="hmrcDeadlinesBadge" style="font-size:0.75rem; padding:0.15rem 0.45rem; border-radius:9999px; background:#FEF3C7; color:#92400E;">Demo</span>
                 </div>
+
+                <!-- Setup form: only shown when connected to HMRC but no NINO saved yet.
+                     Submits to /api/hmrc/connect-businesses which calls the
+                     Business Details API and persists the discovered list. -->
+                <div id="hmrcSetupRow" style="display:none; margin-top:0.75rem; padding:0.75rem; background:#FEF3C7; border-radius:6px;">
+                    <div style="font-size:0.88rem; color:#78350F; margin-bottom:0.5rem;">
+                        Almost there. Enter the National Insurance Number on your HMRC account and we'll fetch your businesses automatically.
+                    </div>
+                    <form id="hmrcSetupForm" style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
+                        <input id="hmrcSetupNino" type="text" placeholder="AB123456C" maxlength="9"
+                               required pattern="[A-Za-z]{2}[0-9]{6}[A-Da-d]"
+                               style="padding:0.45rem 0.6rem; border:1px solid #D1D5DB; border-radius:6px; font-size:0.9rem; width:140px; text-transform:uppercase;">
+                        <button id="hmrcSetupBtn" type="submit" class="btn"
+                                style="background:#1B4F72; color:#fff; padding:0.45rem 0.9rem; font-size:0.88rem;">
+                            Discover my businesses
+                        </button>
+                    </form>
+                    <div id="hmrcSetupMsg" style="display:none; margin-top:0.5rem; font-size:0.85rem;"></div>
+                </div>
+
                 <div id="hmrcDeadlinesError" style="display:none; margin-top:0.5rem; font-size:0.85rem; color:#B91C1C;"></div>
                 <ul id="hmrcDeadlinesList" style="list-style:none; padding:0; margin:0.75rem 0 0 0;"></ul>
             </div>
@@ -2235,6 +2255,7 @@
         const list = document.getElementById('hmrcDeadlinesList');
         const badge = document.getElementById('hmrcDeadlinesBadge');
         const errEl = document.getElementById('hmrcDeadlinesError');
+        const setupRow = document.getElementById('hmrcSetupRow');
         if (!list || !badge) return;
 
         try {
@@ -2250,10 +2271,15 @@
                 badge.style.background = '#FEF3C7';
                 badge.style.color = '#92400E';
                 badge.textContent = data.connected ? 'Setup needed' : 'Demo';
+                // Show the inline NINO form only when connected to HMRC but
+                // we don't have business IDs yet. Otherwise the panel works
+                // fine on the demo fixture for new visitors.
+                if (setupRow) setupRow.style.display = data.connected ? 'block' : 'none';
             } else {
                 badge.style.background = '#D1FAE5';
                 badge.style.color = '#065F46';
                 badge.textContent = 'Live (HMRC)';
+                if (setupRow) setupRow.style.display = 'none';
             }
             if (data.error) {
                 errEl.textContent = data.error;
@@ -2294,10 +2320,70 @@
             .replaceAll('"', '&quot;').replaceAll("'", '&#39;');
     }
 
+    // Wire the inline NINO form. POSTs to /api/hmrc/connect-businesses
+    // which calls the Business Details API and persists the discovered
+    // businesses. On success we reload the panel — badge flips to Live.
+    function wireHmrcSetupForm() {
+        const form = document.getElementById('hmrcSetupForm');
+        const msg = document.getElementById('hmrcSetupMsg');
+        const btn = document.getElementById('hmrcSetupBtn');
+        const ninoInput = document.getElementById('hmrcSetupNino');
+        if (!form || form.dataset.wired === '1') return;
+        form.dataset.wired = '1';
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const nino = (ninoInput.value || '').trim().toUpperCase();
+            if (!/^[A-Z]{2}\d{6}[A-D]$/.test(nino)) {
+                msg.style.display = 'block';
+                msg.style.color = '#B91C1C';
+                msg.textContent = 'NINO format should be AB123456C.';
+                return;
+            }
+            btn.disabled = true;
+            btn.textContent = 'Searching HMRC…';
+            msg.style.display = 'none';
+            try {
+                const csrf = (document.cookie.match(/bp_csrf=([^;]+)/) || [])[1] || '';
+                const resp = await fetch('/api/hmrc/connect-businesses', {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-Token': csrf,
+                    },
+                    body: JSON.stringify({ nino }),
+                });
+                const data = await resp.json();
+                if (!resp.ok) {
+                    msg.style.display = 'block';
+                    msg.style.color = '#B91C1C';
+                    msg.textContent = data.detail || `HMRC error (status ${resp.status}).`;
+                    return;
+                }
+                msg.style.display = 'block';
+                msg.style.color = '#065F46';
+                msg.textContent = `Found ${data.businesses_found} business(es). Loading deadlines…`;
+                await loadHmrcDeadlines();
+            } catch (err) {
+                msg.style.display = 'block';
+                msg.style.color = '#B91C1C';
+                msg.textContent = 'Network error. Check your connection and retry.';
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Discover my businesses';
+            }
+        });
+    }
+
     // Kick off in the background — does not block the rest of the page.
     if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', loadHmrcDeadlines);
+        document.addEventListener('DOMContentLoaded', () => {
+            wireHmrcSetupForm();
+            loadHmrcDeadlines();
+        });
     } else {
+        wireHmrcSetupForm();
         loadHmrcDeadlines();
     }
 

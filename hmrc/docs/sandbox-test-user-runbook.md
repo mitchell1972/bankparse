@@ -76,8 +76,6 @@ Once you have:
 
 ```
 NINO:        AB123456C
-SE business: XAIS00000000001
-Prop biz:    XPIS00000000002
 HMRC pwd:    (the password from step 1)
 ```
 
@@ -88,31 +86,22 @@ HMRC pwd:    (the password from step 1)
 2. Sign in with the **test User ID + password** from Step 1 (NOT your
    real Government Gateway login).
 3. Click **Grant authority**. You'll be sent back to the dashboard.
-4. POST `/api/hmrc/obligations/business-setup` from the browser console
-   (the dashboard panel will eventually do this for you — for now do it
-   manually so we can test today):
+4. The dashboard panel will say **"Setup needed"** and show an inline
+   form: *"Enter the National Insurance Number on your HMRC account
+   and we'll fetch your businesses automatically."*
+5. Type the NINO from Step 1 and click **Discover my businesses**.
+   We'll call HMRC's Business Details API on your behalf, find every
+   self-employment + property business linked to that NINO, and persist
+   them. No copy-paste, no JS console.
+6. The badge flips from **Setup needed** to **Live (HMRC)** and the
+   panel populates with real obligations from the sandbox.
 
-   ```js
-   await fetch('/api/hmrc/obligations/business-setup', {
-     method: 'POST',
-     headers: {'Content-Type': 'application/json',
-               'X-CSRF-Token': document.cookie.match(/bp_csrf=([^;]+)/)[1]},
-     credentials: 'include',
-     body: JSON.stringify({
-       nino: 'AB123456C',
-       businesses: [
-         {business_id: 'XAIS00000000001', type_of_business: 'self-employment',
-          label: 'Mitoba sole trader (sandbox)'},
-         {business_id: 'XPIS00000000002', type_of_business: 'property',
-          label: 'Ipswich SA portfolio (sandbox)'},
-       ],
-     }),
-   }).then(r => r.json());
-   ```
-
-5. Refresh the dashboard. The "Your HMRC deadlines" panel should switch
-   its badge from **Demo** to **Live (HMRC)** and show real obligations
-   from the sandbox.
+> **Note:** Steps 2 and 3 of this runbook (creating SE + property
+> businesses manually) are still useful if you want to seed the sandbox
+> with specific business IDs. If you skip them, HMRC's sandbox may
+> return an empty list — Step 5 then shows "HMRC has no MTD ITSA
+> businesses registered for that NINO. Register at least one in your
+> HMRC account first."
 
 ---
 
