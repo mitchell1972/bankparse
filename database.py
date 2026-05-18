@@ -246,6 +246,21 @@ def init_db():
         )""",
         "CREATE INDEX IF NOT EXISTS idx_hmrc_submissions_user ON hmrc_submissions(user_id, created_at DESC)",
         "CREATE INDEX IF NOT EXISTS idx_hmrc_submissions_idempotency ON hmrc_submissions(idempotency_key)",
+        # Per-user merchant → HMRC category overrides. When a user corrects an
+        # auto-categorisation, we save the mapping so next time the same
+        # merchant appears it's auto-categorised the user's way. Composite
+        # PK: a single merchant can have one override per business_type
+        # (e.g. 'amazon' is admin for SE but might be excluded for property).
+        """CREATE TABLE IF NOT EXISTS hmrc_merchant_overrides (
+            user_id INTEGER NOT NULL,
+            merchant_key TEXT NOT NULL,
+            business_type TEXT NOT NULL,
+            category TEXT NOT NULL,
+            updated_at REAL NOT NULL,
+            PRIMARY KEY (user_id, merchant_key, business_type),
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        )""",
+        "CREATE INDEX IF NOT EXISTS idx_hmrc_overrides_user ON hmrc_merchant_overrides(user_id)",
         "CREATE INDEX IF NOT EXISTS idx_extracted_user_mode ON user_extracted_data(user_id, mode)",
         "CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)",
         "CREATE INDEX IF NOT EXISTS idx_users_stripe ON users(stripe_customer_id)",

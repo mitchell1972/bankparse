@@ -90,6 +90,34 @@ class Classification:
     reasoning: str             # plain-English explanation for the UI
 
 
+# Sentinel category — these transactions are NOT a tax expense or income at
+# all. They're typically the user moving money between their own accounts.
+# The UI hides these from category totals but still shows them on the table.
+EXCLUDE_OWNER_TRANSFER = "_owner_transfer"
+
+
+def _is_likely_owner_transfer(description: str, user_full_name: str | None) -> bool:
+    """Heuristic: is this a transfer the user made to/from themselves?
+
+    Triggers if the description contains the user's first or last name, OR
+    obvious self-transfer keywords. Helps avoid mis-classifying personal
+    cash movements as taxable income/expenses.
+    """
+    desc = (description or "").lower()
+    if any(k in desc for k in (" own transfer", " to savings", " from savings", " transfer to ", " transfer from ")):
+        return True
+    if not user_full_name:
+        return False
+    parts = [p.strip().lower() for p in re.split(r"[\s,]+", user_full_name) if p.strip()]
+    parts = [p for p in parts if len(p) >= 3]  # skip initials
+    if not parts:
+        return False
+    # Need at least two name parts to match — single common first name alone
+    # is too noisy (e.g. "James" shouldn't trip).
+    hits = sum(1 for p in parts if p in desc)
+    return hits >= 2
+
+
 # ---------------------------------------------------------------------------
 # Self-employment rules
 # Ordering matters — earlier rules trump later. Keep narrow merchants ahead
@@ -97,83 +125,141 @@ class Classification:
 # ---------------------------------------------------------------------------
 
 _SE_RULES: list[tuple[re.Pattern[str], str, bool, float, str]] = [
-    # --- income ---
-    (re.compile(r"\b(stripe|paypal|gocardless|sumup|square|takepayments)\b", re.I),
+    # ----- income -----
+    (re.compile(r"\b(stripe|paypal|gocardless|sumup|square|takepayments|zettle|tide payments)\b", re.I),
      SE_INCOME, True, 0.85, "Payment processor deposit — typically customer takings"),
-    (re.compile(r"\bsalary|payroll|wages received|fee for service\b", re.I),
-     SE_INCOME, True, 0.75, "Looks like an incoming fee or salary deposit"),
+    (re.compile(r"\b(invoice|inv\d|sales receipt|fee for service|consulting fee)\b", re.I),
+     SE_INCOME, True, 0.80, "Looks like an invoice / fee payment"),
 
-    # --- subcontractor / CIS ---
+    # ----- subcontractor / CIS -----
     (re.compile(r"\bcis\b|construction industry scheme", re.I),
      SE_EXPENSE_CIS, False, 0.90, "Mentions CIS — Construction Industry Scheme payment"),
 
-    # --- staff ---
-    (re.compile(r"\b(payroll|wages|salary|hmrc paye|paye|pension contribution)\b", re.I),
+    # ----- staff -----
+    (re.compile(r"\b(payroll|wages|salary paid|hmrc paye|paye payment|nest pension|"
+                r"the people's pension|smart pension|aviva pension|standard life)\b", re.I),
      SE_EXPENSE_STAFF, False, 0.85, "Looks like a staff cost (wages / PAYE / pension)"),
 
-    # --- travel ---
-    (re.compile(r"\b(uber|lyft|bolt|trainline|sncf|tfl|transport for london|"
-                r"national rail|easyjet|ryanair|british airways|"
-                r"shell|bp|esso|texaco|fuel|petrol|diesel)\b", re.I),
-     SE_EXPENSE_TRAVEL, False, 0.90, "Travel / fuel merchant"),
+    # ----- travel: parking, fuel, public transport, taxis, flights -----
+    (re.compile(r"\b(ncp|q-?park|euro car park|apcoa|justpark|"
+                r"mipermit|ringgo|paybyphone|parkmobile|"
+                r"tfl|transport for london|trainline|"
+                r"national rail|cross country|lner|gwr|south western|"
+                r"chiltern|northern rail|tpe|"
+                r"uber|lyft|bolt|via|free now|gett|addison lee|"
+                r"easyjet|ryanair|british airways|jet2|"
+                r"shell|bp\b|esso|texaco|sainsbury'?s petrol|tesco fuel|asda fuel|"
+                r"morrisons fuel|costco fuel|gulf|jet petrol|fuel|petrol|diesel|"
+                r"dvla|congestion charge|dartford crossing|"
+                r"national express|megabus|stagecoach|first bus)\b", re.I),
+     SE_EXPENSE_TRAVEL, False, 0.90, "Travel / fuel / parking merchant"),
 
-    # --- premises (rent, utilities, council tax) ---
-    (re.compile(r"\b(rent|business rates|council tax|electric ireland|"
-                r"british gas|edf|eon|octopus energy|sse|scottish power|"
-                r"thames water|severn trent|anglian water|virgin media business|"
-                r"bt business|sky business|openreach)\b", re.I),
+    # ----- premises (rent, utilities, council tax) -----
+    (re.compile(r"\b(rent payment|business rates|council tax|"
+                r"british gas|edf|eon|octopus energy|sse|ovo|scottish power|"
+                r"bulb|so energy|utilita|shell energy|good energy|"
+                r"thames water|severn trent|anglian water|yorkshire water|"
+                r"southern water|south west water|northumbrian water|"
+                r"affinity water|wessex water|"
+                r"virgin media|bt business|bt internet|sky business|openreach|"
+                r"plusnet|talktalk business|vodafone business|three business|"
+                r"ee business)\b", re.I),
      SE_EXPENSE_PREMISES, False, 0.85, "Premises running cost (rent/utilities/internet)"),
 
-    # --- repairs ---
+    # ----- repairs -----
     (re.compile(r"\b(travis perkins|wickes|screwfix|b&q|toolstation|"
-                r"plumber|electrician|repair|maintenance|boiler service)\b", re.I),
+                r"jewson|howdens|builders merchants?|"
+                r"plumber|electrician|repair|maintenance|boiler service|"
+                r"locksmith|glazier|gas safe)\b", re.I),
      SE_EXPENSE_REPAIRS, False, 0.85, "Repairs / maintenance supplier"),
 
-    # --- admin (stationery, software, subscriptions) ---
-    (re.compile(r"\b(amazon|amzn|royal mail|dpd|hermes|evri|"
-                r"google workspace|microsoft|office365|m365|"
-                r"zoom|notion|slack|github|aws|azure|cloudflare|"
-                r"xero|quickbooks|freeagent|sage|stripe billing)\b", re.I),
-     SE_EXPENSE_ADMIN, False, 0.80, "Office / admin / software subscription"),
+    # ----- admin (stationery, software, subscriptions, postage, shopping) -----
+    (re.compile(r"\b(amazon|amzn|royal mail|dpd|hermes|evri|yodel|fedex|ups|dhl|"
+                r"google workspace|microsoft|office365|m365|outlook|"
+                r"zoom|notion|slack|github|aws|amazon web services|azure|cloudflare|"
+                r"xero|quickbooks|qbo|freeagent|sage|stripe billing|"
+                r"adobe|canva|figma|miro|"
+                r"openrouter|openai|anthropic|claude|gemini|"
+                r"home bargains|argos|wilko|wilkinson|b&m|poundland|"
+                r"staples|ryman|paperchase|whsmith|"
+                r"vodafone|three\.co|three uk|ee\.co|o2|giffgaff|"
+                r"home office|companies house filing)\b", re.I),
+     SE_EXPENSE_ADMIN, False, 0.80, "Office / admin / postage / software / shopping"),
 
-    # --- advertising ---
+    # ----- advertising -----
     (re.compile(r"\b(facebook ads|meta ads|google ads|adwords|"
                 r"linkedin ads|tiktok ads|x ads|twitter ads|"
-                r"advertising|marketing)\b", re.I),
+                r"reddit ads|youtube ads|snapchat ads|"
+                r"mailchimp|hubspot|klaviyo|sendgrid|"
+                r"advertising|marketing|promoted)\b", re.I),
      SE_EXPENSE_ADVERTISING, False, 0.90, "Advertising / marketing spend"),
 
-    # --- entertainment ---
-    (re.compile(r"\b(restaurant|pub|hotel|deliveroo|uber eats|just eat)\b", re.I),
-     SE_EXPENSE_ENTERTAINMENT, False, 0.60,
-     "Possibly business entertainment — note HMRC restricts this category"),
+    # ----- entertainment (subsistence + restaurants — restricted by HMRC) -----
+    (re.compile(r"\b(restaurant|pub\b|hotel|bar|cafe|coffee|"
+                r"deliveroo|uber eats|just eat|"
+                r"greggs|pret|starbucks|costa|caffe nero|leon|wasabi|itsu|"
+                r"mcdonald'?s|kfc|burger king|subway|taco bell|nando'?s|"
+                r"five guys|wagamama|pizza express|domino'?s|papa john'?s|"
+                r"premier inn|travelodge|ibis|holiday inn)\b", re.I),
+     SE_EXPENSE_ENTERTAINMENT, False, 0.55,
+     "Subsistence / hospitality — note HMRC restricts business entertainment"),
 
-    # --- interest / financial charges ---
-    (re.compile(r"\b(interest charge|loan interest|mortgage interest)\b", re.I),
+    # ----- interest / financial charges -----
+    (re.compile(r"\b(interest charge|loan interest|mortgage interest|"
+                r"overdraft interest)\b", re.I),
      SE_EXPENSE_INTEREST, False, 0.85, "Interest payment on borrowing"),
-    (re.compile(r"\b(bank charge|overdraft fee|transaction fee|foreign exchange)\b", re.I),
+    (re.compile(r"\b(bank charge|overdraft fee|transaction fee|"
+                r"foreign exchange|fx fee|non-?sterling fee|"
+                r"international fee|atm fee)\b", re.I),
      SE_EXPENSE_FINANCIAL, False, 0.85, "Bank / financial charge"),
 
-    # --- professional fees ---
+    # ----- professional fees -----
     (re.compile(r"\b(solicitor|lawyer|accountant|bookkeeper|"
-                r"insurance|aviva|axa|hiscox|simply business|"
-                r"companies house|ico|insolvency)\b", re.I),
+                r"insurance|aviva|axa|hiscox|simply business|direct line|"
+                r"admiral|churchill|lv=|esure|"
+                r"companies house|ico|insolvency|cipa)\b", re.I),
      SE_EXPENSE_PROFESSIONAL, False, 0.85, "Professional / legal / insurance fees"),
 
-    # --- cost of goods ---
-    (re.compile(r"\b(makro|booker|alibaba|wholesale|cash & carry)\b", re.I),
+    # ----- cost of goods -----
+    (re.compile(r"\b(makro|booker|alibaba|aliexpress|wholesale|cash & carry|"
+                r"costco|bookers cash and carry)\b", re.I),
      SE_EXPENSE_COST_OF_GOODS, False, 0.80, "Wholesale goods purchase"),
+
+    # ----- TV licence (admin) — special case -----
+    (re.compile(r"\b(tv licen[cs]e|tv licensing|bbc licen[cs]e|dd tv licence)\b", re.I),
+     SE_EXPENSE_ADMIN, False, 0.80, "TV licence — included under admin"),
 ]
 
 
-def classify_self_employment(description: str, amount: float) -> Classification:
+def classify_self_employment(
+    description: str,
+    amount: float,
+    user_full_name: str | None = None,
+) -> Classification:
     """Map one bank transaction to a self-employment HMRC category.
 
     `amount` is the signed bank amount: positive = credit (money in),
     negative = debit (money out). We use the sign to bias toward income vs
     expense classification when the description is ambiguous.
+
+    `user_full_name` (optional) lets us spot transfers to/from the user's
+    own accounts and exclude them from category totals — these are owner
+    draws, not taxable events.
     """
     desc = (description or "").strip()
     is_credit = amount > 0
+
+    # Own-name transfer? Exclude before any other rule. We can't know
+    # whether it's income vs expense without business context; the UI
+    # marks them clearly so the user can re-categorise if needed.
+    if _is_likely_owner_transfer(desc, user_full_name):
+        return Classification(
+            EXCLUDE_OWNER_TRANSFER,
+            confidence=0.95,
+            is_income=is_credit,
+            reasoning=f"Looks like a transfer to/from your own account ('{desc[:40]}…') — excluded from tax totals",
+        )
+
     for pat, cat, is_income_rule, conf, why in _SE_RULES:
         if pat.search(desc):
             # If rule says income but bank says debit (or vice versa), trust
@@ -239,10 +325,23 @@ _PROPERTY_RULES: list[tuple[re.Pattern[str], str, bool, float, str]] = [
 ]
 
 
-def classify_property(description: str, amount: float) -> Classification:
+def classify_property(
+    description: str,
+    amount: float,
+    user_full_name: str | None = None,
+) -> Classification:
     """Map one bank transaction to a UK property HMRC category."""
     desc = (description or "").strip()
     is_credit = amount > 0
+
+    if _is_likely_owner_transfer(desc, user_full_name):
+        return Classification(
+            EXCLUDE_OWNER_TRANSFER,
+            confidence=0.95,
+            is_income=is_credit,
+            reasoning=f"Looks like a transfer to/from your own account ('{desc[:40]}…') — excluded from tax totals",
+        )
+
     for pat, cat, is_income_rule, conf, why in _PROPERTY_RULES:
         if pat.search(desc):
             if is_income_rule != is_credit:
@@ -265,7 +364,33 @@ def classify_property(description: str, amount: float) -> Classification:
 # Aggregation — bank-transaction rows → HMRC quarterly submission payload.
 # ---------------------------------------------------------------------------
 
-def aggregate_self_employment(rows: Iterable[dict]) -> dict:
+def _aggregate(rows: Iterable[dict], classify_fn, low_conf_income: str, low_conf_expense: str,
+               user_full_name: str | None = None) -> dict:
+    """Shared aggregator. Owner-transfer rows are excluded from category totals
+    but returned in `excluded` so the UI can show them clearly."""
+    income: dict[str, float] = {}
+    expenses: dict[str, float] = {}
+    flagged: list[dict] = []
+    excluded: list[dict] = []
+    for r in rows:
+        c = classify_fn(r.get("description", ""), float(r.get("amount") or 0), user_full_name)
+        if c.category == EXCLUDE_OWNER_TRANSFER:
+            excluded.append({"row": r, "classification": c.__dict__})
+            continue
+        bucket = income if c.is_income else expenses
+        key = c.category if c.confidence >= 0.5 else (low_conf_income if c.is_income else low_conf_expense)
+        bucket[key] = round(bucket.get(key, 0.0) + abs(float(r.get("amount") or 0)), 2)
+        if c.confidence < 0.5:
+            flagged.append({"row": r, "classification": c.__dict__})
+    return {
+        "income": income,
+        "expenses": expenses,
+        "flagged_for_review": flagged,
+        "excluded": excluded,
+    }
+
+
+def aggregate_self_employment(rows: Iterable[dict], user_full_name: str | None = None) -> dict:
     """Sum bank-transaction rows into the HMRC SE quarterly payload shape.
 
     Each input row must contain at minimum:
@@ -274,37 +399,12 @@ def aggregate_self_employment(rows: Iterable[dict]) -> dict:
 
     Returns a dict with `income.turnover`, `income.other`, and
     `expenses.<category>` keys ready to be assembled into the
-    Self-Employment Business (MTD) period-summary POST body.
-
-    Low-confidence rows (< 0.5) are bucketed into 'other' under each side.
+    Self-Employment Business (MTD) period-summary POST body. Also includes
+    `flagged_for_review` (low-confidence) and `excluded` (owner transfers).
     """
-    income: dict[str, float] = {}
-    expenses: dict[str, float] = {}
-    flagged: list[dict] = []
-    for r in rows:
-        c = classify_self_employment(r.get("description", ""), float(r.get("amount") or 0))
-        bucket = income if c.is_income else expenses
-        key = c.category if c.confidence >= 0.5 else (
-            SE_OTHER_INCOME if c.is_income else SE_EXPENSE_OTHER
-        )
-        bucket[key] = round(bucket.get(key, 0.0) + abs(float(r.get("amount") or 0)), 2)
-        if c.confidence < 0.5:
-            flagged.append({"row": r, "classification": c.__dict__})
-    return {"income": income, "expenses": expenses, "flagged_for_review": flagged}
+    return _aggregate(rows, classify_self_employment, SE_OTHER_INCOME, SE_EXPENSE_OTHER, user_full_name)
 
 
-def aggregate_property(rows: Iterable[dict]) -> dict:
+def aggregate_property(rows: Iterable[dict], user_full_name: str | None = None) -> dict:
     """Same shape as `aggregate_self_employment` but for UK property."""
-    income: dict[str, float] = {}
-    expenses: dict[str, float] = {}
-    flagged: list[dict] = []
-    for r in rows:
-        c = classify_property(r.get("description", ""), float(r.get("amount") or 0))
-        bucket = income if c.is_income else expenses
-        key = c.category if c.confidence >= 0.5 else (
-            PROP_INCOME_OTHER if c.is_income else PROP_EXPENSE_OTHER
-        )
-        bucket[key] = round(bucket.get(key, 0.0) + abs(float(r.get("amount") or 0)), 2)
-        if c.confidence < 0.5:
-            flagged.append({"row": r, "classification": c.__dict__})
-    return {"income": income, "expenses": expenses, "flagged_for_review": flagged}
+    return _aggregate(rows, classify_property, PROP_INCOME_OTHER, PROP_EXPENSE_OTHER, user_full_name)
