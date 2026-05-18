@@ -1197,6 +1197,30 @@
             </div>
 
             <h3 id="bulkStmtHeading">All Transactions</h3>
+
+            <!-- HMRC categorisation panel for bulk view — same component as
+                 the single-statement preview, hooked into the bulk render. -->
+            <div id="bulkHmrcPanel" style="margin: 0.75rem 0 1rem 0; padding: 1rem; border: 1px solid #E5E7EB; border-radius: 8px; background: #F8F9FA;">
+                <div style="display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; justify-content: space-between;">
+                    <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
+                        <button type="button" id="bulkHmrcToggleBtn" class="btn"
+                                style="background:#1B4F72; color:#fff; padding:0.5rem 0.9rem; font-size:0.9rem;">
+                            Show HMRC categories
+                        </button>
+                        <label for="bulkHmrcBizType" style="font-size:0.88rem; color:#2C3E50;">Business type:</label>
+                        <select id="bulkHmrcBizType" style="padding:0.4rem 0.6rem; font-size:0.88rem; border-radius:6px; border:1px solid #D1D5DB;">
+                            <option value="se">Self-employment</option>
+                            <option value="property">UK property (landlord)</option>
+                        </select>
+                    </div>
+                    <a href="/hmrc/connect" id="bulkHmrcConnectLink"
+                       style="font-size:0.9rem; color:#1B4F72; text-decoration:none;">
+                        Connect to HMRC →
+                    </a>
+                </div>
+                <div id="bulkHmrcSummary" style="display:none; margin-top:1rem;"></div>
+            </div>
+
             <div style="overflow-x: auto;">
                 <table class="preview-table" id="bulkStmtTable">
                     <thead id="bulkStmtThead">
@@ -2396,6 +2420,103 @@
         }
     }
 
+    // --- Bulk-statement variant ----------------------------------------
+    // Same panel, same HMRC_STATE — but the row source is the bulk
+    // statement view (all_transactions on page 0, or one statement's rows
+    // when paged).
+
+    function bulkActiveTxns() {
+        if (!bulkStatementData) return [];
+        if (bulkStatementPage === 0) return bulkStatementData.all_transactions || [];
+        const stmts = bulkStatementData.statements || [];
+        const stmt = stmts[bulkStatementPage - 1];
+        return (stmt && stmt.transactions) || [];
+    }
+
+    function ensureBulkHmrcHeader(isAllStatementsView) {
+        const thead = document.getElementById('bulkStmtThead');
+        if (!thead) return;
+        if (isAllStatementsView) {
+            thead.innerHTML = '<tr><th>Source</th><th>Date</th><th>Description</th><th>Amount</th>'
+                + (HMRC_STATE.shown ? '<th class="hmrc-col">HMRC category</th>' : '') + '</tr>';
+        } else {
+            thead.innerHTML = '<tr><th>Date</th><th>Description</th><th>Amount</th><th>Balance</th>'
+                + (HMRC_STATE.shown ? '<th class="hmrc-col">HMRC category</th>' : '') + '</tr>';
+        }
+    }
+
+    async function loadHmrcCategoriesBulk() {
+        const txns = bulkActiveTxns();
+        if (!txns.length) return;
+        const res = await fetch('/api/hmrc/categorise', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': getCsrfToken() },
+            body: JSON.stringify({
+                business_type: HMRC_STATE.businessType,
+                rows: txns.map(t => ({ date: t.date, description: t.description, amount: t.amount })),
+            }),
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        HMRC_STATE.categories = (data.rows || []).map(r => r.hmrc);
+    }
+
+    async function refreshHmrcSummaryBulk() {
+        const txns = bulkActiveTxns();
+        if (!txns.length) return;
+        const res = await fetch('/api/hmrc/categorise/summary', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': getCsrfToken() },
+            body: JSON.stringify({
+                business_type: HMRC_STATE.businessType,
+                rows: txns.map(t => ({ date: t.date, description: t.description, amount: t.amount })),
+            }),
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        renderHmrcSummaryInto('bulkHmrcSummary', data.summary);
+    }
+
+    function renderHmrcSummaryInto(elId, s) {
+        const el = document.getElementById(elId);
+        if (!el) return;
+        if (!s) { el.style.display = 'none'; return; }
+        // Reuse the existing summary renderer but target a different element.
+        const original = document.getElementById('hmrcSummary');
+        if (el === original) { renderHmrcSummary(s); return; }
+        // Temporarily swap the id so renderHmrcSummary writes into our element.
+        const oldId = el.id;
+        el.id = 'hmrcSummary';
+        const orig = original ? original.id : null;
+        if (original && original !== el) original.id = 'hmrcSummary_original_tmp';
+        renderHmrcSummary(s);
+        el.id = oldId;
+        if (original && original !== el && orig !== null) original.id = orig;
+    }
+
+    async function toggleBulkHmrcPanel() {
+        const btn = document.getElementById('bulkHmrcToggleBtn');
+        if (!btn) return;
+        if (!HMRC_STATE.shown) {
+            btn.disabled = true; btn.textContent = 'Categorising…';
+            try {
+                await loadHmrcCategoriesBulk();
+                HMRC_STATE.shown = true;
+                renderBulkStatementRows();
+                await refreshHmrcSummaryBulk();
+                btn.textContent = 'Hide HMRC categories';
+            } finally {
+                btn.disabled = false;
+            }
+        } else {
+            HMRC_STATE.shown = false;
+            const sum = document.getElementById('bulkHmrcSummary');
+            if (sum) sum.style.display = 'none';
+            renderBulkStatementRows();
+            btn.textContent = 'Show HMRC categories';
+        }
+    }
+
     document.addEventListener('DOMContentLoaded', () => {
         const btn = document.getElementById('hmrcToggleBtn');
         if (btn) btn.addEventListener('click', toggleHmrcPanel);
@@ -2406,6 +2527,22 @@
                 await loadHmrcCategories();
                 renderTransactionPage();
                 await refreshHmrcSummary();
+            }
+        });
+
+        // Bulk panel — same state, different render targets.
+        const bulkBtn = document.getElementById('bulkHmrcToggleBtn');
+        if (bulkBtn) bulkBtn.addEventListener('click', toggleBulkHmrcPanel);
+        const bulkSel = document.getElementById('bulkHmrcBizType');
+        if (bulkSel) bulkSel.addEventListener('change', async (e) => {
+            HMRC_STATE.businessType = e.target.value;
+            // Keep both selectors in sync.
+            const other = document.getElementById('hmrcBizType');
+            if (other && other.value !== e.target.value) other.value = e.target.value;
+            if (HMRC_STATE.shown) {
+                await loadHmrcCategoriesBulk();
+                renderBulkStatementRows();
+                await refreshHmrcSummaryBulk();
             }
         });
     });
@@ -2671,37 +2808,50 @@
             txns = (stmt && stmt.transactions) || [];
         }
 
+        // Ensure the bulk header reflects the current HMRC toggle state.
+        ensureBulkHmrcHeader(bulkStatementPage === 0);
+
         const totalPages = Math.ceil(txns.length / ITEMS_PER_PAGE);
         if (bulkStatementRowPage > totalPages) bulkStatementRowPage = totalPages || 1;
         const start = (bulkStatementRowPage - 1) * ITEMS_PER_PAGE;
         const end = Math.min(start + ITEMS_PER_PAGE, txns.length);
         const pageTxns = txns.slice(start, end);
+        const showHmrc = HMRC_STATE.shown;
 
         if (bulkStatementPage === 0) {
-            pageTxns.forEach(tx => {
+            pageTxns.forEach((tx, i) => {
+                const globalIdx = start + i;
                 const tr = document.createElement('tr');
                 const amtClass = tx.amount >= 0 ? 'credit-amount' : 'debit-amount';
+                const hmrc = HMRC_STATE.categories[globalIdx];
+                const hmrcCell = showHmrc ? renderHmrcCell(hmrc, tx) : '';
                 tr.innerHTML = `
                     <td>${escapeHtml(tx.source || '')}</td>
                     <td>${escapeHtml(tx.date)}</td>
                     <td>${escapeHtml(tx.description)}</td>
                     <td class="${amtClass}">${formatCurrency(tx.amount)}</td>
+                    ${showHmrc ? `<td class="hmrc-col" data-row-idx="${globalIdx}">${hmrcCell}</td>` : ''}
                 `;
                 tbody.appendChild(tr);
             });
         } else {
-            pageTxns.forEach(tx => {
+            pageTxns.forEach((tx, i) => {
+                const globalIdx = start + i;
                 const tr = document.createElement('tr');
                 const amtClass = tx.amount >= 0 ? 'credit-amount' : 'debit-amount';
+                const hmrc = HMRC_STATE.categories[globalIdx];
+                const hmrcCell = showHmrc ? renderHmrcCell(hmrc, tx) : '';
                 tr.innerHTML = `
                     <td>${escapeHtml(tx.date)}</td>
                     <td>${escapeHtml(tx.description)}</td>
                     <td class="${amtClass}">${tx.amount >= 0 ? '+' : ''}${formatCurrency(tx.amount)}</td>
                     <td>${tx.balance != null ? formatCurrency(tx.balance) : '\u2014'}</td>
+                    ${showHmrc ? `<td class="hmrc-col" data-row-idx="${globalIdx}">${hmrcCell}</td>` : ''}
                 `;
                 tbody.appendChild(tr);
             });
         }
+        if (showHmrc) wireCategoryDropdowns();
 
         renderRowPagination(document.getElementById('bulkStmtRowPagination'), bulkStatementRowPage, totalPages, (p) => {
             bulkStatementRowPage = p;
