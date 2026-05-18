@@ -100,10 +100,13 @@ async def categorise(request: Request):
             # 2. Static rules
             cl = _classify_one(desc, amount, business_type, user_full_name=user_full_name)
             source = "rule"
-            if cl.confidence < 0.5:
-                # 3. (Optional) AI fallback for low-confidence rows.
+            # Wider net than before: any row under 0.6 — that includes the
+            # 0.2-confidence "personal transfer" cases like 'BP James Okeh
+            # Gift' and 'CR FUFEYIN T TIMI' — gets retried by Claude when
+            # the AI flag is on.
+            if cl.confidence < 0.6:
                 low_conf_rows.append((i, r))
-                # Tentative placeholder; will be overwritten below if AI runs.
+                # Placeholder; overwritten below if AI runs.
 
         out_rows.append({**r, "hmrc": {
             "category": cl.category,

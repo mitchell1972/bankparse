@@ -82,6 +82,44 @@ PROP_EXPENSE_OTHER = "other"
 PROP_EXPENSE_RESIDENTIAL_FINANCIAL = "residentialFinancialCost"
 
 
+# Strip bank-statement prefixes before regex matching.
+# Real-world UK statements lead descriptions with codes like "BP" (Bill
+# Payment), "DD" (Direct Debit), "SO" (Standing Order), "CR" (Credit),
+# "FPI"/"FPO" (Faster Payment In/Out), "VIS" (Visa), "POS", "ATM", "CHQ",
+# "TFR"/"TRF" (Transfer). These collide with merchant names — e.g. "BP" the
+# prefix collides with "BP" the petrol station — and lead to confidently
+# wrong categorisations. Strip them once before matching.
+_BANK_PREFIX_RE = re.compile(
+    # NB. 'bp' is intentionally NOT stripped here — the strict BP-fuel rule
+    # below needs to see "BP <fuel-word>" in the original description, and
+    # the person-name fallback handles 'BP <person-name>' just fine because
+    # 'BP James Okeh Gift' reads as four capitalised words anyway.
+    r"^\s*(?:dd|so|cr|dr|vis|atm|chq|pos|fpi|fpo|tfr|trf|"
+    r"\)+|\(+)\s+",
+    re.I,
+)
+
+# A description that's essentially just "<First> <Last>" — common shape for
+# personal transfers (gifts, paying friends back, etc.) — has no business
+# signal so we route it to AI / low-confidence rather than guess wrong.
+_LIKELY_PERSON_NAME = re.compile(
+    r"^\s*[A-Z][a-zA-Z'\-]{1,15}(?:\s+[A-Z][a-zA-Z'\-\.]{0,15}){1,3}\s*$"
+)
+
+
+def _strip_prefix_for_matching(description: str) -> str:
+    """Remove the leading bank-noise prefix so the rest of the description
+    can be matched against merchant rules without bank-prefix collisions."""
+    return _BANK_PREFIX_RE.sub("", description or "")
+
+
+def _looks_like_personal_name(stripped: str) -> bool:
+    """After prefix removal, does the description look like just a person's
+    name (no obvious merchant or business signal)? If yes, low-confidence
+    'other' — let user override or AI take a swing."""
+    return bool(_LIKELY_PERSON_NAME.match(stripped))
+
+
 @dataclass(frozen=True)
 class Classification:
     category: str
@@ -141,6 +179,9 @@ _SE_RULES: list[tuple[re.Pattern[str], str, bool, float, str]] = [
      SE_EXPENSE_STAFF, False, 0.85, "Looks like a staff cost (wages / PAYE / pension)"),
 
     # ----- travel: parking, fuel, public transport, taxis, flights -----
+    # NB. `bp` is intentionally NOT here — too many UK statements use it as
+    # the "Bill Payment" prefix (e.g. "BP James Okeh Gift"). The fuel-station
+    # rule below requires "BP" + a fuel-context word.
     (re.compile(r"\b(ncp|q-?park|euro car park|apcoa|justpark|"
                 r"mipermit|ringgo|paybyphone|parkmobile|"
                 r"tfl|transport for london|trainline|"
@@ -148,11 +189,14 @@ _SE_RULES: list[tuple[re.Pattern[str], str, bool, float, str]] = [
                 r"chiltern|northern rail|tpe|"
                 r"uber|lyft|bolt|via|free now|gett|addison lee|"
                 r"easyjet|ryanair|british airways|jet2|"
-                r"shell|bp\b|esso|texaco|sainsbury'?s petrol|tesco fuel|asda fuel|"
+                r"shell|esso|texaco|sainsbury'?s petrol|tesco fuel|asda fuel|"
                 r"morrisons fuel|costco fuel|gulf|jet petrol|fuel|petrol|diesel|"
                 r"dvla|congestion charge|dartford crossing|"
                 r"national express|megabus|stagecoach|first bus)\b", re.I),
      SE_EXPENSE_TRAVEL, False, 0.90, "Travel / fuel / parking merchant"),
+    # Tight BP fuel rule — only fires when BP is followed by a fuel-context word.
+    (re.compile(r"\bbp\s+(forecourt|petrol|service|station|garage|fuel|express)\b", re.I),
+     SE_EXPENSE_TRAVEL, False, 0.90, "BP fuel station"),
 
     # ----- premises (rent, utilities, council tax) -----
     (re.compile(r"\b(rent payment|business rates|council tax|"
@@ -260,8 +304,13 @@ def classify_self_employment(
             reasoning=f"Looks like a transfer to/from your own account ('{desc[:40]}…') — excluded from tax totals",
         )
 
+    # Strip the bank-statement prefix ('BP', 'DD', 'CR', etc.) before matching
+    # rules. Without this, descriptions like 'BP James Okeh Gift' wrongly hit
+    # the 'BP' fuel rule. Keep the original for reasoning text.
+    stripped = _strip_prefix_for_matching(desc).strip()
+
     for pat, cat, is_income_rule, conf, why in _SE_RULES:
-        if pat.search(desc):
+        if pat.search(stripped):
             # If rule says income but bank says debit (or vice versa), trust
             # the bank direction and downgrade confidence.
             if is_income_rule != is_credit:
@@ -272,6 +321,21 @@ def classify_self_employment(
                     reasoning=f"Direction mismatch — {why}, but transaction is a {'credit' if is_credit else 'debit'}",
                 )
             return Classification(cat, conf, is_income_rule, why)
+
+    # No rule matched. If the stripped description looks like just a person's
+    # name (no LTD/PLC/place/digits), it's almost certainly a personal transfer
+    # rather than a business merchant — flag with explicit reasoning so the
+    # UI nudges the user to confirm and AI can pick it up.
+    if _looks_like_personal_name(stripped):
+        return Classification(
+            SE_OTHER_INCOME if is_credit else SE_EXPENSE_OTHER,
+            confidence=0.20,
+            is_income=is_credit,
+            reasoning=(
+                f"Looks like a personal transfer ({'received from' if is_credit else 'sent to'} "
+                f"'{stripped[:40]}') — no business merchant matched. Please review or enable AI."
+            ),
+        )
 
     # Fallback: route by sign, low confidence.
     if is_credit:
@@ -342,8 +406,10 @@ def classify_property(
             reasoning=f"Looks like a transfer to/from your own account ('{desc[:40]}…') — excluded from tax totals",
         )
 
+    stripped = _strip_prefix_for_matching(desc).strip()
+
     for pat, cat, is_income_rule, conf, why in _PROPERTY_RULES:
-        if pat.search(desc):
+        if pat.search(stripped):
             if is_income_rule != is_credit:
                 return Classification(
                     PROP_INCOME_OTHER if is_credit else PROP_EXPENSE_OTHER,
@@ -352,6 +418,17 @@ def classify_property(
                     reasoning=f"Direction mismatch — {why}, but transaction is a {'credit' if is_credit else 'debit'}",
                 )
             return Classification(cat, conf, is_income_rule, why)
+
+    if _looks_like_personal_name(stripped):
+        return Classification(
+            PROP_INCOME_OTHER if is_credit else PROP_EXPENSE_OTHER,
+            confidence=0.20,
+            is_income=is_credit,
+            reasoning=(
+                f"Looks like a personal transfer ({'received from' if is_credit else 'sent to'} "
+                f"'{stripped[:40]}') — no property merchant matched. Please review or enable AI."
+            ),
+        )
 
     if is_credit:
         return Classification(PROP_INCOME_OTHER, 0.30, True,

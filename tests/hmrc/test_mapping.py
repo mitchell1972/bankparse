@@ -185,3 +185,56 @@ def test_merchant_key_idempotent():
     once = o.merchant_key(raw)
     assert once == o.merchant_key(once)
 
+
+# --- Bank-prefix collision regressions ------------------------------------
+
+def test_bp_prefix_does_not_match_bp_fuel_rule():
+    """'BP James Okeh Gift' is a UK Bill Payment prefix, NOT British Petroleum.
+    Must not be classified as travel."""
+    from hmrc.services import mapping as m
+    c = m.classify_self_employment("BP James Okeh Gift", amount=-150.0)
+    assert c.category != m.SE_EXPENSE_TRAVEL, (
+        f"BP prefix wrongly matched fuel rule — got {c.category}"
+    )
+
+
+def test_bp_followed_by_fuel_word_still_matches_travel():
+    """We should still catch real BP forecourts."""
+    from hmrc.services import mapping as m
+    c = m.classify_self_employment("BP FORECOURT M25 J7", amount=-65.50)
+    assert c.category == m.SE_EXPENSE_TRAVEL
+    assert c.confidence >= 0.8
+
+
+def test_person_name_after_prefix_is_low_confidence_other():
+    """'BP James Okeh Gift', 'CR FUFEYIN T TIMI' — after prefix stripping
+    these look like personal names with no merchant signal. Must be low
+    confidence so the user is prompted to review (and the AI can take it
+    if the feature flag is on)."""
+    from hmrc.services import mapping as m
+
+    debit = m.classify_self_employment("BP James Okeh Gift", amount=-150.0)
+    assert debit.category == m.SE_EXPENSE_OTHER
+    assert debit.confidence < 0.3
+    assert "personal transfer" in debit.reasoning.lower()
+
+    credit = m.classify_self_employment("CR FUFEYIN T TIMI", amount=150.0)
+    assert credit.category == m.SE_OTHER_INCOME
+    assert credit.confidence < 0.3
+
+
+def test_dd_tv_licence_still_matches_after_prefix_stripping():
+    """The DD prefix gets stripped but 'TV LICENCE' must still match admin."""
+    from hmrc.services import mapping as m
+    c = m.classify_self_employment("DD TV LICENCE MBP", amount=-14.95)
+    assert c.category == m.SE_EXPENSE_ADMIN
+    assert c.confidence >= 0.7
+
+
+def test_stripe_credit_still_classified_as_turnover_after_prefix_stripping():
+    """CR STRIPE PAYOUT — CR prefix stripped, STRIPE still matched."""
+    from hmrc.services import mapping as m
+    c = m.classify_self_employment("CR STRIPE PAYOUT BANKSCAN AI", amount=450.0)
+    assert c.category == m.SE_INCOME
+    assert c.confidence >= 0.8
+
