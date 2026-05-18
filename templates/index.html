@@ -994,6 +994,19 @@
             <!-- Preview -->
             <h3 id="previewHeading">Transactions</h3>
 
+            <!-- HMRC deadlines panel — populated by GET /api/hmrc/obligations.
+                 Falls back to a demo fixture until the user connects + saves
+                 their NINO + business IDs. -->
+            <div id="hmrcDeadlinesPanel"
+                 style="margin: 0.75rem 0 1rem 0; padding: 1rem; border: 1px solid #E5E7EB; border-radius: 8px; background: #F8F9FA;">
+                <div style="display:flex; justify-content:space-between; align-items:center; gap:0.75rem; flex-wrap:wrap;">
+                    <h4 style="margin:0; font-size:0.95rem; color:#2C3E50;">Your HMRC deadlines</h4>
+                    <span id="hmrcDeadlinesBadge" style="font-size:0.75rem; padding:0.15rem 0.45rem; border-radius:9999px; background:#FEF3C7; color:#92400E;">Demo</span>
+                </div>
+                <div id="hmrcDeadlinesError" style="display:none; margin-top:0.5rem; font-size:0.85rem; color:#B91C1C;"></div>
+                <ul id="hmrcDeadlinesList" style="list-style:none; padding:0; margin:0.75rem 0 0 0;"></ul>
+            </div>
+
             <!-- HMRC categorisation panel — hidden until user clicks the toggle. -->
             <div id="hmrcPanel" style="margin: 0.75rem 0 1rem 0; padding: 1rem; border: 1px solid #E5E7EB; border-radius: 8px; background: #F8F9FA;">
                 <div style="display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; justify-content: space-between;">
@@ -2211,6 +2224,81 @@
 
     function scrollToTable() {
         document.getElementById('previewHeading').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    // ---------------------------------------------------------------
+    // HMRC deadlines panel — populates from GET /api/hmrc/obligations.
+    // Shows "demo" badge when the user hasn't completed connect + setup.
+    // Colour key: red=overdue, amber=open within 14d, grey=upcoming, green=filed.
+    // ---------------------------------------------------------------
+    async function loadHmrcDeadlines() {
+        const list = document.getElementById('hmrcDeadlinesList');
+        const badge = document.getElementById('hmrcDeadlinesBadge');
+        const errEl = document.getElementById('hmrcDeadlinesError');
+        if (!list || !badge) return;
+
+        try {
+            const resp = await fetch('/api/hmrc/obligations', { credentials: 'include' });
+            if (resp.status === 401) {
+                // Not logged in — hide the whole panel rather than scaring the user.
+                const panel = document.getElementById('hmrcDeadlinesPanel');
+                if (panel) panel.style.display = 'none';
+                return;
+            }
+            const data = await resp.json();
+            if (data.demo) {
+                badge.style.background = '#FEF3C7';
+                badge.style.color = '#92400E';
+                badge.textContent = data.connected ? 'Setup needed' : 'Demo';
+            } else {
+                badge.style.background = '#D1FAE5';
+                badge.style.color = '#065F46';
+                badge.textContent = 'Live (HMRC)';
+            }
+            if (data.error) {
+                errEl.textContent = data.error;
+                errEl.style.display = 'block';
+            } else {
+                errEl.style.display = 'none';
+            }
+
+            const palette = {
+                overdue:  { bg: '#FEE2E2', fg: '#991B1B', dot: '#DC2626' },
+                open:     { bg: '#FEF3C7', fg: '#92400E', dot: '#D97706' },
+                upcoming: { bg: '#F3F4F6', fg: '#374151', dot: '#9CA3AF' },
+                filed:    { bg: '#D1FAE5', fg: '#065F46', dot: '#10B981' },
+            };
+            list.innerHTML = '';
+            (data.obligations || []).slice(0, 8).forEach(ob => {
+                const colour = palette[ob.status] || palette.upcoming;
+                const li = document.createElement('li');
+                li.style.cssText =
+                    `display:flex; align-items:center; gap:0.6rem; padding:0.5rem 0.7rem; margin-bottom:0.35rem; `
+                    + `border-radius:6px; background:${colour.bg}; color:${colour.fg}; font-size:0.88rem;`;
+                li.innerHTML =
+                    `<span style="width:8px; height:8px; border-radius:50%; background:${colour.dot}; flex:none;"></span>`
+                    + `<span style="flex:1;"><strong>${escapeHtml(ob.business_label)}</strong> · `
+                    + `${escapeHtml(ob.period_start)} → ${escapeHtml(ob.period_end)}</span>`
+                    + `<span style="font-weight:600;">${escapeHtml(ob.human_due)}</span>`;
+                list.appendChild(li);
+            });
+        } catch (e) {
+            errEl.textContent = 'Could not load deadlines.';
+            errEl.style.display = 'block';
+        }
+    }
+
+    function escapeHtml(s) {
+        return String(s == null ? '' : s)
+            .replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
+            .replaceAll('"', '&quot;').replaceAll("'", '&#39;');
+    }
+
+    // Kick off in the background — does not block the rest of the page.
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', loadHmrcDeadlines);
+    } else {
+        loadHmrcDeadlines();
     }
 
     // ---------------------------------------------------------------
