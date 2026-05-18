@@ -277,6 +277,24 @@ def init_db():
             updated_at REAL NOT NULL,
             PRIMARY KEY (merchant_key, business_type)
         )""",
+        # One row per /api/hmrc/categorise call — used to answer "what's our
+        # cache hit rate?" and "how often does AI actually fire?" from SQL
+        # without bolting on a paid observability service. Written best-effort
+        # so a metric failure never breaks a user response.
+        """CREATE TABLE IF NOT EXISTS hmrc_categorisation_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            business_type TEXT NOT NULL,
+            total_rows INTEGER NOT NULL,
+            overrides INTEGER NOT NULL DEFAULT 0,
+            cache_hits INTEGER NOT NULL DEFAULT 0,
+            ai_calls INTEGER NOT NULL DEFAULT 0,
+            rule_fallbacks INTEGER NOT NULL DEFAULT 0,
+            elapsed_ms INTEGER NOT NULL DEFAULT 0,
+            created_at REAL NOT NULL
+        )""",
+        "CREATE INDEX IF NOT EXISTS idx_hmrc_categorisation_events_user_created "
+        "ON hmrc_categorisation_events(user_id, created_at)",
         "CREATE INDEX IF NOT EXISTS idx_extracted_user_mode ON user_extracted_data(user_id, mode)",
         "CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)",
         "CREATE INDEX IF NOT EXISTS idx_users_stripe ON users(stripe_customer_id)",

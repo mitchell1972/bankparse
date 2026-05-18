@@ -39,47 +39,22 @@ import re
 from dataclasses import dataclass
 from typing import Iterable
 
-
-# ---------------------------------------------------------------------------
-# Self-Employment Business (MTD) — categories per HMRC v5.0 API
-# ---------------------------------------------------------------------------
-
-SE_INCOME = "turnover"
-SE_OTHER_INCOME = "otherIncome"
-SE_EXPENSE_COST_OF_GOODS = "costOfGoodsBought"
-SE_EXPENSE_CIS = "cisPaymentsToSubcontractors"
-SE_EXPENSE_STAFF = "staffCosts"
-SE_EXPENSE_TRAVEL = "travelCosts"
-SE_EXPENSE_PREMISES = "premisesRunningCosts"
-SE_EXPENSE_REPAIRS = "maintenanceCosts"
-SE_EXPENSE_ADMIN = "adminCosts"
-SE_EXPENSE_ADVERTISING = "advertisingCosts"
-SE_EXPENSE_ENTERTAINMENT = "businessEntertainmentCosts"
-SE_EXPENSE_INTEREST = "interest"
-SE_EXPENSE_FINANCIAL = "financialCharges"
-SE_EXPENSE_BAD_DEBT = "badDebt"
-SE_EXPENSE_PROFESSIONAL = "professionalFees"
-SE_EXPENSE_DEPRECIATION = "depreciation"
-SE_EXPENSE_OTHER = "other"
-
-
-# ---------------------------------------------------------------------------
-# Property Business (MTD) — UK property categories per HMRC v6.0 API
-# ---------------------------------------------------------------------------
-
-PROP_INCOME_RENT = "rentIncome"
-PROP_INCOME_PREMIUMS = "premiumsOfLeaseGrant"
-PROP_INCOME_OTHER = "otherIncome"
-PROP_EXPENSE_PREMISES = "premisesRunningCosts"
-PROP_EXPENSE_REPAIRS = "repairsAndMaintenance"
-PROP_EXPENSE_FINANCIAL = "financialCosts"
-PROP_EXPENSE_PROFESSIONAL = "professionalFees"
-PROP_EXPENSE_SERVICES = "costOfServices"
-PROP_EXPENSE_TRAVEL = "travelCosts"
-PROP_EXPENSE_OTHER = "other"
-# Residential mortgage interest is a special restricted-relief category;
-# we keep it separate from financialCosts:
-PROP_EXPENSE_RESIDENTIAL_FINANCIAL = "residentialFinancialCost"
+# Canonical HMRC category names live in `hmrc/schemas/categories.py` — this
+# module re-exports them so existing call sites (`mapping.SE_INCOME` etc.)
+# keep working unchanged, but there is only ONE source of truth.
+from ..schemas.categories import (  # noqa: F401  (re-exports)
+    SE_INCOME, SE_OTHER_INCOME,
+    SE_EXPENSE_COST_OF_GOODS, SE_EXPENSE_CIS, SE_EXPENSE_STAFF,
+    SE_EXPENSE_TRAVEL, SE_EXPENSE_PREMISES, SE_EXPENSE_REPAIRS,
+    SE_EXPENSE_ADMIN, SE_EXPENSE_ADVERTISING, SE_EXPENSE_ENTERTAINMENT,
+    SE_EXPENSE_INTEREST, SE_EXPENSE_FINANCIAL, SE_EXPENSE_BAD_DEBT,
+    SE_EXPENSE_PROFESSIONAL, SE_EXPENSE_DEPRECIATION, SE_EXPENSE_OTHER,
+    PROP_INCOME_RENT, PROP_INCOME_PREMIUMS, PROP_INCOME_OTHER,
+    PROP_EXPENSE_PREMISES, PROP_EXPENSE_REPAIRS, PROP_EXPENSE_FINANCIAL,
+    PROP_EXPENSE_PROFESSIONAL, PROP_EXPENSE_SERVICES, PROP_EXPENSE_TRAVEL,
+    PROP_EXPENSE_OTHER, PROP_EXPENSE_RESIDENTIAL_FINANCIAL,
+    EXCLUDE_OWNER_TRANSFER,
+)
 
 
 # Strip bank-statement prefixes before regex matching.
@@ -128,10 +103,10 @@ class Classification:
     reasoning: str             # plain-English explanation for the UI
 
 
-# Sentinel category — these transactions are NOT a tax expense or income at
-# all. They're typically the user moving money between their own accounts.
-# The UI hides these from category totals but still shows them on the table.
-EXCLUDE_OWNER_TRANSFER = "_owner_transfer"
+# Sentinel `EXCLUDE_OWNER_TRANSFER` is re-exported from `schemas.categories`
+# at the top of this file — these transactions are NOT a tax expense or
+# income (the user moving money between their own accounts). The UI hides
+# them from category totals but still shows them on the table.
 
 
 def _is_likely_owner_transfer(description: str, user_full_name: str | None) -> bool:

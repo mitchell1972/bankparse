@@ -289,39 +289,45 @@ def export_to_xlsx(data: dict, output_path: str) -> str:
 
 # Human-friendly labels per HMRC category code. Mirrors the dropdowns in
 # templates/index.html so the spreadsheet matches what users see in the UI.
+#
+# Keys are the *canonical* HMRC category constants from
+# `hmrc.schemas.categories` — never hardcode the string here; if HMRC
+# renames a field, only the schema module changes.
+from hmrc.schemas import categories as _cats  # noqa: E402
+
 _HMRC_SE_LABELS = {
-    "turnover": "Turnover (income)",
-    "otherIncome": "Other income",
-    "costOfGoodsBought": "Cost of goods bought",
-    "cisPaymentsToSubcontractors": "CIS subcontractor payments",
-    "staffCosts": "Staff costs / wages",
-    "travelCosts": "Travel / fuel / parking",
-    "premisesRunningCosts": "Premises (rent / utilities)",
-    "maintenanceCosts": "Repairs & maintenance",
-    "adminCosts": "Admin / office / software",
-    "advertisingCosts": "Advertising / marketing",
-    "businessEntertainmentCosts": "Business entertainment",
-    "interest": "Interest on borrowing",
-    "financialCharges": "Bank / financial charges",
-    "badDebt": "Bad debt written off",
-    "professionalFees": "Professional / legal fees",
-    "depreciation": "Depreciation",
-    "other": "Other expense",
-    "_owner_transfer": "Owner transfer (excluded)",
+    _cats.SE_INCOME: "Turnover (income)",
+    _cats.SE_OTHER_INCOME: "Other income",
+    _cats.SE_EXPENSE_COST_OF_GOODS: "Cost of goods bought",
+    _cats.SE_EXPENSE_CIS: "CIS subcontractor payments",
+    _cats.SE_EXPENSE_STAFF: "Staff costs / wages",
+    _cats.SE_EXPENSE_TRAVEL: "Travel / fuel / parking",
+    _cats.SE_EXPENSE_PREMISES: "Premises (rent / utilities)",
+    _cats.SE_EXPENSE_REPAIRS: "Repairs & maintenance",
+    _cats.SE_EXPENSE_ADMIN: "Admin / office / software",
+    _cats.SE_EXPENSE_ADVERTISING: "Advertising / marketing",
+    _cats.SE_EXPENSE_ENTERTAINMENT: "Business entertainment",
+    _cats.SE_EXPENSE_INTEREST: "Interest on borrowing",
+    _cats.SE_EXPENSE_FINANCIAL: "Bank / financial charges",
+    _cats.SE_EXPENSE_BAD_DEBT: "Bad debt written off",
+    _cats.SE_EXPENSE_PROFESSIONAL: "Professional / legal fees",
+    _cats.SE_EXPENSE_DEPRECIATION: "Depreciation",
+    _cats.SE_EXPENSE_OTHER: "Other expense",
+    _cats.EXCLUDE_OWNER_TRANSFER: "Owner transfer (excluded)",
 }
 _HMRC_PROP_LABELS = {
-    "rentIncome": "Rent income",
-    "premiumsOfLeaseGrant": "Premiums of lease grant",
-    "otherIncome": "Other property income",
-    "premisesRunningCosts": "Premises running costs",
-    "repairsAndMaintenance": "Repairs & maintenance",
-    "financialCosts": "Financial costs (commercial)",
-    "professionalFees": "Professional fees",
-    "costOfServices": "Cost of services",
-    "travelCosts": "Travel",
-    "other": "Other expense",
-    "residentialFinancialCost": "Residential mortgage interest (restricted)",
-    "_owner_transfer": "Owner transfer (excluded)",
+    _cats.PROP_INCOME_RENT: "Rent income",
+    _cats.PROP_INCOME_PREMIUMS: "Premiums of lease grant",
+    _cats.PROP_INCOME_OTHER: "Other property income",
+    _cats.PROP_EXPENSE_PREMISES: "Premises running costs",
+    _cats.PROP_EXPENSE_REPAIRS: "Repairs & maintenance",
+    _cats.PROP_EXPENSE_FINANCIAL: "Financial costs (commercial)",
+    _cats.PROP_EXPENSE_PROFESSIONAL: "Professional fees",
+    _cats.PROP_EXPENSE_SERVICES: "Cost of services",
+    _cats.PROP_EXPENSE_TRAVEL: "Travel",
+    _cats.PROP_EXPENSE_OTHER: "Other expense",
+    _cats.PROP_EXPENSE_RESIDENTIAL_FINANCIAL: "Residential mortgage interest (restricted)",
+    _cats.EXCLUDE_OWNER_TRANSFER: "Owner transfer (excluded)",
 }
 
 
