@@ -2815,7 +2815,14 @@
         btn.disabled = true;
         btn.textContent = 'Building...';
         try {
-            const res = await fetch(`/api/extracted-data/download?mode=${mode}&currency=${sessionCurrency}`);
+            // If the HMRC categories panel is open we tag the download with
+            // the chosen business type so the XLSX gets the categorisation
+            // columns + the HMRC Summary sheet baked in.
+            const bt = (HMRC_STATE && HMRC_STATE.shown) ? HMRC_STATE.businessType : '';
+            const url = `/api/extracted-data/download?mode=${mode}`
+                + `&currency=${encodeURIComponent(sessionCurrency || '')}`
+                + (bt ? `&business_type=${encodeURIComponent(bt)}` : '');
+            const res = await fetch(url);
             if (!res.ok) {
                 const err = await res.json().catch(() => ({detail:'Export failed'}));
                 alert(err.detail || 'Export failed.');
