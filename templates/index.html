@@ -993,6 +993,29 @@
 
             <!-- Preview -->
             <h3 id="previewHeading">Transactions</h3>
+
+            <!-- HMRC categorisation panel — hidden until user clicks the toggle. -->
+            <div id="hmrcPanel" style="margin: 0.75rem 0 1rem 0; padding: 1rem; border: 1px solid #E5E7EB; border-radius: 8px; background: #F8F9FA;">
+                <div style="display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; justify-content: space-between;">
+                    <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
+                        <button type="button" id="hmrcToggleBtn" class="btn"
+                                style="background:#1B4F72; color:#fff; padding:0.5rem 0.9rem; font-size:0.9rem;">
+                            Show HMRC categories
+                        </button>
+                        <label for="hmrcBizType" style="font-size:0.88rem; color:#2C3E50;">Business type:</label>
+                        <select id="hmrcBizType" style="padding:0.4rem 0.6rem; font-size:0.88rem; border-radius:6px; border:1px solid #D1D5DB;">
+                            <option value="se">Self-employment</option>
+                            <option value="property">UK property (landlord)</option>
+                        </select>
+                    </div>
+                    <a href="/hmrc/connect" id="hmrcConnectLink"
+                       style="font-size:0.9rem; color:#1B4F72; text-decoration:none;">
+                        Connect to HMRC →
+                    </a>
+                </div>
+                <div id="hmrcSummary" style="display:none; margin-top:1rem;"></div>
+            </div>
+
             <div style="overflow-x: auto;">
                 <table class="preview-table" id="previewTable">
                     <thead>
@@ -1001,6 +1024,7 @@
                             <th>Description</th>
                             <th>Amount</th>
                             <th>Balance</th>
+                            <th class="hmrc-col" style="display:none;">HMRC category</th>
                         </tr>
                     </thead>
                     <tbody id="previewBody"></tbody>
@@ -2129,17 +2153,23 @@
 
         const tbody = document.getElementById('previewBody');
         tbody.innerHTML = '';
-        pageTransactions.forEach(tx => {
+        const showHmrc = HMRC_STATE.shown;
+        pageTransactions.forEach((tx, i) => {
+            const globalIdx = start + i;
             const tr = document.createElement('tr');
             const amtClass = tx.amount >= 0 ? 'credit-amount' : 'debit-amount';
+            const hmrc = HMRC_STATE.categories[globalIdx];
+            const hmrcCell = showHmrc ? renderHmrcCell(hmrc, tx) : '';
             tr.innerHTML = `
                 <td>${escapeHtml(tx.date)}</td>
                 <td>${escapeHtml(tx.description)}</td>
                 <td class="${amtClass}">${tx.amount >= 0 ? '+' : ''}${formatCurrency(tx.amount)}</td>
                 <td>${tx.balance !== null ? formatCurrency(tx.balance) : '\u2014'}</td>
+                ${showHmrc ? `<td class="hmrc-col" data-row-idx="${globalIdx}">${hmrcCell}</td>` : ''}
             `;
             tbody.appendChild(tr);
         });
+        if (showHmrc) wireCategoryDropdowns();
 
         renderRowPagination(document.getElementById('pagination'), currentPage, totalPages, (p) => {
             currentPage = p;
@@ -2158,6 +2188,227 @@
     function scrollToTable() {
         document.getElementById('previewHeading').scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
+
+    // ---------------------------------------------------------------
+    // HMRC categorisation panel
+    // ---------------------------------------------------------------
+    const HMRC_STATE = {
+        shown: false,
+        loading: false,
+        categories: [],     // index-aligned with allTransactions; one HMRC dict per row
+        businessType: 'se',
+    };
+
+    const HMRC_SE_OPTIONS = [
+        ['turnover', 'Turnover (income)'],
+        ['otherIncome', 'Other income'],
+        ['costOfGoodsBought', 'Cost of goods bought'],
+        ['cisPaymentsToSubcontractors', 'CIS subcontractor payments'],
+        ['staffCosts', 'Staff costs / wages'],
+        ['travelCosts', 'Travel / fuel / parking'],
+        ['premisesRunningCosts', 'Premises (rent / utilities)'],
+        ['maintenanceCosts', 'Repairs & maintenance'],
+        ['adminCosts', 'Admin / office / software'],
+        ['advertisingCosts', 'Advertising / marketing'],
+        ['businessEntertainmentCosts', 'Business entertainment'],
+        ['interest', 'Interest on borrowing'],
+        ['financialCharges', 'Bank / financial charges'],
+        ['badDebt', 'Bad debt written off'],
+        ['professionalFees', 'Professional / legal fees'],
+        ['depreciation', 'Depreciation'],
+        ['other', 'Other expense'],
+        ['_owner_transfer', 'Owner transfer (exclude)'],
+    ];
+    const HMRC_PROP_OPTIONS = [
+        ['rentIncome', 'Rent income'],
+        ['premiumsOfLeaseGrant', 'Premiums of lease grant'],
+        ['otherIncome', 'Other property income'],
+        ['premisesRunningCosts', 'Premises running costs'],
+        ['repairsAndMaintenance', 'Repairs & maintenance'],
+        ['financialCosts', 'Financial costs (commercial)'],
+        ['professionalFees', 'Professional fees'],
+        ['costOfServices', 'Cost of services'],
+        ['travelCosts', 'Travel'],
+        ['other', 'Other expense'],
+        ['residentialFinancialCost', 'Residential mortgage interest (restricted)'],
+        ['_owner_transfer', 'Owner transfer (exclude)'],
+    ];
+
+    function categoryOptions() {
+        return HMRC_STATE.businessType === 'property' ? HMRC_PROP_OPTIONS : HMRC_SE_OPTIONS;
+    }
+
+    function renderHmrcCell(hmrc, tx) {
+        if (!hmrc) return '<span style="color:#999;font-size:0.85rem;">…</span>';
+        const opts = categoryOptions();
+        const confPct = Math.round((hmrc.confidence || 0) * 100);
+        const confColor = confPct >= 70 ? '#27AE60' : confPct >= 40 ? '#E67E22' : '#E74C3C';
+        const sourceBadge = hmrc.source === 'override' ? '★ saved'
+                          : hmrc.source === 'ai' ? '✨ AI'
+                          : 'rule';
+        const selectHtml = `<select class="hmrc-cat-select" data-desc="${escapeHtml(tx.description)}" style="font-size:0.85rem; padding:0.2rem 0.3rem; max-width:220px;">`
+            + opts.map(([v, label]) => `<option value="${v}"${v === hmrc.category ? ' selected' : ''}>${escapeHtml(label)}</option>`).join('')
+            + '</select>';
+        return `<div style="display:flex;flex-direction:column;gap:0.2rem;">
+            ${selectHtml}
+            <span style="font-size:0.75rem;color:${confColor};">${confPct}% · ${sourceBadge}</span>
+        </div>`;
+    }
+
+    function wireCategoryDropdowns() {
+        document.querySelectorAll('.hmrc-cat-select').forEach(sel => {
+            sel.addEventListener('change', async (e) => {
+                const td = sel.closest('td');
+                const rowIdx = parseInt(td.getAttribute('data-row-idx'), 10);
+                const desc = sel.getAttribute('data-desc');
+                const newCat = sel.value;
+                // Optimistic update
+                if (HMRC_STATE.categories[rowIdx]) {
+                    HMRC_STATE.categories[rowIdx].category = newCat;
+                    HMRC_STATE.categories[rowIdx].source = 'override';
+                    HMRC_STATE.categories[rowIdx].confidence = 1.0;
+                }
+                try {
+                    await fetch('/api/hmrc/categorise/override', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': getCsrfToken() },
+                        body: JSON.stringify({
+                            description: desc,
+                            category: newCat,
+                            business_type: HMRC_STATE.businessType,
+                        }),
+                    });
+                } catch (_) { /* best effort */ }
+                // Re-render the page to refresh badges & re-fetch summary
+                renderTransactionPage();
+                refreshHmrcSummary();
+            });
+        });
+    }
+
+    function getCsrfToken() {
+        const m = document.cookie.match(/(?:^|;\s*)bp_csrf=([^;]+)/);
+        return m ? decodeURIComponent(m[1]) : '';
+    }
+
+    async function loadHmrcCategories() {
+        if (!allTransactions.length) return;
+        HMRC_STATE.loading = true;
+        try {
+            const res = await fetch('/api/hmrc/categorise', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': getCsrfToken() },
+                body: JSON.stringify({
+                    business_type: HMRC_STATE.businessType,
+                    rows: allTransactions.map(t => ({
+                        date: t.date, description: t.description, amount: t.amount,
+                    })),
+                }),
+            });
+            if (!res.ok) throw new Error('Categorisation failed');
+            const data = await res.json();
+            HMRC_STATE.categories = (data.rows || []).map(r => r.hmrc);
+        } finally {
+            HMRC_STATE.loading = false;
+        }
+    }
+
+    async function refreshHmrcSummary() {
+        if (!allTransactions.length) return;
+        try {
+            const res = await fetch('/api/hmrc/categorise/summary', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': getCsrfToken() },
+                body: JSON.stringify({
+                    business_type: HMRC_STATE.businessType,
+                    rows: allTransactions.map(t => ({
+                        date: t.date, description: t.description, amount: t.amount,
+                    })),
+                }),
+            });
+            if (!res.ok) return;
+            const data = await res.json();
+            renderHmrcSummary(data.summary);
+        } catch (_) { /* best effort */ }
+    }
+
+    function renderHmrcSummary(s) {
+        const el = document.getElementById('hmrcSummary');
+        if (!el) return;
+        if (!s) { el.style.display = 'none'; return; }
+        el.style.display = 'block';
+        const incomeRows = Object.entries(s.income || {}).filter(([, v]) => v > 0);
+        const expenseRows = Object.entries(s.expenses || {}).filter(([, v]) => v > 0);
+        const totalIncome = incomeRows.reduce((a, [, v]) => a + v, 0);
+        const totalExpenses = expenseRows.reduce((a, [, v]) => a + v, 0);
+        const flaggedN = (s.flagged_for_review || []).length;
+        const excludedN = (s.excluded || []).length;
+        const fmt = (v) => formatCurrency(v);
+        const labelMap = Object.fromEntries(
+            (HMRC_STATE.businessType === 'property' ? HMRC_PROP_OPTIONS : HMRC_SE_OPTIONS)
+        );
+        const rowLine = ([k, v]) => `<li style="display:flex;justify-content:space-between;padding:0.2rem 0;border-bottom:1px dotted #E5E7EB;">
+            <span>${escapeHtml(labelMap[k] || k)}</span><strong>${fmt(v)}</strong></li>`;
+        el.innerHTML = `
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;">
+                <div>
+                    <h4 style="margin:0 0 0.5rem 0;color:#27AE60;font-size:0.95rem;">Income · ${fmt(totalIncome)}</h4>
+                    ${incomeRows.length
+                        ? '<ul style="list-style:none;padding:0;margin:0;font-size:0.88rem;">' + incomeRows.map(rowLine).join('') + '</ul>'
+                        : '<p style="color:#7F8C8D;font-size:0.85rem;">No income categorised yet.</p>'}
+                </div>
+                <div>
+                    <h4 style="margin:0 0 0.5rem 0;color:#E74C3C;font-size:0.95rem;">Expenses · ${fmt(totalExpenses)}</h4>
+                    ${expenseRows.length
+                        ? '<ul style="list-style:none;padding:0;margin:0;font-size:0.88rem;">' + expenseRows.map(rowLine).join('') + '</ul>'
+                        : '<p style="color:#7F8C8D;font-size:0.85rem;">No expenses categorised yet.</p>'}
+                </div>
+            </div>
+            <p style="margin-top:0.6rem;font-size:0.82rem;color:#7F8C8D;">
+                ${flaggedN ? `${flaggedN} row${flaggedN === 1 ? '' : 's'} flagged for review · ` : ''}
+                ${excludedN ? `${excludedN} owner transfer${excludedN === 1 ? '' : 's'} excluded · ` : ''}
+                Click any category to override and we'll remember it for this merchant.
+            </p>
+        `;
+    }
+
+    async function toggleHmrcPanel() {
+        const btn = document.getElementById('hmrcToggleBtn');
+        if (!btn) return;
+        if (!HMRC_STATE.shown) {
+            btn.disabled = true; btn.textContent = 'Categorising…';
+            try {
+                await loadHmrcCategories();
+                HMRC_STATE.shown = true;
+                document.querySelectorAll('.hmrc-col').forEach(el => el.style.display = '');
+                renderTransactionPage();
+                await refreshHmrcSummary();
+                btn.textContent = 'Hide HMRC categories';
+            } finally {
+                btn.disabled = false;
+            }
+        } else {
+            HMRC_STATE.shown = false;
+            document.querySelectorAll('.hmrc-col').forEach(el => el.style.display = 'none');
+            document.getElementById('hmrcSummary').style.display = 'none';
+            renderTransactionPage();
+            btn.textContent = 'Show HMRC categories';
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        const btn = document.getElementById('hmrcToggleBtn');
+        if (btn) btn.addEventListener('click', toggleHmrcPanel);
+        const sel = document.getElementById('hmrcBizType');
+        if (sel) sel.addEventListener('change', async (e) => {
+            HMRC_STATE.businessType = e.target.value;
+            if (HMRC_STATE.shown) {
+                await loadHmrcCategories();
+                renderTransactionPage();
+                await refreshHmrcSummary();
+            }
+        });
+    });
 
     // ---------------------------------------------------------------
     // Generic row-level pagination renderer
