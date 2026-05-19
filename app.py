@@ -217,19 +217,24 @@ async def home(request: Request):
     # Unverified users are routed to /verify-email first.
     if not is_email_verified(user["id"]):
         return RedirectResponse(url="/verify-email", status_code=302)
-    # New (non-grandfathered) users who haven't completed trial setup are sent
-    # to /start-trial before they reach the dashboard. UNLIMITED_EMAILS admins
-    # and grandfathered users skip this gate entirely. The optional
-    # ?trial=started query (returned from the Stripe success_url) lets the
-    # user land on the dashboard immediately after Stripe confirms checkout,
-    # even before the webhook updates subscription_status — Stripe redirects
-    # are guaranteed but webhooks have a few seconds of latency.
+    # Users who haven't completed Stripe Checkout get sent to /start-trial
+    # before they reach the dashboard. ONLY two ways to bypass the paywall:
+    #   1. Be an UNLIMITED_EMAILS admin (yahoo founder by default)
+    #   2. Have an active Stripe subscription_status (trialing / active /
+    #      past_due)
+    # Grandfathered legacy users are NO LONGER bypassed — they must enter a
+    # card on next login so their 7-day trial countdown starts under the
+    # same flow as every other user.
+    # The optional ?trial=started query (returned from the Stripe success_url)
+    # lets the user land on the dashboard immediately after Stripe confirms
+    # checkout, even before the webhook updates subscription_status —
+    # Stripe redirects are guaranteed but webhooks have a few seconds of
+    # latency.
     email = (user.get("email") or "").lower()
     trial_started_flag = request.query_params.get("trial") == "started"
     if (
         not trial_started_flag
         and email not in UNLIMITED_EMAILS
-        and not user.get("grandfathered_trial")
         and user.get("subscription_status") not in ("trialing", "active", "past_due")
     ):
         return RedirectResponse(url="/start-trial", status_code=302)
@@ -365,17 +370,17 @@ async def credits_page(request: Request):
 async def start_trial_page(request: Request):
     """Card-on-file trial setup page.
 
-    Shown after email verification for non-grandfathered users. Renders a
-    single 'Start 7-day free trial' button which POSTs to
-    ``/api/billing/start-trial-checkout``; the user is then bounced to
-    Stripe-hosted Checkout. Grandfathered or already-subscribed users are
-    routed straight to the dashboard.
+    Shown after email verification for any user who isn't actively
+    subscribed. Renders a single 'Start 7-day free trial' button which
+    POSTs to ``/api/billing/start-trial-checkout``; the user is then
+    bounced to Stripe-hosted Checkout.
+
+    Already-subscribed users are routed straight to the dashboard so they
+    don't see a paywall they've already passed.
     """
     user = get_current_user(request)
     if not user:
         return RedirectResponse(url="/login?next=/start-trial", status_code=302)
-    if user.get("grandfathered_trial"):
-        return RedirectResponse(url="/", status_code=302)
     if user.get("subscription_status") in ("trialing", "active"):
         return RedirectResponse(url="/", status_code=302)
     return templates.TemplateResponse(request, "start_trial.html")
@@ -534,11 +539,12 @@ async def verify_email_code(request: Request):
     mark_email_verified(user["id"])
 
     # Where to send the user next?
-    #   - Grandfathered: straight to dashboard, legacy trial already active.
     #   - Already subscribed (rare from this endpoint): dashboard.
-    #   - Everyone else: /start-trial to capture a card.
+    #   - Everyone else (including legacy grandfathered accounts): /start-trial
+    #     so they enter a card and start the 7-day countdown under the same
+    #     Stripe flow as every other user.
     redirect_to = "/"
-    if not user.get("grandfathered_trial") and user.get("subscription_status") not in ("trialing", "active"):
+    if user.get("subscription_status") not in ("trialing", "active"):
         redirect_to = "/start-trial"
 
     return JSONResponse({"status": "ok", "verified": True, "redirect_to": redirect_to})
@@ -1836,8 +1842,8 @@ async def start_trial_checkout(request: Request):
     if not is_email_verified(user["id"]):
         raise HTTPException(status_code=403, detail="Please verify your email first.")
 
-    if user.get("grandfathered_trial"):
-        raise HTTPException(status_code=409, detail="You already have legacy trial access.")
+    # Note: grandfathered users used to be 409'd here. They're now allowed
+    # through so they can enter a card and start the new 7-day countdown.
 
     if user.get("subscription_status") in ("trialing", "active"):
         raise HTTPException(status_code=409, detail="You already have an active subscription.")
