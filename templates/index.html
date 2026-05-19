@@ -2063,7 +2063,22 @@
                 errorMsg.textContent = `Session full: ${formatBytes(sessionTotalBytes)} / ${formatBytes(sessionMaxBytes)} used. Click "Clear & Upload New" to start a fresh session, or remove some files before adding more.`;
                 errorMsg.classList.add('show');
             } else {
-                errorMsg.textContent = 'Error: ' + err.message;
+                // Safari throws TypeError('Load failed') and Chrome throws
+                // TypeError('Failed to fetch') when fetch() can't complete —
+                // network drop, server killed the connection, etc. The raw
+                // message is useless to the user; translate to something
+                // actionable that hints at the most likely real cause
+                // (transient network issue or a slow parse).
+                let userMessage = err.message;
+                if (/load failed|failed to fetch|network ?error|network connection was lost/i.test(userMessage)) {
+                    userMessage = (
+                        'Could not reach the server. This usually clears on a retry — '
+                        + 'try again in a few seconds. If it keeps failing on the same '
+                        + 'file, the PDF may be too large or complex; try splitting it '
+                        + 'into single pages and uploading them one at a time.'
+                    );
+                }
+                errorMsg.textContent = 'Error: ' + userMessage;
                 errorMsg.classList.add('show');
             }
         } finally {

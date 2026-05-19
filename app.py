@@ -1086,10 +1086,14 @@ async def parse_statement(request: Request, file: UploadFile = File(...)):
 
     try:
         # CSV files are parsed locally (no AI cost). PDFs always use Claude vision.
+        # Run the synchronous parsers on a worker thread so they don't block
+        # FastAPI's event loop. Without this, every concurrent upload queues
+        # behind the previous one and Railway's edge eventually drops the
+        # connection — surfaces as "Load failed" in Safari.
         if filename.endswith(".pdf"):
-            result = parse_statement_ai(str(upload_path))
+            result = await asyncio.to_thread(parse_statement_ai, str(upload_path))
         else:
-            result = parse_csv(str(upload_path))
+            result = await asyncio.to_thread(parse_csv, str(upload_path))
 
         if not result["transactions"]:
             # Record failed AI call (tokens may still have been consumed).
@@ -1192,8 +1196,10 @@ async def parse_receipt_endpoint(request: Request, file: UploadFile = File(...))
         f.write(contents)
 
     try:
-        # AI-only: parse every receipt with Claude vision.
-        result = parse_receipt_ai(str(upload_path))
+        # AI-only: parse every receipt with Claude vision. Off-load to a
+        # thread so this blocking call doesn't pin the FastAPI event loop —
+        # see /api/parse comment above for the failure mode.
+        result = await asyncio.to_thread(parse_receipt_ai, str(upload_path))
 
         if not result.get("items"):
             # Record failed AI call (tokens may still have been consumed).
@@ -1328,8 +1334,9 @@ async def parse_receipts_bulk_endpoint(request: Request, files: list[UploadFile]
                 fout.write(contents)
             upload_paths.append(str(upload_path))
 
-        # Parse all receipts (AI-only).
-        bulk_result = parse_receipts_bulk(upload_paths)
+        # Parse all receipts (AI-only). Off-load to a thread so this
+        # blocking call doesn't pin the event loop — see /api/parse comment.
+        bulk_result = await asyncio.to_thread(parse_receipts_bulk, upload_paths)
         bulk_usage = bulk_result.get("ai_usage") or {}
 
         if not bulk_result["combined_items"]:
@@ -1452,7 +1459,9 @@ async def parse_statements_bulk_endpoint(request: Request, files: list[UploadFil
                 fout.write(contents)
             upload_paths.append(str(upload_path))
 
-        bulk_result = parse_statements_bulk(upload_paths)
+        # Off-load to a thread so the event loop stays responsive for other
+        # users while a multi-PDF parse is in flight — see /api/parse comment.
+        bulk_result = await asyncio.to_thread(parse_statements_bulk, upload_paths)
         bulk_usage = bulk_result.get("ai_usage") or {}
 
         if not bulk_result["all_transactions"]:
