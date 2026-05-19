@@ -264,7 +264,14 @@ async def summarise(
         if h.category == _cats.EXCLUDE_OWNER_TRANSFER:
             excluded.append({"row": row_out.model_dump(), "classification": h.model_dump()})
             continue
-        bucket = income if h.is_income else expenses
+        # Route by the category's INTRINSIC HMRC meaning, not by the upstream
+        # `is_income` flag. The classifier (rules or AI) occasionally tags a
+        # credit as `other` with `is_income=True` — under the old logic that
+        # made "Other expense" show up under Income, which is nonsense.
+        # `other`, `adminCosts`, etc. are expense categories no matter what
+        # sign the transaction has; if the user actually has unmatched
+        # income they should be in `otherIncome`/`turnover`.
+        bucket = income if _cats.is_income_category(h.category, req.business_type) else expenses
         bucket[h.category] = round(bucket.get(h.category, 0.0) + amount, 2)
         if h.confidence < 0.5:
             flagged.append({"row": row_out.model_dump(), "classification": h.model_dump()})
