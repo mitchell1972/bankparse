@@ -153,19 +153,30 @@ TIER_LIMITS = {
 FREE_STATEMENT_LIMIT = ai_pricing.FREE_MONTHLY_STATEMENTS
 FREE_RECEIPT_LIMIT = ai_pricing.FREE_MONTHLY_RECEIPTS
 
-# --- Test/admin accounts (bypass free tier limits, see /admin) ---
-# ONLY the yahoo founder account is admin by default. The gmail account
-# was previously bundled here, which meant signing in as
-# mitchellagoma@gmail.com silently bypassed the paywall — masking what a
-# real customer would see. Other founder / staff / test emails should be
-# added via the UNLIMITED_EMAILS env var, not hardcoded here, so the
-# default behaviour stays restrictive.
+# --- Admin-feature accounts (bypass FEATURE gates, NOT the paywall) ---
+# UNLIMITED_EMAILS bypasses the FEATURE gates: email verification, the
+# free-tier file caps, the auto-enterprise-tier assignment — i.e. things
+# that affect the user EXPERIENCE inside the app once they're already in.
+# It does NOT bypass the paywall. The paywall is enforced via the
+# separate PAYWALL_BYPASS_EMAILS set below.
 _ADMIN_DEFAULTS = {"mitchell_agoma@yahoo.co.uk"}
 UNLIMITED_EMAILS = _ADMIN_DEFAULTS | {
     e.strip().lower() for e in
     os.environ.get("UNLIMITED_EMAILS", "").split(",")
     if e.strip()
 }
+
+# --- Paywall bypass — HARDCODED SINGLETON, no env override ---
+# ONLY this exact email may reach the dashboard without going through
+# Stripe Checkout. Hardcoded on purpose: previously the paywall bypass
+# read from UNLIMITED_EMAILS which is env-extendable, so if Railway had
+# UNLIMITED_EMAILS="mitchell_agoma@live.co.uk,..." that account silently
+# bypassed and masked what real customers see.
+#
+# DO NOT make this env-extendable. If you need to grant another account
+# permanent paywall bypass, edit this file and re-deploy. An env var would
+# defeat the point.
+PAYWALL_BYPASS_EMAILS: frozenset[str] = frozenset({"mitchell_agoma@yahoo.co.uk"})
 
 # --- Auth cookie config ---
 AUTH_COOKIE = "bp_auth"
@@ -460,16 +471,16 @@ def check_can_use(user: dict, mode: str, num_pages: int = 1) -> tuple[bool, str,
     if user_today + estimated_cost > ai_pricing.AI_USER_DAILY_CAP_GBP:
         return False, tier, "user_daily_cap", estimated_cost
 
-    # 4. Free tier: 7-day Stripe trial required. UNLIMITED_EMAILS bypass so
-    #    admin accounts can always parse.
+    # 4. Free tier: 7-day Stripe trial required.
     #
-    # Every user — including legacy grandfathered accounts — must complete
-    # Stripe Checkout to enter `trialing` status. Without a
-    # `stripe_subscription_id` → 'payment_method_required' so the UI can
-    # show the card-on-file CTA. With a sub but trial window over →
-    # 'trial_expired'.
+    # Only PAYWALL_BYPASS_EMAILS (hardcoded yahoo founder) skips the gate
+    # entirely. Every other user — including grandfathered legacy accounts
+    # and UNLIMITED_EMAILS-only admins — must complete Stripe Checkout to
+    # enter `trialing` status. Without a `stripe_subscription_id` →
+    # 'payment_method_required' so the UI can show the card-on-file CTA.
+    # With a sub but trial window over → 'trial_expired'.
     if tier == "free":
-        if email in UNLIMITED_EMAILS:
+        if email in PAYWALL_BYPASS_EMAILS:
             return True, tier, "ok", estimated_cost
         if is_trial_active(user):
             return True, tier, "ok", estimated_cost

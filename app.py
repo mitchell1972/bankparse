@@ -60,7 +60,7 @@ from core import (
     TIER_LIMITS,
     AUTH_COOKIE, AUTH_COOKIE_MAX_AGE,
     COOKIE_NAME, COOKIE_MAX_AGE,
-    SUBSCRIPTION_CACHE_TTL, UNLIMITED_EMAILS,
+    PAYWALL_BYPASS_EMAILS, SUBSCRIPTION_CACHE_TTL, UNLIMITED_EMAILS,
     IMAGE_EXTENSIONS, RECEIPT_EXTENSIONS,
     # Auth helpers
     hash_password, verify_password,
@@ -219,14 +219,13 @@ async def home(request: Request):
         return RedirectResponse(url="/verify-email", status_code=302)
     # Users who haven't completed Stripe Checkout get sent to /start-trial
     # before they reach the dashboard. ONLY two ways to bypass the paywall:
-    #   1. Be an UNLIMITED_EMAILS admin (yahoo founder by default)
-    #   2. Have an active Stripe subscription_status (trialing / active /
-    #      past_due)
-    # Grandfathered legacy users are NO LONGER bypassed — they must enter a
-    # card on next login so their 7-day trial countdown starts under the
-    # same flow as every other user.
-    # The optional ?trial=started query (returned from the Stripe success_url)
-    # lets the user land on the dashboard immediately after Stripe confirms
+    #   1. Email is in PAYWALL_BYPASS_EMAILS (hardcoded singleton — yahoo
+    #      founder only, no env override). This is INTENTIONALLY a different
+    #      set from UNLIMITED_EMAILS — see core.py for rationale.
+    #   2. Stripe subscription_status is one of trialing / active /
+    #      past_due (the user has already completed Checkout).
+    # The ?trial=started query (returned from Stripe's success_url) lets
+    # the user land on the dashboard immediately after Stripe confirms
     # checkout, even before the webhook updates subscription_status —
     # Stripe redirects are guaranteed but webhooks have a few seconds of
     # latency.
@@ -234,7 +233,7 @@ async def home(request: Request):
     trial_started_flag = request.query_params.get("trial") == "started"
     if (
         not trial_started_flag
-        and email not in UNLIMITED_EMAILS
+        and email not in PAYWALL_BYPASS_EMAILS
         and user.get("subscription_status") not in ("trialing", "active", "past_due")
     ):
         return RedirectResponse(url="/start-trial", status_code=302)
