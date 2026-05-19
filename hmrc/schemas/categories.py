@@ -117,3 +117,34 @@ def fallback_other_income(business_type: BusinessType) -> str:
 def is_valid_category(category: str, business_type: BusinessType) -> bool:
     """Is `category` a real HMRC category for this business type?"""
     return category in categories_for(business_type)
+
+
+# Income categories per HMRC's published spec. The income/expense split is
+# an INTRINSIC property of the category name — `turnover` is always income,
+# `other` is always an expense — so we treat it as the source of truth and
+# IGNORE the upstream `is_income` flag during aggregation.
+_SE_INCOME_CATEGORIES = frozenset({SE_INCOME, SE_OTHER_INCOME})
+_PROPERTY_INCOME_CATEGORIES = frozenset({
+    PROP_INCOME_RENT, PROP_INCOME_PREMIUMS, PROP_INCOME_OTHER,
+})
+
+
+def is_income_category(category: str, business_type: BusinessType) -> bool:
+    """True if the HMRC category code is an INCOME line for this business.
+
+    Used by the summary aggregator to decide which bucket a transaction
+    belongs to. Critically, this routes by the category's intrinsic
+    HMRC meaning — not by the AI classifier's `is_income` boolean — so an
+    AI mis-classification (e.g. tagging a credit as `other` with
+    `is_income=True`) lands the row in the correct expense bucket on the
+    summary, instead of polluting Income with a category called
+    "Other expense".
+
+    Note: this is about the category's TAX classification, not the
+    transaction's direction. A refund showing up under `travelCosts`
+    will still aggregate under expenses; the negative sign on that
+    refund row will reduce the total. That matches what HMRC wants.
+    """
+    if business_type == "property":
+        return category in _PROPERTY_INCOME_CATEGORIES
+    return category in _SE_INCOME_CATEGORIES
