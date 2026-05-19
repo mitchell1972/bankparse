@@ -1552,65 +1552,141 @@ def _guess_currency(receipt_rows: list, statement_rows: list) -> str:
     return ""  # Unknown — let the frontend leave amounts unadorned
 
 
-def _format_chat_context(context_type: str, context_data: dict) -> str:
+# 3-letter ISO currency code → display symbol.
+# Used both for the formatted chat context and for the system prompt so the
+# AI is told explicitly which currency it's looking at. Symbols mirror what
+# the user sees on their original bank statement.
+_CURRENCY_SYMBOLS = {
+    "GBP": "£",  # £
+    "USD": "$",
+    "EUR": "€",  # €
+    "JPY": "¥",  # ¥
+    "INR": "₹",  # ₹
+    "CAD": "CA$",
+    "AUD": "A$",
+    "NZD": "NZ$",
+    "CHF": "CHF ",
+    "ZAR": "R",
+    "CNY": "¥",  # ¥ (RMB)
+    "HKD": "HK$",
+    "SGD": "S$",
+}
+
+
+def _currency_symbol(code: str | None) -> str:
+    """Pick a display symbol for a 3-letter ISO currency code.
+
+    Falls back to GBP for blank/missing codes (most of our users are UK).
+    Unrecognised codes (e.g. ``"SEK"``) fall through to ``"SEK "`` so the AI
+    still sees the currency, just labelled rather than symbolised.
+    """
+    if not code:
+        return "£"  # default GBP
+    code = code.strip().upper()
+    return _CURRENCY_SYMBOLS.get(code, f"{code} ")
+
+
+def _statement_currency(context_data: dict) -> str:
+    """Pull the parsed currency code out of statement metadata.
+
+    The AI parsers set ``metadata.currency`` per HMRC-recognisable
+    statement; we trust their detection. Defaults to GBP when missing so
+    chat keeps working on older payloads that pre-date currency detection.
+    """
+    meta = context_data.get("metadata") or {}
+    return (meta.get("currency") or "GBP").strip().upper() or "GBP"
+
+
+def _format_chat_context(context_type: str, context_data: dict) -> tuple[str, str]:
     """Format parsed results into readable text for the chat system prompt.
-    Sonnet 4 has 200K context — we can send ALL transactions for accurate answers.
-    Truncates at 150K chars (~40K tokens) as a safety limit."""
+
+    Returns ``(formatted_text, currency_code)`` — the caller uses the currency
+    code in the system prompt so the AI is told which currency the user is
+    asking about. Previously this function hardcoded ``$`` on every amount,
+    which made Claude confidently mis-label GBP statements as USD even when
+    we told it "use GBP" in the system prompt: the *data* it was reading
+    contradicted the instructions. Now we use the statement's own detected
+    currency symbol.
+
+    Sonnet 4 has 200K context — we can send ALL transactions for accurate
+    answers. Truncates at 150K chars (~40K tokens) as a safety limit.
+    """
     lines = []
     max_chars = 150000
 
+    currency = _statement_currency(context_data)
+    sym = _currency_symbol(currency)
+
+    def _fmt(amount) -> str:
+        try:
+            return f"{sym}{float(amount or 0):.2f}"
+        except (TypeError, ValueError):
+            return f"{sym}0.00"
+
     if context_type == "statement":
         summary = context_data.get("summary", {})
-        lines.append(f"=== Bank Statement Summary ===")
+        lines.append(f"=== Bank Statement Summary ({currency}) ===")
         lines.append(f"Total transactions: {summary.get('total_transactions', 'N/A')}")
-        lines.append(f"Total credits (money in): ${summary.get('total_credits', 0):.2f}")
-        lines.append(f"Total debits (money out): ${summary.get('total_debits', 0):.2f}")
-        lines.append(f"Net: ${summary.get('net', 0):.2f}")
+        lines.append(f"Total credits (money in): {_fmt(summary.get('total_credits'))}")
+        lines.append(f"Total debits (money out): {_fmt(summary.get('total_debits'))}")
+        lines.append(f"Net: {_fmt(summary.get('net'))}")
         lines.append("")
         lines.append("=== Transactions ===")
         for tx in context_data.get("transactions", []):
-            line = f"{tx.get('date', 'N/A')} | {tx.get('description', 'N/A')} | ${tx.get('amount', 0):.2f} | {tx.get('type', 'N/A')}"
+            line = (
+                f"{tx.get('date', 'N/A')} | {tx.get('description', 'N/A')} | "
+                f"{_fmt(tx.get('amount'))} | {tx.get('type', 'N/A')}"
+            )
             lines.append(line)
 
     elif context_type == "receipt":
         meta = context_data.get("metadata", {})
         totals = context_data.get("totals", {})
-        lines.append(f"=== Receipt from {meta.get('store_name', 'Unknown Store')} ===")
+        lines.append(f"=== Receipt from {meta.get('store_name', 'Unknown Store')} ({currency}) ===")
         if meta.get("date"):
             lines.append(f"Date: {meta['date']}")
-        lines.append(f"Total: ${totals.get('total', 0):.2f}")
+        lines.append(f"Total: {_fmt(totals.get('total'))}")
         if totals.get("tax") is not None:
-            lines.append(f"Tax: ${totals['tax']:.2f}")
+            lines.append(f"Tax: {_fmt(totals.get('tax'))}")
         lines.append("")
         lines.append("=== Items ===")
         for item in context_data.get("items", []):
-            line = f"{item.get('description', 'N/A')} | Qty: {item.get('quantity', 1)} | Unit: ${item.get('unit_price', 0):.2f} | Total: ${item.get('total_price', 0):.2f}"
+            line = (
+                f"{item.get('description', 'N/A')} | Qty: {item.get('quantity', 1)} | "
+                f"Unit: {_fmt(item.get('unit_price'))} | Total: {_fmt(item.get('total_price'))}"
+            )
             lines.append(line)
 
     elif context_type == "bulk_receipt":
-        lines.append(f"=== Bulk Receipt Summary ===")
+        lines.append(f"=== Bulk Receipt Summary ({currency}) ===")
         lines.append(f"Receipts processed: {context_data.get('receipt_count', 0)}")
         lines.append(f"Total items: {context_data.get('total_items', 0)}")
-        lines.append(f"Grand total: ${context_data.get('grand_total', 0):.2f}")
+        lines.append(f"Grand total: {_fmt(context_data.get('grand_total'))}")
         lines.append("")
         lines.append("=== All Items ===")
         for item in context_data.get("combined_items", []):
-            line = f"{item.get('store', 'N/A')} | {item.get('description', 'N/A')} | Qty: {item.get('quantity', 1)} | ${item.get('total_price', 0):.2f}"
+            line = (
+                f"{item.get('store', 'N/A')} | {item.get('description', 'N/A')} | "
+                f"Qty: {item.get('quantity', 1)} | {_fmt(item.get('total_price'))}"
+            )
             lines.append(line)
 
     elif context_type == "bulk_statement":
         summary = context_data.get("summary", {})
-        lines.append(f"=== Combined Statements Summary ===")
+        lines.append(f"=== Combined Statements Summary ({currency}) ===")
         lines.append(f"Statements: {context_data.get('statement_count', 0)}")
         lines.append(f"Total transactions: {summary.get('total_transactions', 0)}")
-        lines.append(f"Total credits: ${summary.get('total_credits', 0):.2f}")
-        lines.append(f"Total debits: ${summary.get('total_debits', 0):.2f}")
-        lines.append(f"Net: ${summary.get('net', 0):.2f}")
+        lines.append(f"Total credits: {_fmt(summary.get('total_credits'))}")
+        lines.append(f"Total debits: {_fmt(summary.get('total_debits'))}")
+        lines.append(f"Net: {_fmt(summary.get('net'))}")
         lines.append("")
         lines.append("=== All Transactions ===")
         for tx in context_data.get("all_transactions", []):
             source = tx.get("source", "")
-            line = f"{source} | {tx.get('date', 'N/A')} | {tx.get('description', 'N/A')} | ${tx.get('amount', 0):.2f} | {tx.get('type', 'N/A')}"
+            line = (
+                f"{source} | {tx.get('date', 'N/A')} | {tx.get('description', 'N/A')} | "
+                f"{_fmt(tx.get('amount'))} | {tx.get('type', 'N/A')}"
+            )
             lines.append(line)
 
     else:
@@ -1619,7 +1695,7 @@ def _format_chat_context(context_type: str, context_data: dict) -> str:
     text = "\n".join(lines)
     if len(text) > max_chars:
         text = text[:max_chars] + "\n\n... (data truncated for brevity)"
-    return text
+    return text, currency
 
 
 @app.post("/api/chat")
@@ -1668,14 +1744,23 @@ async def chat_endpoint(request: Request):
     if context_type not in ("statement", "receipt", "bulk_receipt", "bulk_statement"):
         raise HTTPException(status_code=400, detail="Invalid context_type. Must be one of: statement, receipt, bulk_receipt, bulk_statement.")
 
-    formatted_context = _format_chat_context(context_type, context_data)
+    formatted_context, currency_code = _format_chat_context(context_type, context_data)
+    currency_symbol = _currency_symbol(currency_code)
 
+    # Explicitly tell the AI the currency of the data \u2014 previously this said
+    # "use GBP" while the data was rendered with $ signs, so Claude reasonably
+    # ignored the instruction and labelled UK statements as USD. The symbol
+    # we tell the model here MUST match the symbol used inside the data block
+    # below (both come from the same `_statement_currency()` call).
     system_prompt = (
         "You are a helpful financial assistant for BankScan AI. The user has uploaded "
         "bank statements and/or store receipts. Answer their questions based ONLY on "
-        "the data provided below. Be concise, specific, and use GBP (\u00a3) currency "
-        "formatting. If asked to calculate totals, show your working. If the data "
-        "doesn't contain the answer, say so clearly.\n\n"
+        "the data provided below.\n"
+        f"\nCurrency: ALL amounts in the data below are in {currency_code} "
+        f"({currency_symbol}). When you quote amounts back, ALWAYS use the {currency_symbol} "
+        f"symbol \u2014 never reinterpret the data as USD or any other currency.\n"
+        "\nBe concise, specific, and show your working when calculating totals. "
+        "If the data doesn't contain the answer, say so clearly.\n\n"
         f"Here is the uploaded financial data:\n{formatted_context}"
     )
 
