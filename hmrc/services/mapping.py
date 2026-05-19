@@ -416,10 +416,25 @@ def classify_property(
 # Aggregation — bank-transaction rows → HMRC quarterly submission payload.
 # ---------------------------------------------------------------------------
 
-def _aggregate(rows: Iterable[dict], classify_fn, low_conf_income: str, low_conf_expense: str,
-               user_full_name: str | None = None) -> dict:
+def _aggregate(
+    rows: Iterable[dict], classify_fn, low_conf_income: str, low_conf_expense: str,
+    business_type: str,
+    user_full_name: str | None = None,
+) -> dict:
     """Shared aggregator. Owner-transfer rows are excluded from category totals
-    but returned in `excluded` so the UI can show them clearly."""
+    but returned in `excluded` so the UI can show them clearly.
+
+    Bucket routing uses the category's INTRINSIC HMRC meaning
+    (see `hmrc.schemas.categories.is_income_category`), NOT the per-row
+    `is_income` flag. This protects against the classifier mis-flagging a
+    credit as an expense category like `other` and the row landing under
+    Income — which would render as the nonsensical "Other expense" inside
+    the Income column in the UI/XLSX.
+    """
+    # Local import keeps the top of the module clean and avoids re-importing
+    # ourselves via the re-export chain.
+    from ..schemas.categories import is_income_category
+
     income: dict[str, float] = {}
     expenses: dict[str, float] = {}
     flagged: list[dict] = []
@@ -429,8 +444,13 @@ def _aggregate(rows: Iterable[dict], classify_fn, low_conf_income: str, low_conf
         if c.category == EXCLUDE_OWNER_TRANSFER:
             excluded.append({"row": r, "classification": c.__dict__})
             continue
-        bucket = income if c.is_income else expenses
-        key = c.category if c.confidence >= 0.5 else (low_conf_income if c.is_income else low_conf_expense)
+        # Route by the category's canonical income/expense status, not the
+        # classifier's per-row guess.
+        category_is_income = is_income_category(c.category, business_type)
+        bucket = income if category_is_income else expenses
+        # Low-confidence rows fall back to the 'other' bucket of the SAME
+        # side as the canonical category, not the classifier's guess.
+        key = c.category if c.confidence >= 0.5 else (low_conf_income if category_is_income else low_conf_expense)
         bucket[key] = round(bucket.get(key, 0.0) + abs(float(r.get("amount") or 0)), 2)
         if c.confidence < 0.5:
             flagged.append({"row": r, "classification": c.__dict__})
@@ -454,9 +474,17 @@ def aggregate_self_employment(rows: Iterable[dict], user_full_name: str | None =
     Self-Employment Business (MTD) period-summary POST body. Also includes
     `flagged_for_review` (low-confidence) and `excluded` (owner transfers).
     """
-    return _aggregate(rows, classify_self_employment, SE_OTHER_INCOME, SE_EXPENSE_OTHER, user_full_name)
+    return _aggregate(
+        rows, classify_self_employment, SE_OTHER_INCOME, SE_EXPENSE_OTHER,
+        business_type="se",
+        user_full_name=user_full_name,
+    )
 
 
 def aggregate_property(rows: Iterable[dict], user_full_name: str | None = None) -> dict:
     """Same shape as `aggregate_self_employment` but for UK property."""
-    return _aggregate(rows, classify_property, PROP_INCOME_OTHER, PROP_EXPENSE_OTHER, user_full_name)
+    return _aggregate(
+        rows, classify_property, PROP_INCOME_OTHER, PROP_EXPENSE_OTHER,
+        business_type="property",
+        user_full_name=user_full_name,
+    )

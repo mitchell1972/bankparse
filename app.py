@@ -676,6 +676,7 @@ def _build_hmrc_payload_for_rows(user: dict, rows: list[dict], business_type: st
     saved there flow through to here via the overrides table.
     """
     from hmrc.repositories import overrides as _overrides
+    from hmrc.schemas import categories as _cats
     from hmrc.services import mapping as _mapping
 
     bt = "property" if business_type == "property" else "se"
@@ -721,7 +722,11 @@ def _build_hmrc_payload_for_rows(user: dict, rows: list[dict], business_type: st
             excluded.append({"description": desc, "amount": amount})
             continue
 
-        bucket = income if is_income else expenses
+        # Bucket by the category's INTRINSIC HMRC meaning, not by the per-row
+        # `is_income` flag — see hmrc.services.categorisation.summarise for
+        # the rationale. Otherwise the downloaded XLSX shows "Other expense"
+        # under Income for any credit the classifier mislabeled as `other`.
+        bucket = income if _cats.is_income_category(category, bt) else expenses
         bucket[category] = round(bucket.get(category, 0.0) + abs(amount), 2)
         if confidence < 0.5:
             flagged.append({"description": desc, "amount": amount, "reasoning": reasoning})
