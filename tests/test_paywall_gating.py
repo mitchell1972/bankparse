@@ -187,12 +187,36 @@ def test_random_user_is_redirected_to_start_trial():
     assert r.headers["location"] == "/start-trial"
 
 
-def test_grandfathered_user_lands_on_dashboard():
-    """Grandfathered users (registered pre-cutoff) bypass /start-trial.
-    Untouched by this fix — make sure we didn't break them."""
+def test_grandfathered_user_now_hits_paywall_too():
+    """Grandfathered users used to bypass /start-trial. As of the
+    'paywall every free user' change, they DON'T anymore — every legacy
+    user must enter a card on their next login so they go through the
+    same Stripe 7-day-trial flow as everyone else."""
     import database as _db
     client, user = _register_and_verify("grandfathered@example.com")
     _db.update_user(user["id"], grandfathered_trial=1)
+    r = client.get("/", follow_redirects=False)
+    assert r.status_code == 302, (
+        "grandfathered users must now be paywalled — they enter a card and "
+        "start the new 7-day Stripe trial like every other user."
+    )
+    assert r.headers["location"] == "/start-trial"
+
+
+def test_grandfathered_user_who_subscribes_lands_on_dashboard():
+    """After a grandfathered user completes Stripe Checkout (which sets
+    subscription_status='trialing' + trial_end_at), they reach the
+    dashboard — same flow as a brand-new user."""
+    import time as _time
+    import database as _db
+    client, user = _register_and_verify("grandfathered-then-subbed@example.com")
+    _db.update_user(
+        user["id"],
+        grandfathered_trial=1,  # legacy flag preserved for analytics
+        subscription_status="trialing",
+        stripe_subscription_id="sub_test_grandfathered",
+        trial_end_at=_time.time() + 7 * 24 * 3600,
+    )
     r = client.get("/", follow_redirects=False)
     assert r.status_code == 200
 

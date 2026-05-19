@@ -443,21 +443,30 @@ def test_login_session_persists_across_requests():
 
 
 def test_login_session_persists_home_access():
-    """After verified login, GET / should return 200 (not redirect) on repeated
-    requests. Verification gate (PR #12) makes the unverified case a 302 to
-    /verify-email — verify first, then check the dashboard stays accessible."""
+    """After verified login + Stripe trial setup, GET / should return 200
+    (not redirect) on repeated requests. Verification gate makes the
+    unverified case a 302 to /verify-email and the paywall gate redirects
+    non-subscribed users to /start-trial — set up a complete trialing
+    state so we're testing session persistence, not the gating itself."""
+    import time as _time
     from database import mark_email_verified, get_user_by_email, update_user
     with TestClient(app, raise_server_exceptions=False) as client:
         reg_resp = _register(client, "homepersist@example.com", "password1234")
         assert reg_resp.status_code == 200
         u = get_user_by_email("homepersist@example.com")
         mark_email_verified(u["id"])
-        # Grandfather so they skip the new card-on-file gate.
-        update_user(u["id"], grandfathered_trial=1)
+        # Mimic the row state Stripe's webhook leaves after a successful
+        # Checkout: card on file + 7-day trial countdown.
+        update_user(
+            u["id"],
+            subscription_status="trialing",
+            stripe_subscription_id="sub_test_homepersist",
+            trial_end_at=_time.time() + 7 * 24 * 3600,
+        )
 
         for i in range(3):
             resp = client.get("/", follow_redirects=False)
-            # Verified, authenticated user should get 200, not a redirect
+            # Verified, authenticated, subscribed user should get 200, not a redirect
             assert resp.status_code == 200, (
                 f"Request {i+1}: expected 200 for authenticated home, got {resp.status_code}"
             )

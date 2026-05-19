@@ -87,24 +87,29 @@ def _make_user(email="t@example.com", verified=True, grandfathered=False, **fiel
 
 # --- is_trial_active ---------------------------------------------------------
 
-def test_grandfathered_user_active_within_legacy_window():
-    """A grandfathered user signed up today still has the legacy 7-day trial."""
+def test_grandfathered_user_alone_does_not_activate_trial():
+    """REGRESSION — grandfathered_trial=1 used to activate the legacy
+    7-days-from-registration trial. That bypass is gone: every user must
+    enter a card via Stripe Checkout, including legacy accounts."""
     import core
     user = _make_user("legacy@example.com", grandfathered=True)
-    assert core.is_trial_active(user) is True
-
-
-def test_grandfathered_user_expired_after_legacy_window():
-    """Grandfathered user with created_at older than 7 days is no longer trialling."""
-    import core, database
-    user = _make_user("oldlegacy@example.com", grandfathered=True)
-    # Backdate created_at by 8 days
-    database._execute(
-        "UPDATE users SET created_at = ? WHERE id = ?",
-        (time.time() - 8 * 86400, user["id"]),
+    assert core.is_trial_active(user) is False, (
+        "grandfathered_trial alone must not activate is_trial_active"
     )
-    user = database.get_user_by_id(user["id"])
-    assert core.is_trial_active(user) is False
+
+
+def test_grandfathered_plus_stripe_trial_is_active():
+    """After a legacy user enters a card via Stripe Checkout the row has
+    BOTH grandfathered_trial=1 (analytics) AND subscription_status='trialing'
+    + trial_end_at. They reach the dashboard normally."""
+    import core
+    user = _make_user(
+        "legacy-with-card@example.com",
+        grandfathered=True,
+        subscription_status="trialing",
+        trial_end_at=time.time() + 6 * 86400,
+    )
+    assert core.is_trial_active(user) is True
 
 
 def test_new_user_without_subscription_is_not_trialling():
@@ -149,19 +154,18 @@ def test_check_can_use_new_user_without_card_gets_payment_method_required():
         assert tier == "free"
 
 
-def test_check_can_use_grandfathered_expired_gets_trial_expired():
-    """Grandfathered user past 7-day window → 'trial_expired' (not 'payment_method_required')."""
-    import core, database
+def test_check_can_use_grandfathered_without_sub_is_payment_method_required():
+    """REGRESSION — grandfathered users used to get 'trial_expired' after
+    their 7-day legacy window. With grandfathering removed, they get
+    'payment_method_required' instead (because they have no Stripe sub).
+    The UI shows 'Add card to start your 7-day free trial' which is the
+    right CTA for them now."""
+    import core
     user = _make_user("oldlegacy@example.com", grandfathered=True)
-    database._execute(
-        "UPDATE users SET created_at = ? WHERE id = ?",
-        (time.time() - 8 * 86400, user["id"]),
-    )
-    user = database.get_user_by_id(user["id"])
     with patch("core.get_user_tier", return_value="free"):
         allowed, _, reason, _ = core.check_can_use(user, "receipt")
         assert allowed is False
-        assert reason == "trial_expired"
+        assert reason == "payment_method_required"
 
 
 def test_check_can_use_active_trial_allowed():

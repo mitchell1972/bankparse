@@ -134,10 +134,19 @@ def _authenticated_client():
     user = _db.get_user_by_email(email)
     assert user is not None, "Registration did not create a user"
     _db.mark_email_verified(user["id"])
-    # Pre-card-on-file behaviour: grandfather the test user so legacy
-    # 7-days-from-registration trial applies. New Stripe-driven trial is
-    # exercised in tests/test_billing_trial.py.
-    _db.update_user(user["id"], grandfathered_trial=1)
+    # Grandfathering no longer grants trial access — every user must enter
+    # a card. Mimic the post-Stripe-Checkout row state directly so these
+    # upload tests can exercise the parse pipeline without going through
+    # the Stripe SDK. The new Stripe-driven trial flow is exercised end-
+    # to-end in tests/test_billing_trial.py.
+    import time as _time
+    _db.update_user(
+        user["id"],
+        grandfathered_trial=0,
+        subscription_status="trialing",
+        stripe_subscription_id="sub_test_uploads",
+        trial_end_at=_time.time() + 7 * 24 * 3600,
+    )
     csrf = client.cookies.get("bp_csrf", "")
     return client, csrf
 
@@ -450,17 +459,21 @@ def test_free_tier_within_trial_allows_repeat_uploads():
 
 
 def test_free_tier_blocked_after_trial_expires():
-    """Once the user's created_at is more than 7 days back, /api/parse 403s
-    with TRIAL_EXPIRED (user is email-verified via _authenticated_client)."""
+    """Once the user's Stripe trial_end_at is in the past, /api/parse 403s
+    with TRIAL_EXPIRED. Under the new flow, this means the 7-day Stripe
+    countdown has finished — Stripe will charge them or has already
+    failed to charge them; either way no more free parses."""
     import database
     import time
 
     client, csrf = _authenticated_client()
     try:
-        # Backdate the registered user 8 days
+        # Move the trial end into the past. The user still has a Stripe
+        # subscription id (so we know they entered a card), but the
+        # trial window is over.
         database._execute(
-            "UPDATE users SET created_at = ? WHERE email = ?",
-            (time.time() - 8 * 86400, "testuser@example.com"),
+            "UPDATE users SET trial_end_at = ? WHERE email = ?",
+            (time.time() - 86400, "testuser@example.com"),
         )
 
         resp = _upload_file(

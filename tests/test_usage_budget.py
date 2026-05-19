@@ -69,19 +69,28 @@ def clean_db():
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _make_user(email: str = "user@example.com", verified: bool = True, grandfathered: bool = True) -> dict:
+def _make_user(email: str = "user@example.com", verified: bool = True,
+              trialing: bool = True) -> dict:
     """Insert a verified user and return the fresh user dict.
 
-    ``grandfathered`` defaults to True so these legacy budget/trial tests
-    continue to exercise the 7-days-from-registration rule. The new
-    card-on-file trial path is covered in test_billing_trial.py.
+    ``trialing`` defaults to True — the user looks like they've just
+    completed Stripe Checkout (subscription_status='trialing' + card on
+    file + 7-day countdown). The old grandfathered_trial path no longer
+    grants access; pass ``trialing=False`` for tests that want to assert
+    the paywalled state.
     """
     import database
+    import time
     user_id = database.create_user(email, "pwhash")
     if verified:
         database.mark_email_verified(user_id)
-    if grandfathered:
-        database.update_user(user_id, grandfathered_trial=1)
+    if trialing:
+        database.update_user(
+            user_id,
+            subscription_status="trialing",
+            stripe_subscription_id="sub_test_" + email.split("@")[0],
+            trial_end_at=time.time() + 7 * 24 * 3600,
+        )
     return database.get_user_by_id(user_id)
 
 
@@ -146,17 +155,18 @@ def test_free_tier_within_trial_window_can_parse_receipts():
 
 
 def test_free_tier_trial_expired_blocks_statements_and_receipts():
-    """A user whose created_at is older than 7 days is blocked on both modes
-    with reason 'trial_expired'."""
+    """A user whose Stripe trial_end_at is in the past is blocked on both
+    modes with reason 'trial_expired'."""
     import core
     import database
     import time
 
     user = _make_user("trial-expired@example.com")
-    # Backdate created_at by 8 days
+    # Move the Stripe trial window into the past — user still has a sub
+    # id (they entered a card) but the 7 days are over.
     database._execute(
-        "UPDATE users SET created_at = ? WHERE id = ?",
-        (time.time() - 8 * 86400, user["id"]),
+        "UPDATE users SET trial_end_at = ? WHERE id = ?",
+        (time.time() - 86400, user["id"]),
     )
     user = database.get_user_by_id(user["id"])
 
@@ -171,22 +181,21 @@ def test_free_tier_trial_expired_blocks_statements_and_receipts():
 
 
 def test_trial_days_remaining_counts_down():
-    """trial_days_remaining returns 7 for a fresh user and 0 for an old one."""
+    """is_trial_active returns True while Stripe's trial_end_at is in the
+    future, False once it's passed."""
     import core
     import database
     import time
 
     fresh = _make_user("fresh@example.com")
-    assert core.trial_days_remaining(fresh) == core.TRIAL_DAYS
     assert core.is_trial_active(fresh) is True
 
     old = _make_user("old@example.com")
     database._execute(
-        "UPDATE users SET created_at = ? WHERE id = ?",
-        (time.time() - 8 * 86400, old["id"]),
+        "UPDATE users SET trial_end_at = ? WHERE id = ?",
+        (time.time() - 86400, old["id"]),
     )
     old = database.get_user_by_id(old["id"])
-    assert core.trial_days_remaining(old) == 0
     assert core.is_trial_active(old) is False
 
 
