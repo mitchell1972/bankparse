@@ -1,0 +1,633 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- Google tag (gtag.js) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-Y9YR7G0D7Z"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', 'G-Y9YR7G0D7Z');
+    </script>
+    <title>Multi-Currency Bank Statement Handling for UK Bookkeepers — Complete Guide (2026) | BankScan AI</title>
+    <meta name="description" content="Struggling with Revolut, Wise, or international business account statements in EUR, USD, and GBP? Complete guide to multi-currency statement handling for UK bookkeepers — exchange rates, reconciliation, VAT, and automation.">
+    <meta name="keywords" content="multi-currency bank statement handling UK, foreign currency bank statement to Excel, Revolut multi-currency statement conversion, Wise borderless account statement Excel, GBP equivalent bank statement calculation, convert foreign currency bank statement for Xero, multi-currency bookkeeping reconciliation UK">
+    <meta name="author" content="BankScan AI Team">
+    <meta name="robots" content="index, follow">
+    <link rel="canonical" href="https://bankscanai.com/blog/multi-currency-bank-statement-handling">
+    <link rel="alternate" hreflang="en-GB" href="https://bankscanai.com/blog/multi-currency-bank-statement-handling">
+
+    <meta property="og:type" content="article">
+    <meta property="og:url" content="https://bankscanai.com/blog/multi-currency-bank-statement-handling">
+    <meta property="og:title" content="Multi-Currency Bank Statement Handling for UK Bookkeepers — Complete Guide (2026)">
+    <meta property="og:description" content="Struggling with Revolut, Wise, or international business account statements in EUR, USD, and GBP? Complete guide to multi-currency statement handling for UK bookkeepers.">
+    <meta property="og:site_name" content="BankScan AI">
+    <meta property="og:locale" content="en_GB">
+    <meta property="article:published_time" content="2026-05-19">
+    <meta property="article:author" content="BankScan AI Team">
+
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Multi-Currency Bank Statement Handling for UK Bookkeepers — Complete Guide (2026)">
+    <meta name="twitter:description" content="Struggling with Revolut, Wise, or international business account statements in EUR, USD, and GBP? Complete guide for UK bookkeepers.">
+
+    <!-- Article Schema -->
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "Article",
+        "headline": "Multi-Currency Bank Statement Handling for UK Bookkeepers — Complete Guide (2026)",
+        "description": "Complete guide to handling multi-currency bank statements from Revolut, Wise, and international business accounts. Covers exchange rate challenges, foreign currency reconciliation, GBP equivalent calculations, VAT implications, and automated workflows for UK bookkeepers.",
+        "author": {"@type": "Organization", "name": "BankScan AI"},
+        "publisher": {"@type": "Organization", "name": "BankScan AI", "url": "https://bankscanai.com"},
+        "datePublished": "2026-05-19",
+        "dateModified": "2026-05-19",
+        "mainEntityOfPage": "https://bankscanai.com/blog/multi-currency-bank-statement-handling"
+    }
+    </script>
+
+    <!-- FAQ Schema -->
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "FAQPage",
+        "mainEntity": [
+            {
+                "@type": "Question",
+                "name": "How do I calculate GBP equivalent amounts for foreign currency transactions on a bank statement?",
+                "acceptedAnswer": {
+                    "@type": "Answer",
+                    "text": "You need the transaction's original currency amount and the exchange rate on the date the transaction settled. Multiply the foreign currency amount by the rate to get the GBP equivalent. Be careful: banks like Revolut apply their own interbank rate plus a markup, and the rate on the transaction date may differ from the statement date. For HMRC compliance, use HMRC's published monthly exchange rates or the actual rate applied by the bank — whichever is more consistent across your bookkeeping. Automated tools like BankScan AI can extract both the original amount and, where available, the GBP equivalent directly from the statement, eliminating manual rate lookups."
+                }
+            },
+            {
+                "@type": "Question",
+                "name": "Why do Revolut statements show two different amounts for the same transaction?",
+                "acceptedAnswer": {
+                    "@type": "Answer",
+                    "text": "Revolut displays transactions in both the original transaction currency and your account's base currency (e.g. GBP). This dual-amount display is essential for bookkeeping — the original currency amount tells you what was actually spent, while the base currency amount is what left your account after conversion. When converting the statement to Excel, you must preserve both amounts: the original currency column for audit trails and the GBP equivalent for your UK bookkeeping ledgers."
+                }
+            },
+            {
+                "@type": "Question",
+                "name": "What exchange rate should UK bookkeepers use for foreign currency transactions?",
+                "acceptedAnswer": {
+                    "@type": "Answer",
+                    "text": "For UK bookkeeping, you have three options: (1) the actual rate applied by the bank at the time of the transaction — most accurate but requires extracting it from the statement; (2) HMRC's published monthly average exchange rates — acceptable for VAT and tax returns; (3) the spot rate from a reliable source like the Bank of England or XE.com on the transaction date. Consistency is key: pick one method and apply it across all clients. For Revolut and Wise statements, using the bank-applied rate is ideal because it's the actual amount debited from the account."
+                }
+            },
+            {
+                "@type": "Question",
+                "name": "Are foreign currency transactions subject to UK VAT, and how do I account for them?",
+                "acceptedAnswer": {
+                    "@type": "Answer",
+                    "text": "Yes, foreign currency transactions can be subject to UK VAT. The VAT treatment depends on the nature of the transaction, not the currency. For VAT-registered businesses, you must convert the foreign currency amount to GBP using HMRC's published exchange rates (or the UK market selling rate at the time of supply) for your VAT return. Services to non-UK customers may be outside the scope of UK VAT (place of supply rules apply). Imported goods attract import VAT at the point of entry. Always record both the original currency amount and the GBP equivalent used for the VAT calculation — HMRC may request both during a compliance check."
+                }
+            },
+            {
+                "@type": "Question",
+                "name": "Can I import multi-currency bank statements directly into Xero or QuickBooks?",
+                "acceptedAnswer": {
+                    "@type": "Answer",
+                    "text": "Xero supports multi-currency accounts natively, including automatic exchange rate feeds from XE.com. For CSV imports, you must provide the transaction amount in the account's base currency. QuickBooks Online also supports multi-currency but requires the transaction currency to be specified during import. The challenge is that Revolut and Wise statements often list transactions in multiple currencies within a single statement file — most accounting software expects one currency per bank account. BankScan AI can separate multi-currency transactions by currency and prepare separate import files for each currency account in your software."
+                }
+            }
+        ]
+    }
+    </script>
+
+    <style>
+        :root {
+            --primary: #1B4F72;
+            --primary-light: #2E86C1;
+            --accent: #27AE60;
+            --bg: #FAFBFC;
+            --bg-alt: #F0F4F8;
+            --text: #2C3E50;
+            --text-light: #5D6D7E;
+            --white: #FFFFFF;
+            --border: #D5DBDE;
+            --shadow: 0 2px 16px rgba(27, 79, 114, 0.08);
+            --radius: 12px;
+            --radius-sm: 8px;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            color: var(--text); background: var(--bg); line-height: 1.7; -webkit-font-smoothing: antialiased;
+        }
+        .header {
+            position: sticky; top: 0; z-index: 100;
+            background: rgba(255,255,255,0.95); backdrop-filter: blur(12px);
+            border-bottom: 1px solid var(--border);
+        }
+        .header-inner {
+            max-width: 1140px; margin: 0 auto; padding: 0 24px;
+            display: flex; align-items: center; justify-content: space-between; height: 64px;
+        }
+        .logo { font-size: 1.35rem; font-weight: 700; color: var(--primary); text-decoration: none; letter-spacing: -0.5px; }
+        .logo span { color: var(--accent); }
+        .nav { display: flex; gap: 28px; align-items: center; }
+        .nav a { text-decoration: none; color: var(--text-light); font-size: 0.9rem; font-weight: 500; transition: color 0.2s; }
+        .nav a:hover { color: var(--primary); }
+        .nav-cta {
+            background: var(--accent) !important; color: var(--white) !important;
+            padding: 8px 20px; border-radius: 6px; font-weight: 600 !important;
+        }
+        .nav-cta:hover { background: #219a52 !important; }
+
+        .article-hero {
+            background: linear-gradient(135deg, var(--primary) 0%, #154360 100%);
+            color: var(--white); padding: 60px 24px 50px; text-align: center;
+        }
+        .article-hero .breadcrumb { font-size: 0.85rem; opacity: 0.7; margin-bottom: 16px; }
+        .article-hero .breadcrumb a { color: var(--white); text-decoration: none; }
+        .article-hero .breadcrumb a:hover { text-decoration: underline; }
+        .article-hero h1 { font-size: 2.2rem; font-weight: 700; max-width: 760px; margin: 0 auto 16px; line-height: 1.25; }
+        .article-hero .meta { font-size: 0.9rem; opacity: 0.75; }
+
+        .article { max-width: 760px; margin: 0 auto; padding: 48px 24px 64px; }
+        .article h2 { font-size: 1.5rem; color: var(--primary); margin: 40px 0 16px; font-weight: 700; line-height: 1.3; }
+        .article h3 { font-size: 1.15rem; color: var(--text); margin: 28px 0 12px; font-weight: 600; }
+        .article p { margin-bottom: 18px; font-size: 1.02rem; }
+        .article ul, .article ol { margin: 0 0 18px 24px; }
+        .article li { margin-bottom: 8px; }
+        .article a { color: var(--primary-light); text-decoration: underline; }
+        .article strong { color: var(--text); }
+
+        .pros-cons { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 16px 0 24px; }
+        .pros, .cons {
+            background: var(--white); border: 1px solid var(--border); border-radius: var(--radius-sm);
+            padding: 16px; font-size: 0.92rem;
+        }
+        .pros { border-left: 4px solid var(--accent); }
+        .cons { border-left: 4px solid #E74C3C; }
+        .pros h4, .cons h4 { font-size: 0.85rem; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
+        .pros h4 { color: var(--accent); }
+        .cons h4 { color: #E74C3C; }
+        .pros ul, .cons ul { margin: 0; padding-left: 16px; }
+        .pros li, .cons li { margin-bottom: 4px; font-size: 0.9rem; }
+
+        .time-estimate {
+            display: inline-block; background: var(--bg-alt); border-radius: 20px;
+            padding: 4px 14px; font-size: 0.82rem; color: var(--text-light); margin-bottom: 16px;
+        }
+
+        .comparison-table { width: 100%; border-collapse: collapse; margin: 24px 0; font-size: 0.88rem; }
+        .comparison-table th {
+            background: var(--primary); color: var(--white); padding: 12px 10px;
+            text-align: left; font-weight: 600; font-size: 0.82rem;
+        }
+        .comparison-table td { padding: 10px; border-bottom: 1px solid var(--border); }
+        .comparison-table tr:nth-child(even) { background: var(--bg-alt); }
+        .comparison-table .highlight { background: #E8F8F0 !important; font-weight: 600; }
+
+        .cta-box {
+            background: linear-gradient(135deg, var(--primary) 0%, #154360 100%);
+            color: var(--white); border-radius: var(--radius); padding: 32px; text-align: center;
+            margin: 40px 0;
+        }
+        .cta-box h3 { font-size: 1.3rem; margin-bottom: 12px; color: var(--white); }
+        .cta-box p { opacity: 0.85; margin-bottom: 20px; font-size: 1rem; }
+        .cta-btn {
+            display: inline-block; background: var(--accent); color: var(--white);
+            padding: 14px 32px; border-radius: 8px; text-decoration: none;
+            font-weight: 700; font-size: 1rem; transition: background 0.2s;
+        }
+        .cta-btn:hover { background: #219a52; color: var(--white); }
+
+        .warning-box {
+            background: #FEF9E7; border: 1px solid #F9E79F; border-left: 4px solid #F39C12;
+            border-radius: var(--radius-sm); padding: 16px 20px; margin: 16px 0 24px;
+            font-size: 0.93rem;
+        }
+        .warning-box strong { color: #B7950B; }
+
+        .scenario-box {
+            background: #EBF5FB; border: 1px solid #AED6F1; border-left: 4px solid var(--primary-light);
+            border-radius: var(--radius-sm); padding: 16px 20px; margin: 16px 0 24px;
+            font-size: 0.93rem;
+        }
+        .scenario-box strong { color: var(--primary); }
+
+        .footer {
+            background: var(--primary); color: rgba(255,255,255,0.7); padding: 40px 24px; text-align: center; font-size: 0.85rem;
+        }
+        .footer a { color: rgba(255,255,255,0.9); text-decoration: none; }
+
+        @media (max-width: 600px) {
+            .article-hero h1 { font-size: 1.5rem; }
+            .pros-cons { grid-template-columns: 1fr; }
+            .comparison-table { font-size: 0.78rem; }
+            .comparison-table th, .comparison-table td { padding: 8px 6px; }
+        }
+    </style>
+</head>
+<body>
+
+<header class="header">
+    <div class="header-inner">
+        <a href="/landing" class="logo">BankScan<span>AI</span></a>
+        <nav class="nav">
+            <a href="/blog">Blog</a>
+            <a href="/tools">Tools</a>
+            <a href="/landing">Home</a>
+            <a href="/login" class="nav-cta">Try Free</a>
+        </nav>
+    </div>
+</header>
+
+<section class="article-hero">
+    <div class="breadcrumb"><a href="/landing">Home</a> &rsaquo; <a href="/blog">Blog</a> &rsaquo; Multi-Currency Statement Handling</div>
+    <h1>Multi-Currency Bank Statement Handling for UK Bookkeepers — Complete Guide (2026)</h1>
+    <div class="meta">19 May 2026 &middot; 12 min read &middot; BankScan AI Team</div>
+</section>
+
+<article class="article">
+
+    <p>It's 10pm. You're staring at a Revolut business statement showing transactions in EUR, USD, and GBP — and the clock is ticking toward your client's VAT deadline. The statement has two amounts for every transaction. Some lines have a € symbol. Others use $. A few are in £. You need clean, reconciled figures for the books, and you need them tonight.</p>
+
+    <p>If that scenario sounds familiar, you're not alone. Multi-currency bank accounts have exploded in popularity among UK businesses — Revolut Business alone passed 500,000 UK customers in 2025, and Wise (formerly TransferWise) serves over 16 million customers worldwide. But the bookkeeping has not kept pace. Most accounting workflows, software, and training were built for single-currency GBP statements.</p>
+
+    <p>This guide covers everything you need to handle multi-currency bank statements confidently — from understanding statement formats to reconciling exchange rate differences, calculating VAT on foreign currency transactions, and building a workflow that doesn't keep you up past midnight.</p>
+
+
+    <h2>The Rise of Multi-Currency Business Banking in the UK</h2>
+
+    <p>Five years ago, a UK business with foreign currency needs had two options: open a foreign currency account with a high-street bank (expensive, slow, minimum balance requirements) or eat the 3-5% spread on every international transaction through their GBP current account. Neither was good.</p>
+
+    <p>Then came Revolut, Wise, and a wave of fintechs offering borderless accounts with near-interbank exchange rates and no minimum balances. Suddenly, a small e-commerce business selling to EU customers could hold EUR natively. A freelance developer with US clients could invoice and receive USD without losing 5% to HSBC's exchange rate. An importer could pay Chinese suppliers in CNY through the same app.</p>
+
+    <p>The problem? These platforms generate statements that look nothing like a traditional Barclays or HSBC PDF. And the bookkeeping complexity multiplies with every currency you add to a client's portfolio.</p>
+
+    <h3>The Scale of the Problem</h3>
+    <p>A single Revolut Business statement for an active e-commerce client might contain:</p>
+    <ul>
+        <li><strong>GBP transactions:</strong> UK supplier payments, Shopify payouts converted to GBP, UK tax payments</li>
+        <li><strong>EUR transactions:</strong> Amazon EU marketplace settlements, EU supplier invoices, EU VAT payments</li>
+        <li><strong>USD transactions:</strong> US marketplace payouts, SaaS subscriptions billed in USD, US freelancer payments</li>
+        <li><strong>Exchange transactions:</strong> Internal currency conversions with spreads embedded in the rate</li>
+        <li><strong>Fees in multiple currencies:</strong> Revolut's own fees deducted in the native currency of each transaction</li>
+    </ul>
+
+    <p>That's a single bank statement with potentially 5+ currencies, each requiring separate handling for reconciliation, VAT, and accounting software import. Do this manually and a single statement can take over an hour to process. Multiply that by 5 clients, and you've just lost your evening.</p>
+
+    <div class="scenario-box">
+        <strong>Real-world scenario:</strong> A bookkeeper with 8 e-commerce clients, each using Revolut Business, processes an average of 120 transactions per client per month. With 3-4 currencies per statement and manual GBP equivalent calculation plus VAT treatment, that's roughly 40 minutes per statement — over 5 hours of multi-currency reconciliation per month. At £35/hour, that's £175 of unbillable time each month that automation could eliminate.
+    </div>
+
+
+    <h2>Understanding Multi-Currency Statement Formats</h2>
+
+    <p>Before you can build a workflow, you need to understand what each platform's statement actually contains. The three most common multi-currency statement formats UK bookkeepers encounter are Revolut, Wise, and traditional bank foreign currency accounts. Each has its own quirks.</p>
+
+    <h3>Revolut's Multi-Currency Statement Format</h3>
+    <p>Revolut statements are the most common multi-currency format UK bookkeepers encounter, and they're also the most complex. Key features:</p>
+
+    <ul>
+        <li><strong>Dual-amount display:</strong> Every foreign currency transaction shows two amounts — the amount in the original currency (e.g. €149.99) and the equivalent in your base currency (e.g. £128.47). This is Revolut's greatest strength for bookkeeping — the GBP equivalent is calculated and displayed for you — but it also doubles the data volume per transaction.</li>
+        <li><strong>Base currency column:</strong> Revolut statements include a dedicated column showing the base currency (usually GBP) equivalent. The exchange rate used is Revolut's interbank rate at the time of settlement, including any weekend markup if applicable.</li>
+        <li><strong>Currency labels:</strong> Each transaction row carries a currency indicator (EUR, USD, GBP, etc.) in a dedicated column. Without this, you'd be guessing which currency a row is in based on the symbol alone.</li>
+        <li><strong>Exchange transactions:</strong> When you convert between currencies within Revolut (e.g. EUR to GBP), these appear as a pair of transactions: one debit in EUR and one credit in GBP, with the spread implicit in the exchange rate.</li>
+        <li><strong>Crypto and commodities:</strong> Some Revolut accounts include cryptocurrency or precious metal holdings. These appear in the same statement with their own currency codes (BTC, ETH, XAU) and require completely different VAT treatment.</li>
+    </ul>
+
+    <h3>Wise Borderless Account Statements</h3>
+    <p>Wise (formerly TransferWise) statements are structured differently from Revolut:</p>
+
+    <ul>
+        <li><strong>Per-currency sub-accounts:</strong> Wise organises transactions by currency balance. If your client holds EUR, USD, and GBP in Wise, the statement groups transactions under each currency heading rather than mixing them chronologically.</li>
+        <li><strong>Conversion transactions:</strong> Wise's core product is currency conversion, so their statements include detailed conversion transactions showing the source amount, target amount, exchange rate applied, and Wise's fee — all as separate line items.</li>
+        <li><strong>Fee transparency:</strong> Unlike Revolut (where fees are sometimes embedded in the exchange rate), Wise explicitly breaks out their fee as a separate transaction, which is easier for bookkeeping but means you have more rows to categorise.</li>
+        <li><strong>No base currency column:</strong> Wise statements typically do not include an automatic GBP equivalent column. You'll need to calculate or extract GBP equivalents yourself, which adds a manual step to the workflow.</li>
+    </ul>
+
+    <h3>Traditional Bank Foreign Currency Accounts</h3>
+    <p>High-street banks like Barclays, HSBC, and Lloyds also offer foreign currency accounts, but their statements are simpler — often just a single-currency statement in EUR or USD with no GBP equivalent shown. The challenge here is purely one of exchange rate calculation: you need to apply a consistent rate to convert the entire balance or individual transactions to GBP for your client's UK books.</p>
+
+
+    <h2>The Exchange Rate Problem: Which Rate Do You Use?</h2>
+
+    <p>This is the question that causes the most anxiety among bookkeepers handling multi-currency statements. There is no single "correct" answer — there are several acceptable methods, and the key is consistency plus HMRC compliance.</p>
+
+    <h3>Method 1: The Bank-Applied Rate (Recommended Where Available)</h3>
+    <p>If the statement includes the actual exchange rate applied to each transaction (Revolut statements do; Wise conversion transactions do), use it. This is the rate that determined how much actually left or entered the client's account in GBP terms. It's defensible, auditable, and requires no external lookup.</p>
+
+    <p>For Revolut statements, the GBP equivalent is already calculated for you in the base currency column. For Wise, you'll find the rate on each conversion transaction row and can apply it to calculate the GBP equivalent of fees and other currency-specific transactions.</p>
+
+    <h3>Method 2: HMRC Published Monthly Rates</h3>
+    <p>HMRC publishes monthly average exchange rates for major currencies. These are available on GOV.UK and are updated at the start of each month. Using HMRC rates has one major advantage: HMRC cannot dispute the rate you used because it's their own published rate.</p>
+
+    <p>The downside is that HMRC monthly rates are averages. If the client made a large EUR purchase on a day when the rate was significantly different from the monthly average, the GBP equivalent you calculate won't match the amount that actually left their bank account. For most bookkeeping purposes, this discrepancy is acceptable — but for large, material transactions, it's worth flagging the difference.</p>
+
+    <h3>Method 3: Spot Rate on Transaction Date</h3>
+    <p>Using the spot rate (from the Bank of England, XE.com, or OANDA) on the date of each transaction provides precision but creates an enormous administrative burden. You'd need to look up the rate for every single transaction, on every single date, for every single currency. For a Revolut statement with 120 transactions across a month, that's potentially 30+ rate lookups.</p>
+
+    <div class="warning-box">
+        <strong>Critical — consistency matters more than precision:</strong> HMRC cares far more about whether you applied a <em>consistent</em> methodology than whether you used the exact-millisecond spot rate. Switching between methods mid-year or applying different rules to different clients without a documented rationale is what triggers enquiries. Pick one method, document it in your working papers, and apply it uniformly.
+    </div>
+
+    <h3>Exchange Rate Fluctuations and Reconciliation Drift</h3>
+    <p>Here's a scenario every multi-currency bookkeeper has faced: your client's Revolut statement shows an opening balance of €10,000 and a closing balance of €8,500. In GBP terms, those amounts don't reconcile cleanly because the EUR/GBP rate moved during the month. The €10,000 was worth £8,600 at the start of the month and the €8,500 is worth £7,395 at month-end — but the actual GBP movement includes both genuine spending (£1,380) and exchange rate loss (£175).</p>
+
+    <p>This "reconciliation drift" is not an error. It's an unavoidable consequence of holding foreign currency. The right approach is to separate the bookkeeping into two layers:</p>
+    <ol>
+        <li><strong>Transaction-level reconciliation:</strong> Reconcile each transaction at the rate that applied when it settled. This tells you the genuine business income and expenditure.</li>
+        <li><strong>Period-end revaluation:</strong> At month-end (or year-end), revalue any remaining foreign currency balances at the current rate. The difference is a currency gain or loss — a non-trading item that belongs in the P&amp;L as "foreign exchange gain/loss."</li>
+    </ol>
+
+    <p>This two-layer approach is standard accounting practice (IFRS and UK GAAP both require it for material foreign currency balances), but remarkably few small-practice bookkeepers apply it consistently. If you're charging for bookkeeping, this is exactly the kind of value-add that justifies your fees.</p>
+
+
+    <h2>VAT Implications of Foreign Currency Transactions</h2>
+
+    <p>VAT on foreign currency transactions is where multi-currency bookkeeping gets genuinely dangerous. Get this wrong, and your client's VAT return is inaccurate — which means you, as the bookkeeper or accountant, carry the liability risk.</p>
+
+    <h3>VAT on Imports: The GBP Conversion Rule</h3>
+    <p>When a UK VAT-registered business imports goods from outside the UK, the VAT value must be calculated in GBP. HMRC requires you to use:</p>
+    <ul>
+        <li>The UK market selling rate at the time of supply (i.e. the rate on the invoice date or the date the goods were dispatched), or</li>
+        <li>HMRC's published period rates of exchange (monthly averages)</li>
+    </ul>
+
+    <p>The critical point: you cannot simply use whatever rate Revolut happened to apply when it debited the account. Revolut's rate includes a spread and may be applied on a different date than the supply date. For VAT purposes, the supply date rules. If your client bought goods from a German supplier on 5th May but Revolut settled the EUR payment on 7th May, the VAT conversion should use the 5th May rate.</p>
+
+    <h3>VAT on Services: Place of Supply Rules</h3>
+    <p>Services to non-UK customers are generally outside the scope of UK VAT (the place of supply is where the customer belongs). But you still need to record the transaction in GBP for your client's accounts. And if the client is on the Flat Rate Scheme, the gross including foreign currency turnover counts toward the flat rate threshold and calculation.</p>
+
+    <h3>Practical VAT Workflow for Multi-Currency Statements</h3>
+    <ol>
+        <li><strong>Flag foreign currency VAT transactions</strong> during your reconciliation so they don't get treated as standard GBP transactions.</li>
+        <li><strong>Record both amounts:</strong> the original currency amount (for the audit trail) and the GBP equivalent used for the VAT calculation (for the return).</li>
+        <li><strong>Document your rate source</strong> for each VAT-period transaction. A simple note in your working papers: "EUR/GBP rate source: HMRC May 2026 monthly average (1.163)" is sufficient.</li>
+        <li><strong>Keep the original statement</strong> showing the foreign currency amounts. If HMRC queries the return, you'll need to demonstrate that the GBP figures on the return trace back to actual bank transactions.</li>
+    </ol>
+
+    <div class="warning-box">
+        <strong>VAT risk alert:</strong> If your client receives a VAT compliance check (and HMRC is increasingly targeting e-commerce businesses), one of the first things the officer will ask for is the exchange rate methodology used to convert foreign currency transactions to GBP. If you can't produce a consistent methodology with supporting documentation, the officer can substitute their own rate — and that rate will not be in your client's favour. A £200 bookkeeping shortcut that saves 30 minutes today can cost your client thousands in a VAT assessment.
+    </div>
+
+
+    <h2>Practical Multi-Currency Bookkeeping Workflow</h2>
+
+    <p>Let's build a workflow you can use tonight, even with that Revolut statement that's been sitting in your inbox. This isn't theoretical — it's how real bookkeeping practices handle multi-currency statements efficiently.</p>
+
+    <h3>Step 1: Convert the Statement to a Structured Format</h3>
+    <p>You cannot work effectively from a PDF of a multi-currency statement. You need the data in a format you can sort, filter, and calculate. Use <a href="/landing">BankScan AI</a> to convert multi-currency statements to Excel or CSV. The AI extracts every field — date, description, original currency, original amount, base currency equivalent, exchange rate, and transaction type — into structured columns.</p>
+
+    <h3>Step 2: Separate by Currency</h3>
+    <p>Once you have the data in Excel, create a separate sheet (or separate CSV file) for each currency. Filter the raw data by the currency column and copy each currency's transactions to its own sheet. This gives you:</p>
+    <ul>
+        <li><strong>GBP sheet:</strong> All GBP transactions, including GBP equivalents of exchange conversions</li>
+        <li><strong>EUR sheet:</strong> All EUR transactions in their original amounts</li>
+        <li><strong>USD sheet:</strong> All USD transactions in their original amounts</li>
+        <li><strong>Exchange sheet:</strong> Internal currency conversions, matched as pairs</li>
+    </ul>
+
+    <h3>Step 3: Reconcile Each Currency Independently</h3>
+    <p>Treat each currency as a separate bank account for reconciliation purposes. Reconcile the EUR sheet against EUR opening and closing balances. Reconcile USD against USD. This catches missing transactions and data extraction errors much faster than trying to reconcile a mixed-currency file.</p>
+
+    <h3>Step 4: Calculate GBP Equivalents (Where Missing)</h3>
+    <p>For transactions where the statement doesn't provide a GBP equivalent (common with Wise and traditional bank foreign currency accounts), add a column for the GBP equivalent and calculate it using your chosen method (bank rate, HMRC monthly average, or spot rate). If you're using HMRC rates, you can import the monthly rate table as a lookup sheet and use VLOOKUP or XLOOKUP to pull the rate automatically.</p>
+
+    <h3>Step 5: Identify and Match Exchange Transactions</h3>
+    <p>Currency exchanges within the account should net to zero (minus any spread). Match each "EUR debit — exchange to GBP" with its corresponding "GBP credit — exchange from EUR." The difference between the two is the effective exchange spread, which is a bank charge and should be categorised as such in the P&amp;L.</p>
+
+    <h3>Step 6: Flag VAT-Sensitive Transactions</h3>
+    <p>Add a "VAT Treatment" column and categorise each foreign currency transaction:</p>
+    <ul>
+        <li><strong>UK VAT:</strong> Transaction is subject to UK VAT (e.g. purchase from UK supplier invoiced in EUR)</li>
+        <li><strong>Import VAT:</strong> Goods imported from outside UK with import VAT due</li>
+        <li><strong>OSS/IOSS:</strong> EU sales under the One Stop Shop scheme</li>
+        <li><strong>Out of scope:</strong> Services to non-UK customers, B2B intra-community supplies</li>
+        <li><strong>No VAT:</strong> Bank fees, exchange gains/losses, internal transfers</li>
+    </ul>
+
+    <h3>Step 7: Import into Accounting Software</h3>
+    <p>Most accounting software (Xero, QuickBooks, FreeAgent) handles multi-currency if you set up separate bank accounts for each currency. Import each currency sheet as a separate bank feed. BankScan AI can format the output specifically for <a href="/tools/import-hsbc-to-xero">Xero import</a> or <a href="/tools/import-hsbc-to-quickbooks">QuickBooks import</a>, including multi-currency CSV layouts.</p>
+
+
+    <h2>How BankScan AI Handles Multi-Currency Statements</h2>
+
+    <p>We built BankScan AI to handle exactly the multi-currency bookkeeping nightmare described in this guide. Here's what it does specifically for multi-currency statements:</p>
+
+    <ul>
+        <li><strong>Currency-aware extraction:</strong> The AI recognises currency symbols (£, €, $, ¥, etc.) and three-letter currency codes (GBP, EUR, USD) and tags each transaction with the correct currency. No more guessing which column is which.</li>
+        <li><strong>Dual-amount preservation:</strong> For Revolut statements, BankScan AI preserves both the original currency amount <em>and</em> the base currency (GBP) equivalent as separate columns. You get clean, structured data without losing any information.</li>
+        <li><strong>Exchange rate extraction:</strong> Where the statement includes an applied exchange rate, BankScan AI extracts it into a dedicated column. This makes audit trails, VAT documentation, and client reporting dramatically easier.</li>
+        <li><strong>Multi-currency export:</strong> Export transactions grouped by currency, or export a unified file with all currencies with currency tags — whichever fits your workflow.</li>
+        <li><strong>Wise, Revolut, and traditional bank support:</strong> The same engine handles Revolut Business PDFs, Wise borderless account statements, and traditional bank foreign currency statements from Barclays, HSBC, and Lloyds.</li>
+    </ul>
+
+    <div class="cta-box">
+        <h3>Stop Hand-Calculating GBP Equivalents at 10pm</h3>
+        <p>Upload any multi-currency bank statement — Revolut, Wise, or traditional foreign currency account — and get a clean, currency-tagged Excel file with GBP equivalents already calculated. Your first statement is free.</p>
+        <a href="/landing" class="cta-btn">Try BankScan AI Free &rarr;</a>
+    </div>
+
+
+    <h2>Comparison: Multi-Currency Statement Handling Methods</h2>
+
+    <div style="overflow-x: auto;">
+    <table class="comparison-table">
+        <thead>
+            <tr>
+                <th>Criteria</th>
+                <th>Manual Spreadsheet</th>
+                <th>Generic PDF Converter</th>
+                <th>BankScan AI</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td><strong>Currency Detection</strong></td>
+                <td>Manual (40+ min)</td>
+                <td>None — treats all amounts the same</td>
+                <td class="highlight">Automatic (£, €, $, codes)</td>
+            </tr>
+            <tr>
+                <td><strong>Dual-Amount Handling (Revolut)</strong></td>
+                <td>Manual split (very time-consuming)</td>
+                <td>Fails — mixes amounts</td>
+                <td class="highlight">Preserves both columns</td>
+            </tr>
+            <tr>
+                <td><strong>Exchange Rate Extraction</strong></td>
+                <td>Manual lookup per transaction</td>
+                <td>Not supported</td>
+                <td class="highlight">Extracted from statement</td>
+            </tr>
+            <tr>
+                <td><strong>GBP Equivalent Calculation</strong></td>
+                <td>Manual formula (error-prone)</td>
+                <td>Not supported</td>
+                <td class="highlight">Auto-calculated where available</td>
+            </tr>
+            <tr>
+                <td><strong>Wise Statement Support</strong></td>
+                <td>Very difficult (per-currency sections)</td>
+                <td>Fails on section breaks</td>
+                <td class="highlight">Full support</td>
+            </tr>
+            <tr>
+                <td><strong>Export by Currency</strong></td>
+                <td>Manual filtering</td>
+                <td>Not supported</td>
+                <td class="highlight">One-click currency grouping</td>
+            </tr>
+            <tr>
+                <td><strong>Accounting Software Import</strong></td>
+                <td>Manual formatting per currency</td>
+                <td>Manual formatting required</td>
+                <td class="highlight">Xero, QuickBooks ready</td>
+            </tr>
+            <tr>
+                <td><strong>Typical Time Per Statement</strong></td>
+                <td>40-60 minutes</td>
+                <td>Not viable for multi-currency</td>
+                <td class="highlight">&lt; 60 seconds</td>
+            </tr>
+        </tbody>
+    </table>
+    </div>
+
+
+    <h2>Common Multi-Currency Bookkeeping Mistakes (and How to Avoid Them)</h2>
+
+    <h3>Mistake 1: Using the Wrong Exchange Rate Date</h3>
+    <p>Bookkeepers often use the statement date rather than the transaction settlement date for exchange rate lookups. For a Revolut transaction that settled on 3rd May, but you're processing the statement on 15th May, the rate on 3rd May is what matters. Using the wrong date can cause material discrepancies on large transactions.</p>
+    <p><strong>Fix:</strong> Always use the transaction date recorded on the statement, not the date you're doing the bookkeeping. BankScan AI extracts the transaction date automatically from each row.</p>
+
+    <h3>Mistake 2: Mixing Original and Converted Amounts</h3>
+    <p>This is the most dangerous error: entering an original EUR amount into a GBP-denominated ledger. A €5,000 purchase entered as £5,000 in the accounts overstates the expense by approximately £650 (at a ~1.15 EUR/GBP rate). Over a full year of transactions, this can misstate profits by thousands of pounds.</p>
+    <p><strong>Fix:</strong> Maintain strict separation between original currency amounts and GBP equivalents in your working papers. Label every column clearly. When in doubt, keep the original amount as your source of truth and calculate the GBP equivalent as a derived field.</p>
+
+    <h3>Mistake 3: Ignoring Exchange Rate Gains and Losses</h3>
+    <p>If your client held €20,000 in their Revolut account throughout January and the EUR/GBP rate moved from 1.15 to 1.17, they've effectively lost £227 in GBP value — even though they didn't make a single transaction. Many bookkeepers ignore this because it's "unrealised." But for businesses with material foreign currency balances, failing to recognise revaluation gains and losses produces inaccurate accounts.</p>
+    <p><strong>Fix:</strong> For any client with foreign currency balances above £1,000 equivalent, perform a period-end revaluation. For most small businesses, quarterly revaluation is sufficient. For larger balances or volatile currencies, monthly revaluation is appropriate.</p>
+
+    <h3>Mistake 4: Inconsistent VAT Treatment</h3>
+    <p>Treating a EUR supplier invoice as no-VAT because "it's in euros" is wrong. The VAT treatment depends on what was supplied, from where, and to whom — not the currency of the invoice. A UK supplier invoicing in EUR is still subject to UK VAT. An EU supplier may be subject to reverse charge VAT.</p>
+    <p><strong>Fix:</strong> Apply VAT rules based on the nature of the supply and the location of the supplier and customer. The currency is irrelevant to the VAT treatment.</p>
+
+
+    <h2>Multi-Currency Statements and Accounting Software</h2>
+
+    <h3>Xero Multi-Currency</h3>
+    <p>Xero's multi-currency support is the strongest of the major small-business accounting platforms. It supports 160+ currencies with automatic daily exchange rate feeds from XE.com. You set up each currency as a separate bank account within Xero, and Xero handles the conversion to your base currency (GBP) automatically using the daily rate.</p>
+
+    <p>However, Xero's automatic rates can diverge from the actual rate applied by Revolut or Wise on specific transactions. For important transactions, you can override Xero's automatic rate with the actual rate from your statement. If you use BankScan AI to extract the bank-applied rate into a column, you can transfer this into Xero for precise matching.</p>
+
+    <h3>QuickBooks Online Multi-Currency</h3>
+    <p>QuickBooks Online supports multi-currency on Essentials and above. For CSV imports, you specify the transaction currency during import. QuickBooks maintains its own exchange rate table (updated daily) and applies the rate on the transaction date automatically. As with Xero, you can override the automatic rate with the actual rate from your statement.</p>
+
+    <p>The key limitation: QuickBooks imports one currency per CSV file. If your Revolut statement contains EUR, USD, and GBP transactions in a single export, you'll need to split them into separate CSV files per currency before importing. BankScan AI can export split-by-currency files for this purpose.</p>
+
+    <h3>FreeAgent Multi-Currency</h3>
+    <p>FreeAgent supports multi-currency bank accounts but with more limited automation than Xero or QuickBooks. Exchange rate management is more manual. If your client uses FreeAgent, the structured Excel export from BankScan AI with pre-calculated GBP equivalents saves significant manual effort.</p>
+
+    <table class="comparison-table">
+        <thead>
+            <tr>
+                <th>Feature</th>
+                <th>Xero</th>
+                <th>QuickBooks Online</th>
+                <th>FreeAgent</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td><strong>Multi-Currency Support</strong></td>
+                <td>✅ Premium and above</td>
+                <td>✅ Essentials and above</td>
+                <td>✅ All plans</td>
+            </tr>
+            <tr>
+                <td><strong>Auto Exchange Rates</strong></td>
+                <td>✅ XE.com daily feeds</td>
+                <td>✅ Daily rate table</td>
+                <td>⚠️ Manual rate entry</td>
+            </tr>
+            <tr>
+                <td><strong>Rate Override</strong></td>
+                <td>✅ Per-transaction</td>
+                <td>✅ Per-transaction</td>
+                <td>✅ Per-transaction</td>
+            </tr>
+            <tr>
+                <td><strong>Multi-Currency CSV Import</strong></td>
+                <td>✅ One currency per feed</td>
+                <td>✅ One currency per file</td>
+                <td>✅ One currency per file</td>
+            </tr>
+            <tr>
+                <td><strong>Revaluation Reports</strong></td>
+                <td>✅ Automatic</td>
+                <td>✅ Manual revaluation</td>
+                <td>❌ Manual only</td>
+            </tr>
+        </tbody>
+    </table>
+
+
+    <h2>Building a Scalable Multi-Currency Workflow for Your Practice</h2>
+
+    <p>If multi-currency clients are a growing part of your practice, you need a workflow that scales. Here's how to build one:</p>
+
+    <h3>Layer 1: Statement Ingestion</h3>
+    <p>Standardise how statements arrive. Ask clients to download their Revolut or Wise statements as PDFs and upload them to a shared folder, or forward them to a dedicated email address. Avoid receiving screenshots — they can't be reliably converted.</p>
+
+    <h3>Layer 2: Automated Conversion</h3>
+    <p>Use <a href="/landing">BankScan AI</a> to convert every multi-currency statement to structured Excel. The AI handles currency detection, dual-amount extraction, and GBP equivalent calculation in one pass. Bulk upload means you can process a month's worth of client statements in minutes rather than hours.</p>
+
+    <h3>Layer 3: Reconciliation in Excel</h3>
+    <p>Build a template Excel workbook with sheets for each currency, pre-configured with:</p>
+    <ul>
+        <li>Exchange rate lookup tables (HMRC monthly rates)</li>
+        <li>VAT treatment categorisation columns</li>
+        <li>Opening/closing balance reconciliation formulas</li>
+        <li>Exchange gain/loss calculation cells</li>
+    </ul>
+
+    <h3>Layer 4: Accounting Software Import</h3>
+    <p>From your reconciled Excel workbook, export currency-specific CSV files for import into Xero, QuickBooks, or FreeAgent. This gives you a documented audit trail: original statement → BankScan AI conversion → reconciliation workbook → accounting software import.</p>
+
+    <div class="scenario-box">
+        <strong>Time comparison — 5 multi-currency clients per month:</strong><br>
+        <strong>Manual workflow:</strong> 40 min per statement × 5 clients = 3 hours 20 minutes. Plus 15 minutes per client for exchange rate lookups and VAT treatment = 1 hour 15 minutes. Total: ~4.5 hours/month.<br>
+        <strong>Automated workflow (BankScan AI + template):</strong> 1 min upload per statement. 10-15 min reconciliation per client. Total: ~1 hour/month.<br>
+        <strong>Annual saving:</strong> ~42 hours. At £35/hour, that's £1,470 of recovered billable time — or 42 hours you can spend with your family instead of staring at currency columns.
+    </div>
+
+
+    <h2>Frequently Asked Questions</h2>
+
+    <h3>How do I calculate GBP equivalent amounts for foreign currency transactions on a bank statement?</h3>
+    <p>You need the transaction's original currency amount and the exchange rate on the date the transaction settled. Multiply the foreign currency amount by the rate to get the GBP equivalent. Be careful: banks like Revolut apply their own interbank rate plus a markup, and the rate on the transaction date may differ from the statement date. For HMRC compliance, use HMRC's published monthly exchange rates or the actual rate applied by the bank — whichever is more consistent across your bookkeeping. Automated tools like <a href="/landing">BankScan AI</a> can extract both the original amount and, where available, the GBP equivalent directly from the statement, eliminating manual rate lookups.</p>
+
+    <h3>Why do Revolut statements show two different amounts for the same transaction?</h3>
+    <p>Revolut displays transactions in both the original transaction currency and your account's base currency (e.g. GBP). This dual-amount display is essential for bookkeeping — the original currency amount tells you what was actually spent, while the base currency amount is what left your account after conversion. When converting the statement to Excel, you must preserve both amounts: the original currency column for audit trails and the GBP equivalent for your UK bookkeeping ledgers. <a href="/tools/convert-revolut-statement-to-excel">BankScan AI's Revolut converter</a> handles this automatically.</p>
+
+    <h3>What exchange rate should UK bookkeepers use for foreign currency transactions?</h3>
+    <p>For UK bookkeeping, you have three options: (1) the actual rate applied by the bank at the time of the transaction — most accurate but requires extracting it from the statement; (2) HMRC's published monthly average exchange rates — acceptable for VAT and tax returns and cannot be disputed by HMRC; (3) the spot rate from a reliable source like the Bank of England or XE.com on the transaction date. Consistency is key: pick one method and apply it across all clients. For Revolut and Wise statements, using the bank-applied rate is ideal because it's the actual amount debited from the account.</p>
+
+    <h3>Are foreign currency transactions subject to UK VAT, and how do I account for them?</h3>
+    <p>Yes, foreign currency transactions can be subject to UK VAT. The VAT treatment depends on the nature of the transaction, not the currency. For VAT-registered businesses, you must convert the foreign currency amount to GBP using HMRC's published exchange rates (or the UK market selling rate at the time of supply) for your VAT return. Services to non-UK customers may be outside the scope of UK VAT (place of supply rules apply). Imported goods attract import VAT at the point of entry. Always record both the original currency amount and the GBP equivalent used for the VAT calculation — HMRC may request both during a compliance check.</p>
+
+    <h3>Can I import multi-currency bank statements directly into Xero or QuickBooks?</h3>
+    <p>Xero supports multi-currency accounts natively, including automatic exchange rate feeds from XE.com. For CSV imports, you must provide the transaction amount in the account's base currency. QuickBooks Online also supports multi-currency but requires the transaction currency to be specified during import. The challenge is that Revolut and Wise statements often list transactions in multiple currencies within a single statement file — most accounting software expects one currency per bank account. <a href="/landing">BankScan AI</a> can separate multi-currency transactions by currency and prepare separate import files for each currency account in your software.</p>
+
+
+    <p style="margin-top: 40px; font-size: 0.9rem; color: var(--text-light);">
+        <em>Last updated: 19 May 2026. Have a question about handling multi-currency bank statements? <a href="/landing">Visit BankScan AI</a> or read our other <a href="/blog">guides for UK accountants and bookkeepers</a>.</em>
+    </p>
+
+</article>
+
+<footer class="footer">
+    <p>&copy; 2025 Mitoba Computer Systems LTD. All rights reserved. | <a href="/landing">Home</a> | <a href="/blog">Blog</a> | <a href="/tools">Tools</a></p>
+</footer>
+
+</body>
+</html>

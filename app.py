@@ -2542,6 +2542,14 @@ BLOG_POSTS = {
         "template": "blog/convert-scanned-bank-statements-to-excel.html",
         "keywords": "convert scanned bank statement to Excel, OCR bank statement to Excel, scanned PDF bank statement converter, paper bank statement to spreadsheet, convert image bank statement to Excel, OCR for bank statements UK, bank statement scanning to Excel",
     },
+    "multi-currency-bank-statement-handling": {
+        "title": "Multi-Currency Bank Statement Handling for UK Bookkeepers — Complete Guide (2026)",
+        "description": "Struggling with Revolut, Wise, or international business account statements in EUR, USD, and GBP? Complete guide to multi-currency statement handling for UK bookkeepers — exchange rates, reconciliation, VAT, and automation.",
+        "date": "2026-05-19",
+        "author": "BankScan AI Team",
+        "template": "blog/multi-currency-bank-statement-handling.html",
+        "keywords": "multi-currency bank statement handling UK, foreign currency bank statement to Excel, Revolut multi-currency statement conversion, Wise borderless account statement Excel, GBP equivalent bank statement calculation, convert foreign currency bank statement for Xero, multi-currency bookkeeping reconciliation UK",
+    },
 }
 
 
