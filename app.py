@@ -175,6 +175,8 @@ try:
     from hmrc.routers import obligations as _hmrc_obligations_router
     from hmrc.routers import business_details as _hmrc_business_details_router
     from hmrc.routers import sandbox as _hmrc_sandbox_router
+    from hmrc.routers import quarterly_updates_se as _hmrc_quarterly_se_router
+    from hmrc.routers import quarterly_updates_property as _hmrc_quarterly_prop_router
     app.include_router(_hmrc_oauth_router.router)
     app.include_router(_hmrc_fraud_router.router)
     app.include_router(_hmrc_pages_router.router)
@@ -182,6 +184,8 @@ try:
     app.include_router(_hmrc_obligations_router.router)
     app.include_router(_hmrc_business_details_router.router)
     app.include_router(_hmrc_sandbox_router.router)
+    app.include_router(_hmrc_quarterly_se_router.router)
+    app.include_router(_hmrc_quarterly_prop_router.router)
 except Exception:
     logger.exception("Failed to register HMRC routers — continuing without HMRC routes")
 
