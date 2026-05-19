@@ -1021,6 +1021,30 @@
                         </button>
                     </form>
                     <div id="hmrcSetupMsg" style="display:none; margin-top:0.5rem; font-size:0.85rem;"></div>
+
+                    <!-- Sandbox-only escape hatch: the most common first-run
+                         failure is HMRC's 404 MATCHING_RESOURCE_NOT_FOUND
+                         because a fresh sandbox NINO has no businesses
+                         registered. These buttons hit our sandbox-only
+                         /api/hmrc/sandbox/create-test-business endpoint which
+                         provisions a real business at HMRC. Hidden in
+                         production builds. -->
+                    <div id="hmrcSandboxHelpers" style="display:none; margin-top:0.75rem; padding-top:0.75rem; border-top:1px dashed #D1D5DB;">
+                        <div style="font-size:0.82rem; color:#78350F; margin-bottom:0.4rem;">
+                            Sandbox only — no businesses on your NINO yet? Create one:
+                        </div>
+                        <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
+                            <button id="hmrcSandboxCreateSe" type="button"
+                                    style="background:#FFFFFF; color:#1B4F72; border:1px solid #1B4F72; padding:0.4rem 0.8rem; font-size:0.85rem; border-radius:6px; cursor:pointer;">
+                                + Sandbox self-employment business
+                            </button>
+                            <button id="hmrcSandboxCreateProp" type="button"
+                                    style="background:#FFFFFF; color:#1B4F72; border:1px solid #1B4F72; padding:0.4rem 0.8rem; font-size:0.85rem; border-radius:6px; cursor:pointer;">
+                                + Sandbox property business
+                            </button>
+                        </div>
+                        <div id="hmrcSandboxMsg" style="display:none; margin-top:0.4rem; font-size:0.82rem;"></div>
+                    </div>
                 </div>
 
                 <div id="hmrcDeadlinesError" style="display:none; margin-top:0.5rem; font-size:0.85rem; color:#B91C1C;"></div>
@@ -2343,11 +2367,16 @@
         const msg = document.getElementById('hmrcSetupMsg');
         const btn = document.getElementById('hmrcSetupBtn');
         const ninoInput = document.getElementById('hmrcSetupNino');
+        const sandboxBox = document.getElementById('hmrcSandboxHelpers');
         if (!form || form.dataset.wired === '1') return;
         form.dataset.wired = '1';
 
-        form.addEventListener('submit', async (e) => {
-            e.preventDefault();
+        const submitNino = async (e) => {
+            // Listen on both `submit` (real clicks + Enter key) and `click`
+            // (synthetic clicks from automation / extensions that DON'T
+            // trigger native form submission). Idempotent via btn.disabled.
+            if (e && e.preventDefault) e.preventDefault();
+            if (btn.disabled) return;  // already inflight
             const nino = (ninoInput.value || '').trim().toUpperCase();
             if (!/^[A-Z]{2}\d{6}[A-D]$/.test(nino)) {
                 msg.style.display = 'block';
@@ -2358,6 +2387,7 @@
             btn.disabled = true;
             btn.textContent = 'Searching HMRC…';
             msg.style.display = 'none';
+            if (sandboxBox) sandboxBox.style.display = 'none';
             try {
                 const csrf = (document.cookie.match(/bp_csrf=([^;]+)/) || [])[1] || '';
                 const resp = await fetch('/api/hmrc/connect-businesses', {
@@ -2365,7 +2395,7 @@
                     credentials: 'include',
                     headers: {
                         'Content-Type': 'application/json',
-                        'X-CSRF-Token': csrf,
+                        'X-CSRF-Token': decodeURIComponent(csrf),
                     },
                     body: JSON.stringify({ nino }),
                 });
@@ -2374,6 +2404,10 @@
                     msg.style.display = 'block';
                     msg.style.color = '#B91C1C';
                     msg.textContent = data.detail || `HMRC error (status ${resp.status}).`;
+                    // 404 with no-businesses hint — offer the sandbox helper.
+                    if (resp.status === 404 && sandboxBox) {
+                        sandboxBox.style.display = 'block';
+                    }
                     return;
                 }
                 msg.style.display = 'block';
@@ -2388,7 +2422,57 @@
                 btn.disabled = false;
                 btn.textContent = 'Discover my businesses';
             }
-        });
+        };
+        form.addEventListener('submit', submitNino);
+        btn.addEventListener('click', submitNino);
+
+        // Sandbox helper buttons — only do anything when our backend is on
+        // the HMRC sandbox. The endpoint itself refuses in production with
+        // 404, so we just call it and surface whatever comes back.
+        const wireSandbox = (id, type, label) => {
+            const b = document.getElementById(id);
+            const m = document.getElementById('hmrcSandboxMsg');
+            if (!b || b.dataset.wired === '1') return;
+            b.dataset.wired = '1';
+            b.addEventListener('click', async () => {
+                if (b.disabled) return;
+                b.disabled = true;
+                const original = b.textContent;
+                b.textContent = 'Creating…';
+                m.style.display = 'none';
+                try {
+                    const csrf = (document.cookie.match(/bp_csrf=([^;]+)/) || [])[1] || '';
+                    const resp = await fetch('/api/hmrc/sandbox/create-test-business', {
+                        method: 'POST',
+                        credentials: 'include',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-Token': decodeURIComponent(csrf),
+                        },
+                        body: JSON.stringify({ type_of_business: type }),
+                    });
+                    const data = await resp.json();
+                    m.style.display = 'block';
+                    if (resp.ok) {
+                        m.style.color = '#065F46';
+                        m.textContent = `Created ${label} (${data.business?.business_id}). Reloading…`;
+                        await loadHmrcDeadlines();
+                    } else {
+                        m.style.color = '#B91C1C';
+                        m.textContent = data.detail || `Couldn't create ${label} (status ${resp.status}).`;
+                    }
+                } catch (e) {
+                    m.style.display = 'block';
+                    m.style.color = '#B91C1C';
+                    m.textContent = 'Network error trying to create the test business.';
+                } finally {
+                    b.disabled = false;
+                    b.textContent = original;
+                }
+            });
+        };
+        wireSandbox('hmrcSandboxCreateSe', 'self-employment', 'self-employment business');
+        wireSandbox('hmrcSandboxCreateProp', 'property', 'property business');
     }
 
     // Kick off in the background — does not block the rest of the page.

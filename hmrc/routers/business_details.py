@@ -77,11 +77,13 @@ async def connect_businesses(request: Request) -> ConnectBusinessesResponse:
             user_id=user["id"], nino=nino, request_obj=request,
         )
     except _client.HmrcApiError as exc:
-        # Pass HMRC's status through so the UI can render a useful hint
-        # (e.g. "NINO not registered for MTD ITSA").
+        # Pass HMRC's status through so the UI can render a useful hint.
+        # Special-case MATCHING_RESOURCE_NOT_FOUND — the single most common
+        # first-run failure on the sandbox: a fresh test individual has no
+        # businesses against the NINO yet. Surface a concrete next step.
         raise HTTPException(
-            status_code=502 if exc.status_code == 0 else 400,
-            detail=f"HMRC returned {exc.status_code}: {exc.body}",
+            status_code=_status_for_hmrc(exc),
+            detail=_friendly_detail_for_hmrc(exc),
         )
     except _client.HmrcNotConnectedError:
         raise HTTPException(
@@ -105,3 +107,60 @@ async def connect_businesses(request: Request) -> ConnectBusinessesResponse:
     return ConnectBusinessesResponse(
         businesses_found=len(businesses), businesses=businesses,
     )
+
+
+# ---------------------------------------------------------------------------
+# Friendly HMRC error mapping
+# ---------------------------------------------------------------------------
+
+def _status_for_hmrc(exc: _client.HmrcApiError) -> int:
+    """Translate HMRC's status code into one our UI knows how to display."""
+    if exc.status_code == 0:
+        return 502
+    if exc.status_code == 404:
+        # 404 = "no businesses on this NINO". Not a server error; the user's
+        # NINO just isn't matched. We bubble 404 so the UI can show the
+        # specific MATCHING_RESOURCE_NOT_FOUND hint below.
+        return 404
+    return 400
+
+
+def _friendly_detail_for_hmrc(exc: _client.HmrcApiError) -> str:
+    """Plain-English replacement for HMRC's raw error body.
+
+    HMRC's MATCHING_RESOURCE_NOT_FOUND is THE most common first-run failure
+    on the sandbox (a freshly-created test individual has no businesses
+    against the NINO yet). The raw HMRC body is opaque to non-developers —
+    swap it for an actionable hint pointing at the sandbox helper route
+    (when we're on sandbox) or registering a business in HMRC directly.
+    """
+    code = ""
+    body = exc.body or {}
+    if isinstance(body, dict):
+        code = (body.get("code") or "").upper()
+
+    if exc.status_code == 404 and code == "MATCHING_RESOURCE_NOT_FOUND":
+        # Sandbox builds get a one-click escape hatch; production users
+        # have to register the business via HMRC's own account.
+        import os
+        if os.environ.get("HMRC_ENV", "sandbox").lower() != "production":
+            return (
+                "HMRC has no MTD ITSA businesses against this NINO yet. "
+                "Click 'Create sandbox test business' below to provision one, "
+                "or register a business in your HMRC test account first."
+            )
+        return (
+            "HMRC has no MTD ITSA businesses against this NINO. Register at "
+            "least one self-employment or UK property business with HMRC "
+            "before connecting."
+        )
+
+    if exc.status_code == 403:
+        return (
+            "HMRC refused the request (403). Most often this means you signed "
+            "in with the wrong Government Gateway user — make sure it's the "
+            "MTD-enabled one."
+        )
+
+    # Default: pass through enough detail to debug without exposing internals.
+    return f"HMRC returned {exc.status_code}: {body}"
