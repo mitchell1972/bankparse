@@ -368,6 +368,21 @@ def init_db():
     except Exception:
         logger.exception("grandfather backfill failed (non-fatal)")
 
+    # Idempotent un-grandfather: the founder's gmail account got swept up
+    # in the cutoff above but the product owner wants to be paywalled like
+    # a real customer (the yahoo address is the actual admin account).
+    # Idempotent — re-running just no-ops because the WHERE clause matches
+    # a single row. Stripe state (subscription_status, trial_end_at) is
+    # untouched, so if they DO subscribe later nothing here interferes.
+    try:
+        _execute(
+            "UPDATE users SET grandfathered_trial = 0 "
+            "WHERE LOWER(email) = ? AND grandfathered_trial = 1",
+            ("mitchellagoma@gmail.com",),
+        )
+    except Exception:
+        logger.exception("un-grandfather mitchellagoma@gmail.com failed (non-fatal)")
+
     # Migrate user_extracted_data — source_size_bytes added in commit 3
     try:
         _execute("ALTER TABLE user_extracted_data ADD COLUMN source_size_bytes INTEGER NOT NULL DEFAULT 0")

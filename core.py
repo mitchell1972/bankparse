@@ -154,8 +154,13 @@ FREE_STATEMENT_LIMIT = ai_pricing.FREE_MONTHLY_STATEMENTS
 FREE_RECEIPT_LIMIT = ai_pricing.FREE_MONTHLY_RECEIPTS
 
 # --- Test/admin accounts (bypass free tier limits, see /admin) ---
-# Founder accounts are always admin; UNLIMITED_EMAILS env var adds more.
-_ADMIN_DEFAULTS = {"mitchell_agoma@yahoo.co.uk", "mitchellagoma@gmail.com"}
+# ONLY the yahoo founder account is admin by default. The gmail account
+# was previously bundled here, which meant signing in as
+# mitchellagoma@gmail.com silently bypassed the paywall — masking what a
+# real customer would see. Other founder / staff / test emails should be
+# added via the UNLIMITED_EMAILS env var, not hardcoded here, so the
+# default behaviour stays restrictive.
+_ADMIN_DEFAULTS = {"mitchell_agoma@yahoo.co.uk"}
 UNLIMITED_EMAILS = _ADMIN_DEFAULTS | {
     e.strip().lower() for e in
     os.environ.get("UNLIMITED_EMAILS", "").split(",")
