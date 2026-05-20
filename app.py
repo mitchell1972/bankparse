@@ -719,6 +719,20 @@ async def api_ledger_unlink(request: Request):
     return JSONResponse({"status": "ok"})
 
 
+@app.get("/api/audit-summary")
+async def api_audit_summary(request: Request):
+    """The HMRC audit-readiness summary — per-category totals, VAT, and
+    the receipt-backed % score that nobody else surfaces.
+
+    Returns ``{categories: [...], totals: {...}}``. See
+    ``services/audit_summary.py`` for the full schema."""
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required.")
+    from services.audit_summary import summarise_audit_readiness
+    return JSONResponse(summarise_audit_readiness(user["id"]))
+
+
 @app.post("/api/ledger/transaction/status")
 @limiter.limit("120/minute")
 async def api_ledger_transaction_status(request: Request):
