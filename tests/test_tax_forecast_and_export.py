@@ -250,51 +250,64 @@ def test_capital_prompt_silent_for_already_marked():
 
 
 def test_export_zip_contains_required_files():
+    """ZIP layout (2026-05-20 redesign): the headline file is the Excel
+    workbook + a README + grouped receipts. Raw CSVs live under data/."""
     from services.accountant_export import build_export_zip
     uid = _seed_user("export@example.com")
-    _add_tx(uid, hmrc_category="se_office_expenses",
+    _add_tx(uid, hmrc_category="adminCosts",
             description="AMAZON", amount=-42.99,
             date_iso="2026-08-04")
     zip_bytes = build_export_zip(uid, "export@example.com", period_label="Q2-2026")
     zf = zipfile.ZipFile(io.BytesIO(zip_bytes))
     names = set(zf.namelist())
+    # New top-level files
+    assert "README.txt" in names
+    assert "Accountant_Pack.xlsx" in names
     assert "summary.html" in names
-    assert "transactions.csv" in names
-    assert "mismatch_report.csv" in names
-    assert "reasoning_log.csv" in names
     assert "manifest.json" in names
+    # CSVs moved under data/
+    assert "data/transactions.csv" in names
+    assert "data/mismatch_report.csv" in names
+    assert "data/reasoning_log.csv" in names
 
 
-def test_export_zip_transactions_csv_includes_required_columns():
+def test_export_zip_transactions_csv_includes_friendly_label_and_sa_box():
+    """The CSV now carries human-friendly category + SA box mapping —
+    the practice can import it into TaxCalc/CCH/IRIS without a translation
+    table on the side."""
     from services.accountant_export import build_export_zip
     uid = _seed_user("cols@example.com")
-    _add_tx(uid, hmrc_category="se_office_expenses",
+    _add_tx(uid, hmrc_category="adminCosts",
             description="AMAZON", amount=-42.99,
             date_iso="2026-08-04")
     zip_bytes = build_export_zip(uid, "cols@example.com")
     zf = zipfile.ZipFile(io.BytesIO(zip_bytes))
-    with zf.open("transactions.csv") as fh:
+    with zf.open("data/transactions.csv") as fh:
         text = fh.read().decode()
     header = text.splitlines()[0]
-    for col in ("hmrc_category", "vat_amount", "content_hash",
+    for col in ("hmrc_category", "hmrc_category_friendly",
+                "sa_box_short", "sa_box_full",
+                "vat_amount", "content_hash",
                 "business_pct", "is_capital", "linked_receipt_ids"):
-        assert col in header
-    # The row data appears
+        assert col in header, f"missing column {col}"
+    # Friendly label + SA box appear in row data
     assert "AMAZON" in text
+    assert "SA103S Box 18" in text  # adminCosts → SA103S Box 18
+    assert "office costs" in text.lower()  # friendly label
 
 
 def test_export_zip_manifest_lists_all_file_hashes():
     from services.accountant_export import build_export_zip
     uid = _seed_user("manifest@example.com")
-    _add_tx(uid, hmrc_category="se_office_expenses", amount=-50.0)
+    _add_tx(uid, hmrc_category="adminCosts", amount=-50.0)
     zip_bytes = build_export_zip(uid, "manifest@example.com")
     zf = zipfile.ZipFile(io.BytesIO(zip_bytes))
     manifest = json.loads(zf.read("manifest.json"))
     file_hashes = manifest["file_hashes"]
-    # summary, transactions, mismatch, reasoning all have hashes
-    for f in ("summary.html", "transactions.csv",
-              "mismatch_report.csv", "reasoning_log.csv"):
-        assert f in file_hashes
+    for f in ("README.txt", "Accountant_Pack.xlsx", "summary.html",
+              "data/transactions.csv", "data/mismatch_report.csv",
+              "data/reasoning_log.csv"):
+        assert f in file_hashes, f"missing hash for {f}"
         assert len(file_hashes[f]) == 64  # SHA-256
 
 
@@ -304,9 +317,9 @@ def test_export_zip_mismatch_report_only_includes_unmatched():
     from services.accountant_export import build_export_zip
     import database as _db
     uid = _seed_user("mm@example.com")
-    tx_matched = _add_tx(uid, hmrc_category="se_office_expenses",
+    tx_matched = _add_tx(uid, hmrc_category="adminCosts",
                          description="MATCHED", amount=-42.99)
-    tx_missing = _add_tx(uid, hmrc_category="se_motor_expenses",
+    tx_missing = _add_tx(uid, hmrc_category="travelCosts",
                          description="MISSING", amount=-25.00)
     rc = _db.insert_ledger_receipt(
         uid, extracted_data_id=None, file_path=None, source_filename="r.pdf",
@@ -318,9 +331,128 @@ def test_export_zip_mismatch_report_only_includes_unmatched():
 
     zip_bytes = build_export_zip(uid, "mm@example.com")
     zf = zipfile.ZipFile(io.BytesIO(zip_bytes))
-    mismatch = zf.read("mismatch_report.csv").decode()
+    mismatch = zf.read("data/mismatch_report.csv").decode()
     assert "MISSING" in mismatch
     assert "MATCHED" not in mismatch
+
+
+def test_export_zip_readme_names_the_client_and_period():
+    """README.txt is the first file the accountant opens. It must name
+    the client + period clearly so they know which file they're holding."""
+    from services.accountant_export import build_export_zip
+    uid = _seed_user("readme@example.com")
+    _add_tx(uid, hmrc_category="adminCosts", amount=-10.0)
+    zip_bytes = build_export_zip(
+        uid, "readme@example.com",
+        period_label="Q2 2026-27 (Jul-Sep)",
+        client_name="Mitoba Property Services Ltd",
+    )
+    zf = zipfile.ZipFile(io.BytesIO(zip_bytes))
+    readme = zf.read("README.txt").decode()
+    assert "Mitoba Property Services Ltd" in readme
+    assert "Q2 2026-27 (Jul-Sep)" in readme
+    assert "Accountant_Pack.xlsx" in readme
+    assert "SA103" in readme  # tells the accountant the box mapping exists
+
+
+def test_export_xlsx_has_seven_sheets_with_box_mapping():
+    """The workbook is what an accountant actually opens. It must have all
+    seven sheets, and the Tax Return Boxes sheet must contain SA box refs."""
+    from services.accountant_export import build_export_zip
+    from openpyxl import load_workbook
+    uid = _seed_user("xlsx@example.com")
+    _add_tx(uid, hmrc_category="adminCosts",
+            description="STAPLES", amount=-15.99)
+    _add_tx(uid, hmrc_category="turnover",
+            description="CLIENT INVOICE", amount=2000.0)
+    zip_bytes = build_export_zip(uid, "xlsx@example.com")
+    zf = zipfile.ZipFile(io.BytesIO(zip_bytes))
+    xlsx_bytes = zf.read("Accountant_Pack.xlsx")
+    wb = load_workbook(io.BytesIO(xlsx_bytes))
+    expected = {
+        "Cover", "Tax Return Boxes", "Transactions", "Missing Receipts",
+        "Receipt Inventory", "VAT Register", "Reasoning Log",
+    }
+    assert expected.issubset(set(wb.sheetnames)), (
+        f"missing sheets: {expected - set(wb.sheetnames)}"
+    )
+    # Box mapping sheet has SA103S box numbers
+    boxes_text = "\n".join(
+        " ".join(str(c.value or "") for c in row)
+        for row in wb["Tax Return Boxes"].iter_rows()
+    )
+    assert "SA103S Box 9" in boxes_text   # turnover
+    assert "SA103S Box 18" in boxes_text  # adminCosts
+    assert "Phone, stationery" in boxes_text  # friendly label
+
+
+def test_export_xlsx_cover_includes_client_name():
+    from services.accountant_export import build_export_zip
+    from openpyxl import load_workbook
+    uid = _seed_user("cover@example.com")
+    _add_tx(uid, hmrc_category="adminCosts", amount=-50.0)
+    zip_bytes = build_export_zip(
+        uid, "cover@example.com",
+        client_name="Acme Plumbing Ltd",
+    )
+    zf = zipfile.ZipFile(io.BytesIO(zip_bytes))
+    wb = load_workbook(io.BytesIO(zf.read("Accountant_Pack.xlsx")))
+    cover_text = "\n".join(
+        " ".join(str(c.value or "") for c in row)
+        for row in wb["Cover"].iter_rows()
+    )
+    assert "Acme Plumbing Ltd" in cover_text
+    assert "Tax Return Boxes" in cover_text  # instructions point there
+
+
+def test_export_zip_receipts_grouped_by_hmrc_category():
+    """Receipts attached to a category-X transaction should land in
+    receipts/X/ inside the ZIP. Orphan receipts go to receipts/_orphan/."""
+    from services.accountant_export import build_export_zip
+    import database as _db, tempfile
+    uid = _seed_user("grouped@example.com")
+    # Create a real on-disk receipt file so the export actually attaches it
+    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+        tmp.write(b"%PDF-1.4 fake")
+        tmp_path = tmp.name
+    try:
+        tx = _add_tx(uid, hmrc_category="adminCosts",
+                     description="STAPLES", amount=-15.99)
+        rc_matched = _db.insert_ledger_receipt(
+            uid, extracted_data_id=None, file_path=tmp_path,
+            source_filename="staples.pdf",
+            store_name="Staples", date_iso="2026-08-04",
+            total_amount=15.99, tax_amount=2.66,
+        )
+        _db.insert_ledger_link(
+            transaction_id=tx, receipt_id=rc_matched,
+            match_strategy="exact", confidence=100,
+        )
+        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp2:
+            tmp2.write(b"%PDF-1.4 orphan")
+            orphan_path = tmp2.name
+        try:
+            _db.insert_ledger_receipt(
+                uid, extracted_data_id=None, file_path=orphan_path,
+                source_filename="orphan.pdf",
+                store_name="Mystery", date_iso="2026-08-05",
+                total_amount=9.99, tax_amount=1.66,
+            )
+            zip_bytes = build_export_zip(uid, "grouped@example.com")
+        finally:
+            import os
+            os.unlink(orphan_path)
+        zf = zipfile.ZipFile(io.BytesIO(zip_bytes))
+        names = zf.namelist()
+        # Matched receipt is under receipts/adminCosts/
+        assert any(n.startswith("receipts/adminCosts/") for n in names), \
+            f"no receipts/adminCosts/ in {[n for n in names if n.startswith('receipts/')]}"
+        # Orphan goes to receipts/_orphan/
+        assert any(n.startswith("receipts/_orphan/") for n in names), \
+            f"no receipts/_orphan/ in {[n for n in names if n.startswith('receipts/')]}"
+    finally:
+        import os
+        os.unlink(tmp_path)
 
 
 def test_export_zip_endpoint_returns_application_zip():
