@@ -1476,6 +1476,53 @@ async def test_seed_ledger_fixture(request: Request):
     })
 
 
+@app.get("/api/test/peek-password-reset-token")
+async def test_peek_password_reset_token(request: Request):
+    """Test-only: return the latest unused password-reset token for an
+    email. Used by the E2E test so we don't need a real inbox."""
+    _test_mode_guard()
+    email = request.query_params.get("email", "").strip().lower()
+    if not email:
+        raise HTTPException(status_code=400, detail="email required")
+    from database import get_user_by_email, _fetchone_dict
+    user = get_user_by_email(email)
+    if not user:
+        raise HTTPException(status_code=404, detail="user not found")
+    row = _fetchone_dict(
+        "SELECT token FROM password_reset_tokens "
+        "WHERE user_id = ? AND used = 0 "
+        "ORDER BY created_at DESC LIMIT 1",
+        (user["id"],),
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="no reset token issued")
+    return JSONResponse({"token": row["token"]})
+
+
+@app.post("/api/test/mark-subscribed")
+async def test_mark_subscribed(request: Request):
+    """Test-only: flip a user into a Stripe-trialing state."""
+    _test_mode_guard()
+    body = await request.json()
+    email = (body.get("email") or "").strip().lower()
+    if not email:
+        raise HTTPException(status_code=400, detail="email required")
+    from database import get_user_by_email, update_user
+    import time as _t
+    user = get_user_by_email(email)
+    if not user:
+        raise HTTPException(status_code=404, detail="user not found")
+    update_user(
+        user["id"],
+        email_verified=1,
+        subscription_status="trialing",
+        stripe_subscription_id="sub_test_seed",
+        stripe_customer_id="cus_test_seed",
+        trial_end_at=_t.time() + 7 * 86400,
+    )
+    return JSONResponse({"status": "ok", "user_id": user["id"]})
+
+
 @app.post("/api/test/seed-ledger-rich")
 async def test_seed_ledger_rich(request: Request):
     """Test-only: seed enough varied data to exercise every ledger UI:
