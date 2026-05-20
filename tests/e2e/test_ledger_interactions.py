@@ -207,6 +207,26 @@ def test_full_ledger_interactions(live_server: str, page: Page):
     assert zip_resp.body()[:2] == b"PK"  # ZIP magic
 
     # ----------------------------------------------------------------------
+    # 9.5. Unmatch a receipt via the ✕ chip — the matched row goes back
+    #      to "missing" and the receipt is available again as an orphan.
+    # ----------------------------------------------------------------------
+    matched_row_for_unmatch = page.locator(
+        f'.tx-row[data-tx-id="{seeded["tx_matched"]}"]'
+    )
+    expect(matched_row_for_unmatch).to_contain_text(re.compile(r"matched", re.I))
+    # The chip is in the Receipts column with an ✕ button.
+    unmatch_x = matched_row_for_unmatch.locator(".receipt-chip .unmatch-x").first
+    expect(unmatch_x).to_be_visible()
+    # confirm() dialog → accept
+    page.once("dialog", lambda d: d.accept())
+    unmatch_x.click()
+    # Row pill flips to "missing", chip is gone
+    expect(matched_row_for_unmatch.locator(".status-pill")).to_contain_text(
+        re.compile(r"missing", re.I), timeout=6_000,
+    )
+    expect(matched_row_for_unmatch.locator(".receipt-chip")).to_have_count(0)
+
+    # ----------------------------------------------------------------------
     # 10. Explain link opens a defence sheet with the HMRC citation.
     #     Target the MATCHED transaction's row specifically — that's the
     #     one with a known HMRC manual ref (se_general_admin_costs → BIM47800).

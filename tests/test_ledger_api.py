@@ -230,6 +230,63 @@ def test_unlink_removes_relationship():
     assert _db.get_links_for_transaction(tx_id) == []
 
 
+def test_unlink_returns_receipt_to_orphan_pool():
+    """After the user clicks ✕ to unmatch, the receipt must show up again
+    in the orphan_receipts list (so they can drag it onto a different
+    transaction) AND the transaction's receipt_status reverts to 'missing'."""
+    client, user, csrf = _make_client_for_user("returntopool@example.com")
+    tx_id = _seed_tx(user["id"], description="Tesco Stores", amount=-12.50)
+    rc_id = _seed_rc(user["id"], store_name="Tesco", total_amount=12.50)
+    import database as _db
+    _db.insert_ledger_link(
+        transaction_id=tx_id, receipt_id=rc_id,
+        match_strategy="exact", confidence=100,
+    )
+
+    # Sanity: pre-unmatch state
+    pre = client.get("/api/ledger").json()
+    assert pre["transactions"][0]["receipt_status"] == "matched"
+    assert pre["counts"]["orphan_receipts"] == 0
+
+    # Click the ✕ chip → POST /api/ledger/unlink
+    r = client.post(
+        "/api/ledger/unlink",
+        json={"transaction_id": tx_id, "receipt_id": rc_id},
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert r.status_code == 200
+
+    # Post-unmatch: row missing, receipt back in orphan list, vat cleared
+    post = client.get("/api/ledger").json()
+    tx = post["transactions"][0]
+    assert tx["receipt_status"] == "missing", "row must show missing again"
+    assert tx["linked_receipts"] == [], "no chip should render"
+    assert tx["vat_amount"] is None, "inherited VAT must be cleared"
+    assert post["counts"]["orphan_receipts"] == 1
+    assert post["orphan_receipts"][0]["id"] == rc_id
+
+
+def test_unlink_rejects_someone_elses_link():
+    """Attacker cannot unmatch a receipt they don't own."""
+    client_a, user_a, csrf_a = _make_client_for_user("attacker2@example.com")
+    client_b, user_b, _ = _make_client_for_user("victim2@example.com")
+    tx_b = _seed_tx(user_b["id"])
+    rc_b = _seed_rc(user_b["id"])
+    import database as _db
+    _db.insert_ledger_link(
+        transaction_id=tx_b, receipt_id=rc_b,
+        match_strategy="exact", confidence=100,
+    )
+    r = client_a.post(
+        "/api/ledger/unlink",
+        json={"transaction_id": tx_b, "receipt_id": rc_b},
+        headers={"X-CSRF-Token": csrf_a},
+    )
+    assert r.status_code == 404
+    # Link must still exist — attacker had no effect
+    assert len(_db.get_links_for_transaction(tx_b)) == 1
+
+
 def test_link_validates_body():
     client, user, csrf = _make_client_for_user("validator@example.com")
     r = client.post(
