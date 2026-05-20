@@ -28,6 +28,10 @@ _INCOME_CATEGORIES = {
     "se_other_income",
     "property_rent_income",
     "property_other_income",
+    # Synthetic — credits we haven't categorised yet. Without this split,
+    # positive-amount transactions get lumped into "expenses" and inflate
+    # the total. Pinned by tests/test_audit_summary_sign_aware.py.
+    "uncategorised_income",
 }
 
 
@@ -38,10 +42,19 @@ def _is_income(category: str | None) -> bool:
 
 
 def _bucket_key(tx: dict) -> str:
-    """The label we group on. Falls back to 'uncategorised' for transactions
-    that haven't been categorised yet — the UI shows them in their own
-    bucket so the user can review."""
-    return tx.get("hmrc_category") or "uncategorised"
+    """The label we group on. Categorised transactions go in their HMRC
+    category. Uncategorised splits by sign — credits (positive amount)
+    go into 'uncategorised_income' and debits (negative) into
+    'uncategorised' — otherwise the expense total is the sum of |credits|
+    + |debits|, which is wrong."""
+    if tx.get("hmrc_category"):
+        return tx["hmrc_category"]
+    amt = tx.get("amount")
+    try:
+        amt_f = float(amt) if amt is not None else 0.0
+    except (TypeError, ValueError):
+        amt_f = 0.0
+    return "uncategorised_income" if amt_f > 0 else "uncategorised"
 
 
 def summarise_audit_readiness(
