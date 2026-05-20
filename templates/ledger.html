@@ -258,6 +258,8 @@
         <a href="/" class="btn">Upload more bank statements or receipts</a>
         <a href="#" onclick="categoriseAllNow(); return false;" class="btn" id="categoriseAllBtn"
            style="background: var(--accent);">Categorise uncategorised transactions</a>
+        <a href="#" onclick="rematchAllNow(); return false;" class="btn" id="rematchAllBtn"
+           style="background: #8E44AD;">Re-run receipt matcher</a>
         <a href="/api/audit-certificate" target="_blank" class="btn secondary">Download Audit Certificate (PDF-ready)</a>
         <a href="#" onclick="downloadExport(); return false;" class="btn secondary">Download accountant ZIP</a>
     </div>
@@ -760,6 +762,42 @@ async function categoriseAllNow() {
             btn.style.opacity = '';
             btn.style.pointerEvents = '';
         }, 2000);
+    }
+}
+
+async function rematchAllNow() {
+    if (!confirm(
+        'This will clear every auto-created receipt link and re-run the matcher. ' +
+        'Manually-confirmed links are kept. Continue?'
+    )) return;
+    const btn = document.getElementById('rematchAllBtn');
+    const originalText = btn.textContent;
+    btn.textContent = 'Re-running matcher…';
+    btn.style.opacity = '0.6';
+    btn.style.pointerEvents = 'none';
+    try {
+        const r = await fetch('/api/ledger/rematch-all', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-Token': getCsrfToken(),
+            },
+        });
+        const data = await r.json();
+        if (r.ok) {
+            btn.textContent =
+                `Cleared ${data.cleared || 0} · re-matched ${data.new_links || 0}`;
+            setTimeout(() => { loadAll(); btn.textContent = originalText; }, 1800);
+        } else {
+            btn.textContent = data.detail || 'Re-match failed';
+        }
+    } catch (e) {
+        btn.textContent = 'Network error — try again';
+    } finally {
+        setTimeout(() => {
+            btn.style.opacity = '';
+            btn.style.pointerEvents = '';
+        }, 2200);
     }
 }
 

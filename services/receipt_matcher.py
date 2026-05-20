@@ -142,6 +142,18 @@ def merchant_overlap(receipt_store: str | None, bank_desc: str | None) -> float:
 # ---------------------------------------------------------------------------
 
 
+def _is_expense(tx: dict) -> bool:
+    """A receipt is always for a purchase, so we only ever match it against
+    DEBITS (negative amounts). A £1,700 salary credit should never be
+    "matched" to a £20.68 burger receipt — that's nonsense by definition,
+    not a tolerance question."""
+    amt = tx.get("amount")
+    try:
+        return float(amt) < 0
+    except (TypeError, ValueError):
+        return False
+
+
 def _try_exact(receipt: dict, transactions: list[dict]) -> MatchResult | None:
     """Strategy 1 — exact match. Returns None if no candidate qualifies."""
     rec_total = receipt.get("total_amount")
@@ -151,6 +163,9 @@ def _try_exact(receipt: dict, transactions: list[dict]) -> MatchResult | None:
         return None
     for tx in transactions:
         if tx.get("amount") is None:
+            continue
+        # Hard sanity rail: receipts only match expenses (debits).
+        if not _is_expense(tx):
             continue
         if not _amount_close(tx["amount"], rec_total, EXACT_AMOUNT_TOLERANCE_GBP):
             continue
@@ -186,6 +201,9 @@ def _try_strong(receipt: dict, transactions: list[dict]) -> MatchResult | None:
     best: tuple[int, MatchResult] | None = None
     for tx in transactions:
         if tx.get("amount") is None:
+            continue
+        # Same sanity rail as exact — receipts only match debits.
+        if not _is_expense(tx):
             continue
         amt_ok = _amount_close(
             tx["amount"], rec_total,
@@ -242,8 +260,9 @@ def _try_ai(
     rec_date = receipt.get("date_iso")
 
     # Build a candidate list ranked by closeness — pick the top N.
+    # Same sanity rail: receipts only match expenses (debits).
     candidates = sorted(
-        (tx for tx in transactions if tx.get("amount") is not None),
+        (tx for tx in transactions if tx.get("amount") is not None and _is_expense(tx)),
         key=lambda tx: (
             abs(abs(tx["amount"]) - abs(rec_total)),
             _days_between(tx.get("date_iso"), rec_date) or 999,
