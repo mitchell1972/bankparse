@@ -1187,6 +1187,72 @@ async def test_set_subscription_state(request: Request):
     return JSONResponse({"email": email, "updated": fields})
 
 
+@app.post("/api/test/seed-ledger-fixture")
+async def test_seed_ledger_fixture(request: Request):
+    """Test-only: in one shot, mark a user as trialing AND seed a single
+    bank transaction + matched receipt + link in the structured ledger.
+
+    Used by tests/e2e/test_ledger_journey.py to set up a known state
+    without needing the real AI parser. Skips authentication checks
+    because test mode is locked behind _test_mode_guard()."""
+    _test_mode_guard()
+    body = await request.json()
+    email = (body.get("email") or "").strip().lower()
+    if not email:
+        raise HTTPException(status_code=400, detail="email required")
+    from database import (
+        get_user_by_email, update_user, save_extracted_data,
+        insert_ledger_transaction, insert_ledger_receipt, insert_ledger_link,
+    )
+    import time as _time
+    user = get_user_by_email(email)
+    if not user:
+        raise HTTPException(status_code=404, detail="user not found")
+
+    update_user(
+        user["id"],
+        subscription_status="trialing",
+        stripe_subscription_id="sub_e2e_fixture",
+        stripe_customer_id="cus_e2e_fixture",
+        trial_end_at=_time.time() + 7 * 86400,
+    )
+
+    ed_stmt = save_extracted_data(
+        user["id"], "statement", "fixture_stmt.pdf", [], source_size_bytes=0,
+    )
+    ed_rc = save_extracted_data(
+        user["id"], "receipt", "fixture_rc.pdf", [], source_size_bytes=0,
+    )
+
+    tx_id = insert_ledger_transaction(
+        user["id"], extracted_data_id=ed_stmt,
+        date_iso="2026-08-04", description="AMAZON UK MARKETPLACE",
+        amount=-42.99,
+        hmrc_category="se_general_admin_costs",
+        hmrc_category_confidence=95,
+        hmrc_category_reason=(
+            "Office consumables — recognised general admin spend per BIM47800."
+        ),
+    )
+    rc_id = insert_ledger_receipt(
+        user["id"], extracted_data_id=ed_rc,
+        file_path=None, source_filename="fixture_rc.pdf",
+        store_name="Amazon", date_iso="2026-08-04",
+        total_amount=42.99, currency="GBP",
+        subtotal=35.83, tax_amount=7.16, payment_method="card",
+    )
+    insert_ledger_link(
+        transaction_id=tx_id, receipt_id=rc_id,
+        match_strategy="exact", confidence=100,
+        user_confirmed=False, reason="E2E fixture",
+    )
+    return JSONResponse({
+        "user_id": user["id"],
+        "transaction_id": tx_id,
+        "receipt_id": rc_id,
+    })
+
+
 @app.get("/api/cron/trial-reminders")
 async def cron_trial_reminders(request: Request):
     expected = os.environ.get("CRON_SECRET", "")
