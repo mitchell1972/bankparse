@@ -333,7 +333,7 @@ def test_diagnostic_links_returns_per_user_rows():
         match_strategy="exact", confidence=98, user_confirmed=False,
         reason="amount + merchant match",
     )
-    r = client.get("/api/ledger/_diagnostic-links")
+    r = client.get("/api/ledger/diagnostic-links")
     assert r.status_code == 200
     body = r.json()
     assert body["count"] == 1

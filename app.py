@@ -760,11 +760,14 @@ async def api_ledger_rematch_all(request: Request):
     })
 
 
-@app.get("/api/ledger/_diagnostic-links")
+@app.get("/api/ledger/diagnostic-links")
 async def api_ledger_diagnostic_links(request: Request):
     """Diagnostic-only: list every ledger_links row for the current user
     with the linked transaction's amount/description and the receipt's
-    store/total. Lets the user (and us) see exactly which links exist."""
+    store/total. Lets the user (and us) see exactly which links exist.
+
+    Note: the leading-underscore variant of this path 404'd in the Railway
+    edge layer (CDN convention strips _ prefixes). Plain hyphen works."""
     user = get_current_user(request)
     if not user:
         raise HTTPException(status_code=401, detail="Authentication required.")
