@@ -227,11 +227,15 @@ def test_grandfathered_user_who_subscribes_lands_on_dashboard():
 
 
 def test_trialing_user_lands_on_dashboard():
-    """Users mid-Stripe-trial (subscription_status='trialing') skip the
-    paywall — they already entered a card."""
+    """Users mid-Stripe-trial (subscription_status='trialing' WITH a real
+    stripe_subscription_id) skip the paywall — they already entered a card."""
     import database as _db
     client, user = _register_and_verify("trialing@example.com")
-    _db.update_user(user["id"], subscription_status="trialing")
+    _db.update_user(
+        user["id"],
+        subscription_status="trialing",
+        stripe_subscription_id="sub_real_trialing",
+    )
     r = client.get("/", follow_redirects=False)
     assert r.status_code == 200
 
@@ -239,7 +243,11 @@ def test_trialing_user_lands_on_dashboard():
 def test_active_subscriber_lands_on_dashboard():
     import database as _db
     client, user = _register_and_verify("active@example.com")
-    _db.update_user(user["id"], subscription_status="active")
+    _db.update_user(
+        user["id"],
+        subscription_status="active",
+        stripe_subscription_id="sub_real_active",
+    )
     r = client.get("/", follow_redirects=False)
     assert r.status_code == 200
 

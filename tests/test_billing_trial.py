@@ -101,12 +101,13 @@ def test_grandfathered_user_alone_does_not_activate_trial():
 def test_grandfathered_plus_stripe_trial_is_active():
     """After a legacy user enters a card via Stripe Checkout the row has
     BOTH grandfathered_trial=1 (analytics) AND subscription_status='trialing'
-    + trial_end_at. They reach the dashboard normally."""
+    + stripe_subscription_id + trial_end_at. They reach the dashboard normally."""
     import core
     user = _make_user(
         "legacy-with-card@example.com",
         grandfathered=True,
         subscription_status="trialing",
+        stripe_subscription_id="sub_real_legacy_card",
         trial_end_at=time.time() + 6 * 86400,
     )
     assert core.is_trial_active(user) is True
@@ -120,11 +121,13 @@ def test_new_user_without_subscription_is_not_trialling():
 
 
 def test_new_user_in_stripe_trialing_status_is_active():
-    """A new user with subscription_status='trialing' and a future trial_end_at is in trial."""
+    """A new user with subscription_status='trialing' AND a real
+    stripe_subscription_id AND a future trial_end_at is in trial."""
     import core
     user = _make_user(
         "trialing@example.com",
         subscription_status="trialing",
+        stripe_subscription_id="sub_real_new_user",
         trial_end_at=time.time() + 6 * 86400,
     )
     assert core.is_trial_active(user) is True
@@ -174,6 +177,7 @@ def test_check_can_use_active_trial_allowed():
     user = _make_user(
         "midtrial@example.com",
         subscription_status="trialing",
+        stripe_subscription_id="sub_real_midtrial",
         trial_end_at=time.time() + 4 * 86400,
     )
     with patch("core.get_user_tier", return_value="free"):
