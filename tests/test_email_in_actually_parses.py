@@ -84,7 +84,10 @@ def _client(email: str = "rc@example.com") -> tuple:
 
 
 def _fake_receipt_parse(store: str, date_iso: str, total: float, tax: float = 0.0) -> dict:
-    """Builds the dict shape parse_receipt_ai would return for a valid receipt."""
+    """Builds the EXACT dict shape parse_receipt_ai actually returns —
+    store_name/date/currency live under "metadata", NOT "summary". A test
+    helper that used "summary" let the silent data-loss bug ship in
+    PR #54 unnoticed; this one mirrors parsers/ai_parser.py:526–537."""
     return {
         "items": [{
             "description": "Test item",
@@ -96,14 +99,15 @@ def _fake_receipt_parse(store: str, date_iso: str, total: float, tax: float = 0.
             "subtotal": total - tax,
             "tax": tax,
             "total": total,
-        },
-        "summary": {
-            "store_name": store,
-            "date": date_iso,
-            "currency": "GBP",
             "payment_method": "card",
         },
         "metadata": {
+            "store_name": store,
+            "date": date_iso,
+            "item_count": 1,
+            "currency": "GBP",
+            "source": "image",
+            "method": "claude_haiku_vision",
             "ai_usage": {"input_tokens": 100, "output_tokens": 50, "model": "haiku"},
         },
     }
@@ -322,6 +326,51 @@ def test_email_in_webhook_path_also_parses():
     receipts = _db.get_user_ledger_receipts(user["id"])
     assert len(receipts) == 1
     assert receipts[0]["store_name"] == "Amazon"
+
+
+def test_ingest_reads_parser_metadata_not_summary():
+    """Direct contract test: services.ledger_ingest.ingest_receipt_and_match
+    MUST read store_name/date/currency from the parser's `metadata` key.
+
+    On 2026-05-20 ingest was reading from `summary` while the parser writes
+    to `metadata`, so every uploaded receipt landed in ledger_receipts with
+    NULL store/date/total — orphans the user could never see or match.
+    This locks the contract so the regression can never come back silently."""
+    client, user, _ = _client("contract@example.com")
+    import database as _db
+    from services.ledger_ingest import ingest_receipt_and_match
+
+    # Use the parser's REAL output shape (metadata key — see parsers/ai_parser.py:526)
+    parsed = {
+        "items": [{"description": "X", "quantity": 1, "unit_price": 5.0, "total_price": 5.0}],
+        "totals": {"subtotal": 4.17, "tax": 0.83, "total": 5.00, "payment_method": "card"},
+        "metadata": {
+            "store_name": "Tesco",
+            "date": "2026-05-20",
+            "currency": "GBP",
+            "item_count": 1,
+            "source": "image",
+            "method": "claude_haiku_vision",
+        },
+    }
+    ext_id = _db.save_extracted_data(user["id"], "receipt", "tesco.jpg", parsed["items"])
+    outcome = ingest_receipt_and_match(
+        user["id"], ext_id, parsed,
+        file_path="/tmp/fake_tesco.jpg",
+        source_filename="tesco.jpg",
+        enable_ai=False,
+    )
+
+    rc_id = outcome["receipt_id"]
+    rows = _db.get_user_ledger_receipts(user["id"])
+    assert len(rows) == 1
+    rc = rows[0]
+    # Before the fix all three of these were None
+    assert rc["store_name"] == "Tesco", "store_name lost — ingest still reading wrong key"
+    assert rc["date_iso"] == "2026-05-20", "date lost — ingest still reading wrong key"
+    assert abs(rc["total_amount"] - 5.00) < 0.01, "total_amount lost — ingest still reading wrong key"
+    assert rc["currency"] == "GBP"
+    assert rc["payment_method"] == "card", "payment_method lost — totals.payment_method must be read"
 
 
 def test_email_in_audit_summary_reflects_new_receipt():

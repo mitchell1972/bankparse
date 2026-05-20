@@ -128,7 +128,11 @@ def ingest_receipt_and_match(
     'strong'/'ai' matches, the green tick for 'exact'.)
     """
     totals = receipt_parsed.get("totals") or {}
-    summary = receipt_parsed.get("summary") or {}
+    # parse_receipt_ai puts store_name/date/currency under `metadata`. Older
+    # callers used `summary`. Accept both so we don't silently lose data —
+    # which we did between 2026-04 and 2026-05-20, when every uploaded
+    # receipt landed in the ledger with NULL store/date and was unmatchable.
+    summary = receipt_parsed.get("metadata") or receipt_parsed.get("summary") or {}
     items = receipt_parsed.get("items") or []
 
     rc_id = database.insert_ledger_receipt(
@@ -142,7 +146,7 @@ def ingest_receipt_and_match(
         currency=summary.get("currency") or "GBP",
         subtotal=totals.get("subtotal"),
         tax_amount=totals.get("tax"),
-        payment_method=summary.get("payment_method"),
+        payment_method=totals.get("payment_method") or summary.get("payment_method"),
         items=items,
     )
 
