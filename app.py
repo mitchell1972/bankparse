@@ -17,7 +17,7 @@ from pathlib import Path
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, UploadFile, File, HTTPException, Request
-from fastapi.responses import HTMLResponse, FileResponse, JSONResponse, PlainTextResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, FileResponse, JSONResponse, PlainTextResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.middleware.cors import CORSMiddleware
@@ -731,6 +731,83 @@ async def api_audit_summary(request: Request):
         raise HTTPException(status_code=401, detail="Authentication required.")
     from services.audit_summary import summarise_audit_readiness
     return JSONResponse(summarise_audit_readiness(user["id"]))
+
+
+@app.get("/api/transaction/{transaction_id}/explain", response_class=HTMLResponse)
+async def api_transaction_explain(request: Request, transaction_id: int):
+    """One-page "Explain this to HMRC" defence sheet for a single
+    transaction. Printable; the user's browser handles PDF rendering."""
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required.")
+    from database import get_transaction_by_id, get_links_for_transaction
+    tx = get_transaction_by_id(transaction_id, user["id"])
+    if tx is None:
+        raise HTTPException(status_code=404, detail="Transaction not found.")
+    linked = get_links_for_transaction(transaction_id)
+    from services.hmrc_defence import build_defence_html
+    html = build_defence_html(
+        transaction=tx,
+        linked_receipts=linked,
+        user_email=user["email"],
+    )
+    return HTMLResponse(html)
+
+
+@app.get("/api/tax-forecast")
+async def api_tax_forecast(request: Request):
+    """Live tax-due forecast — combined Self-Employment + Property.
+    The dashboard widget that beats Hammock (property-only) and Coconut
+    (SE-only) at the same time."""
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required.")
+    from services.tax_forecast import forecast_tax_due
+    return JSONResponse(forecast_tax_due(user["id"]))
+
+
+@app.get("/api/accountant-export")
+async def api_accountant_export(request: Request, period: str | None = None):
+    """Download the accountant-ready ZIP pack. Streams ``application/zip``."""
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required.")
+    from services.accountant_export import build_export_zip
+    zip_bytes = build_export_zip(
+        user["id"], user["email"], period_label=period,
+    )
+    safe_period = (period or "current").replace(" ", "_").replace("/", "-")
+    filename = f"bankscanai_export_{safe_period}.zip"
+    return Response(
+        content=zip_bytes,
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.get("/api/audit-certificate", response_class=HTMLResponse)
+async def api_audit_certificate(request: Request, period: str | None = None):
+    """Quarter-end Audit Confidence Certificate.
+
+    Query param ``period`` is the human-readable label e.g. ``Q2-2026``.
+    Defaults to the current quarter if not supplied."""
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required.")
+    if not period:
+        import datetime as _dt
+        now = _dt.datetime.utcnow()
+        q = (now.month - 1) // 3 + 1
+        period = f"Q{q}-{now.year}"
+    from services.audit_summary import summarise_audit_readiness
+    from services.audit_certificate import build_certificate_html
+    summary = summarise_audit_readiness(user["id"])
+    html = build_certificate_html(
+        user_email=user["email"],
+        period_label=period,
+        summary=summary,
+    )
+    return HTMLResponse(html)
 
 
 @app.post("/api/ledger/transaction/status")
