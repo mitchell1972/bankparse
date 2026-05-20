@@ -206,6 +206,76 @@ def init_db():
             row_count INTEGER NOT NULL DEFAULT 0,
             parsed_at REAL DEFAULT (strftime('%s', 'now'))
         )""",
+        # --- Structured ledger (Phase 1 of receipt-to-bank matching) ---
+        # One row per bank-statement transaction. Lives alongside the JSON
+        # blob in user_extracted_data so we don't have to migrate existing
+        # data — we just write to BOTH on every parse going forward.
+        """CREATE TABLE IF NOT EXISTS ledger_transactions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            extracted_data_id INTEGER,        -- FK back to user_extracted_data (the parent batch)
+            date_iso TEXT,                    -- YYYY-MM-DD
+            description TEXT,
+            amount REAL NOT NULL,             -- negative = money out, positive = money in
+            currency TEXT DEFAULT 'GBP',
+            balance REAL,
+            transaction_type TEXT,            -- 'debit' / 'credit'
+            -- HMRC categorisation
+            hmrc_category TEXT,
+            hmrc_category_confidence INTEGER, -- 0-100
+            hmrc_category_reason TEXT,        -- the AI's stated rationale
+            -- Receipt linking
+            receipt_status TEXT DEFAULT 'missing',  -- 'matched'|'missing'|'na'|'excluded'
+            exclusion_reason TEXT,            -- 'personal'|'cash'|'dd'|'subscription' or null
+            vat_amount REAL,                  -- inherited from linked receipt
+            -- Audit trail
+            content_hash TEXT NOT NULL,       -- SHA-256 of (date|description|amount)
+            -- Capital allowance flag
+            is_capital INTEGER DEFAULT 0,     -- 1 if user confirmed this is a capital item
+            -- Personal/business split (0-100; 100 = fully business)
+            business_pct INTEGER DEFAULT 100,
+            created_at REAL DEFAULT (strftime('%s', 'now')),
+            updated_at REAL DEFAULT (strftime('%s', 'now')),
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (extracted_data_id) REFERENCES user_extracted_data(id) ON DELETE CASCADE
+        )""",
+        # One row per receipt (parsed from PDF/image/photo).
+        """CREATE TABLE IF NOT EXISTS ledger_receipts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            extracted_data_id INTEGER,
+            file_path TEXT,                   -- where the original is stored (if kept)
+            source_filename TEXT,
+            store_name TEXT,
+            date_iso TEXT,
+            total_amount REAL,
+            currency TEXT DEFAULT 'GBP',
+            subtotal REAL,
+            tax_amount REAL,                  -- VAT in GBP
+            payment_method TEXT,              -- 'card'|'cash'|null
+            items_json TEXT,                  -- list of line items
+            -- Match status (cached for fast list queries; canonical link lives in ledger_links)
+            match_status TEXT DEFAULT 'unmatched',  -- 'matched'|'unmatched'|'cash'|'orphan'
+            -- Audit trail
+            content_hash TEXT NOT NULL,       -- SHA-256 of (store_name|date|total)
+            created_at REAL DEFAULT (strftime('%s', 'now')),
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (extracted_data_id) REFERENCES user_extracted_data(id) ON DELETE CASCADE
+        )""",
+        # Many-to-many: a receipt can match >1 transaction (split payment) and
+        # a transaction can have >1 receipt (split bill). The canonical link.
+        """CREATE TABLE IF NOT EXISTS ledger_links (
+            transaction_id INTEGER NOT NULL,
+            receipt_id INTEGER NOT NULL,
+            match_strategy TEXT NOT NULL,     -- 'exact'|'strong'|'ai'|'manual'
+            confidence INTEGER NOT NULL,      -- 0-100
+            user_confirmed INTEGER DEFAULT 0, -- 0 = auto, 1 = user clicked Confirm
+            reason TEXT,                      -- human-readable why this matched
+            created_at REAL DEFAULT (strftime('%s', 'now')),
+            PRIMARY KEY (transaction_id, receipt_id),
+            FOREIGN KEY (transaction_id) REFERENCES ledger_transactions(id) ON DELETE CASCADE,
+            FOREIGN KEY (receipt_id) REFERENCES ledger_receipts(id) ON DELETE CASCADE
+        )""",
         # Webhook idempotency — Stripe retries failed deliveries for up to 3 days,
         # so every handler must be safely replayable. We dedupe on event.id.
         """CREATE TABLE IF NOT EXISTS processed_webhooks (
@@ -313,6 +383,15 @@ def init_db():
         "CREATE INDEX IF NOT EXISTS idx_ai_usage_day ON ai_usage_log(usage_day)",
         "CREATE INDEX IF NOT EXISTS idx_ai_usage_user_day ON ai_usage_log(user_id, usage_day)",
         "CREATE INDEX IF NOT EXISTS idx_ai_usage_user_month ON ai_usage_log(user_id, usage_month)",
+        # Structured ledger lookups
+        "CREATE INDEX IF NOT EXISTS idx_ledger_tx_user ON ledger_transactions(user_id)",
+        "CREATE INDEX IF NOT EXISTS idx_ledger_tx_user_date ON ledger_transactions(user_id, date_iso)",
+        "CREATE INDEX IF NOT EXISTS idx_ledger_tx_hash ON ledger_transactions(content_hash)",
+        "CREATE INDEX IF NOT EXISTS idx_ledger_rc_user ON ledger_receipts(user_id)",
+        "CREATE INDEX IF NOT EXISTS idx_ledger_rc_user_date ON ledger_receipts(user_id, date_iso)",
+        "CREATE INDEX IF NOT EXISTS idx_ledger_rc_hash ON ledger_receipts(content_hash)",
+        "CREATE INDEX IF NOT EXISTS idx_ledger_links_tx ON ledger_links(transaction_id)",
+        "CREATE INDEX IF NOT EXISTS idx_ledger_links_rc ON ledger_links(receipt_id)",
     ]
     for stmt in stmts:
         _execute(stmt)
@@ -1014,6 +1093,255 @@ def clear_user_extracted_data(user_id: int) -> int:
     )
     count = int((raw or {}).get("c") or 0)
     _execute("DELETE FROM user_extracted_data WHERE user_id = ?", (user_id,))
+    return count
+
+
+# ---------------------------------------------------------------------------
+# Structured ledger — transactions, receipts, links
+# ---------------------------------------------------------------------------
+
+def _hash_transaction(date_iso: str | None, description: str | None, amount: float) -> str:
+    """SHA-256 of the immutable trio. If any of these change later the row's
+    hash changes — but the original is preserved as a separate audit record."""
+    import hashlib
+    payload = f"{date_iso or ''}|{(description or '').strip().lower()}|{round(float(amount), 2)}"
+    return hashlib.sha256(payload.encode()).hexdigest()
+
+
+def _hash_receipt(store_name: str | None, date_iso: str | None, total: float | None) -> str:
+    import hashlib
+    payload = f"{(store_name or '').strip().lower()}|{date_iso or ''}|{round(float(total or 0), 2)}"
+    return hashlib.sha256(payload.encode()).hexdigest()
+
+
+def insert_ledger_transaction(
+    user_id: int,
+    *,
+    extracted_data_id: int | None,
+    date_iso: str | None,
+    description: str | None,
+    amount: float,
+    currency: str = "GBP",
+    balance: float | None = None,
+    transaction_type: str | None = None,
+    hmrc_category: str | None = None,
+    hmrc_category_confidence: int | None = None,
+    hmrc_category_reason: str | None = None,
+) -> int:
+    """Insert one transaction. Returns the new row id."""
+    content_hash = _hash_transaction(date_iso, description, amount)
+    return _execute_insert(
+        """INSERT INTO ledger_transactions
+        (user_id, extracted_data_id, date_iso, description, amount, currency,
+         balance, transaction_type, hmrc_category, hmrc_category_confidence,
+         hmrc_category_reason, content_hash)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (user_id, extracted_data_id, date_iso, description, float(amount),
+         currency, balance, transaction_type,
+         hmrc_category, hmrc_category_confidence, hmrc_category_reason,
+         content_hash),
+    )
+
+
+def insert_ledger_receipt(
+    user_id: int,
+    *,
+    extracted_data_id: int | None,
+    file_path: str | None,
+    source_filename: str | None,
+    store_name: str | None,
+    date_iso: str | None,
+    total_amount: float | None,
+    currency: str = "GBP",
+    subtotal: float | None = None,
+    tax_amount: float | None = None,
+    payment_method: str | None = None,
+    items: list[dict] | None = None,
+) -> int:
+    import json
+    content_hash = _hash_receipt(store_name, date_iso, total_amount)
+    return _execute_insert(
+        """INSERT INTO ledger_receipts
+        (user_id, extracted_data_id, file_path, source_filename, store_name,
+         date_iso, total_amount, currency, subtotal, tax_amount,
+         payment_method, items_json, content_hash)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (user_id, extracted_data_id, file_path, source_filename, store_name,
+         date_iso,
+         float(total_amount) if total_amount is not None else None,
+         currency,
+         float(subtotal) if subtotal is not None else None,
+         float(tax_amount) if tax_amount is not None else None,
+         payment_method,
+         json.dumps(items or []),
+         content_hash),
+    )
+
+
+def insert_ledger_link(
+    *,
+    transaction_id: int,
+    receipt_id: int,
+    match_strategy: str,
+    confidence: int,
+    user_confirmed: bool = False,
+    reason: str | None = None,
+) -> None:
+    """Link a receipt to a transaction. Idempotent — re-linking the same pair
+    is a no-op (PRIMARY KEY (transaction_id, receipt_id))."""
+    _execute(
+        """INSERT OR REPLACE INTO ledger_links
+        (transaction_id, receipt_id, match_strategy, confidence, user_confirmed, reason)
+        VALUES (?, ?, ?, ?, ?, ?)""",
+        (transaction_id, receipt_id, match_strategy, int(confidence),
+         1 if user_confirmed else 0, reason),
+    )
+    # Update cached match_status on both sides so the unified ledger view
+    # doesn't need to JOIN ledger_links on every read.
+    _execute(
+        "UPDATE ledger_transactions SET receipt_status = 'matched', "
+        "vat_amount = (SELECT tax_amount FROM ledger_receipts WHERE id = ?) "
+        "WHERE id = ?",
+        (receipt_id, transaction_id),
+    )
+    _execute(
+        "UPDATE ledger_receipts SET match_status = 'matched' WHERE id = ?",
+        (receipt_id,),
+    )
+
+
+def remove_ledger_link(transaction_id: int, receipt_id: int) -> None:
+    _execute(
+        "DELETE FROM ledger_links WHERE transaction_id = ? AND receipt_id = ?",
+        (transaction_id, receipt_id),
+    )
+    # If no other receipts remain for the transaction, mark as missing again.
+    remaining = _fetchone_dict(
+        "SELECT COUNT(*) AS c FROM ledger_links WHERE transaction_id = ?",
+        (transaction_id,),
+    )
+    if (remaining or {}).get("c", 0) == 0:
+        _execute(
+            "UPDATE ledger_transactions SET receipt_status = 'missing', vat_amount = NULL "
+            "WHERE id = ?",
+            (transaction_id,),
+        )
+    other_links = _fetchone_dict(
+        "SELECT COUNT(*) AS c FROM ledger_links WHERE receipt_id = ?",
+        (receipt_id,),
+    )
+    if (other_links or {}).get("c", 0) == 0:
+        _execute(
+            "UPDATE ledger_receipts SET match_status = 'unmatched' WHERE id = ?",
+            (receipt_id,),
+        )
+
+
+def get_user_ledger_transactions(
+    user_id: int,
+    *,
+    limit: int = 1000,
+) -> list[dict]:
+    return _fetchall_dicts(
+        """SELECT * FROM ledger_transactions
+        WHERE user_id = ?
+        ORDER BY date_iso DESC, id DESC
+        LIMIT ?""",
+        (user_id, int(limit)),
+    )
+
+
+def get_user_ledger_receipts(
+    user_id: int,
+    *,
+    only_unmatched: bool = False,
+    limit: int = 1000,
+) -> list[dict]:
+    if only_unmatched:
+        return _fetchall_dicts(
+            """SELECT * FROM ledger_receipts
+            WHERE user_id = ? AND match_status = 'unmatched'
+            ORDER BY date_iso DESC, id DESC LIMIT ?""",
+            (user_id, int(limit)),
+        )
+    return _fetchall_dicts(
+        """SELECT * FROM ledger_receipts
+        WHERE user_id = ?
+        ORDER BY date_iso DESC, id DESC LIMIT ?""",
+        (user_id, int(limit)),
+    )
+
+
+def get_links_for_transaction(transaction_id: int) -> list[dict]:
+    return _fetchall_dicts(
+        """SELECT l.*, r.store_name, r.total_amount, r.tax_amount, r.date_iso, r.file_path
+        FROM ledger_links l
+        JOIN ledger_receipts r ON l.receipt_id = r.id
+        WHERE l.transaction_id = ?""",
+        (transaction_id,),
+    )
+
+
+def get_transaction_by_id(transaction_id: int, user_id: int) -> dict | None:
+    return _fetchone_dict(
+        "SELECT * FROM ledger_transactions WHERE id = ? AND user_id = ?",
+        (transaction_id, user_id),
+    )
+
+
+def get_receipt_by_id(receipt_id: int, user_id: int) -> dict | None:
+    return _fetchone_dict(
+        "SELECT * FROM ledger_receipts WHERE id = ? AND user_id = ?",
+        (receipt_id, user_id),
+    )
+
+
+def update_transaction_status(
+    transaction_id: int,
+    *,
+    receipt_status: str | None = None,
+    exclusion_reason: str | None = None,
+    is_capital: int | None = None,
+    business_pct: int | None = None,
+    hmrc_category: str | None = None,
+    hmrc_category_confidence: int | None = None,
+    hmrc_category_reason: str | None = None,
+) -> None:
+    updates = []
+    params: list = []
+    for col, val in (
+        ("receipt_status", receipt_status),
+        ("exclusion_reason", exclusion_reason),
+        ("is_capital", is_capital),
+        ("business_pct", business_pct),
+        ("hmrc_category", hmrc_category),
+        ("hmrc_category_confidence", hmrc_category_confidence),
+        ("hmrc_category_reason", hmrc_category_reason),
+    ):
+        if val is not None:
+            updates.append(f"{col} = ?")
+            params.append(val)
+    if not updates:
+        return
+    updates.append("updated_at = strftime('%s', 'now')")
+    params.append(transaction_id)
+    _execute(
+        f"UPDATE ledger_transactions SET {', '.join(updates)} WHERE id = ?",
+        tuple(params),
+    )
+
+
+def clear_user_ledger(user_id: int) -> int:
+    """Delete every transaction, receipt, and link for the user. Returns
+    the number of transactions deleted."""
+    raw = _fetchone_dict(
+        "SELECT COUNT(*) AS c FROM ledger_transactions WHERE user_id = ?",
+        (user_id,),
+    )
+    count = int((raw or {}).get("c") or 0)
+    # ledger_links is cleared by foreign-key CASCADE.
+    _execute("DELETE FROM ledger_receipts WHERE user_id = ?", (user_id,))
+    _execute("DELETE FROM ledger_transactions WHERE user_id = ?", (user_id,))
     return count
 
 
