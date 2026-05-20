@@ -2782,6 +2782,14 @@ BLOG_POSTS = {
         "template": "blog/multi-currency-bank-statement-handling.html",
         "keywords": "multi-currency bank statement handling UK, foreign currency bank statement to Excel, Revolut multi-currency statement conversion, Wise borderless account statement Excel, GBP equivalent bank statement calculation, convert foreign currency bank statement for Xero, multi-currency bookkeeping reconciliation UK",
     },
+    "ecommerce-bank-statement-conversion": {
+        "title": "Bank Statement Conversion for E-Commerce Sellers — Complete UK Guide (2026)",
+        "description": "Amazon, Shopify, and eBay sellers deal with complex bank statements packed with payment processor fees, marketplace settlements, refunds, chargebacks, and multi-currency. Complete guide to converting e-commerce bank statements to Excel for UK bookkeepers and sellers.",
+        "date": "2026-05-20",
+        "author": "BankScan AI Team",
+        "template": "blog/ecommerce-bank-statement-conversion.html",
+        "keywords": "ecommerce bank statement conversion UK, Amazon seller bank statement to Excel, Shopify statement converter, eBay payout statement Excel, marketplace seller bookkeeping, PayPal statement to Xero, Stripe statement conversion UK, ecommerce accounting automation",
+    },
 }
 
 
