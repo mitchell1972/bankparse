@@ -735,6 +735,55 @@ async def api_ledger_unlink(request: Request):
     return JSONResponse({"status": "ok"})
 
 
+@app.post("/api/ledger/rematch-all")
+@limiter.limit("5/minute")
+async def api_ledger_rematch_all(request: Request):
+    """Clear every auto-created (non-user-confirmed) receipt link and re-run
+    the matcher across all receipts. Useful when bad matches accumulate —
+    e.g. after a parser bug saved receipts with NULL data and the matcher
+    couldn't tell what they were."""
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required.")
+
+    from database import clear_user_auto_links
+    from services.ledger_ingest import rematch_user_unmatched_receipts
+
+    cleared = clear_user_auto_links(user["id"])
+    rematched = rematch_user_unmatched_receipts(user["id"], enable_ai=False)
+    new_links = sum(1 for r in rematched if r.get("transaction_id"))
+    return JSONResponse({
+        "status": "ok",
+        "cleared": cleared,
+        "rematched_receipts": len(rematched),
+        "new_links": new_links,
+    })
+
+
+@app.get("/api/ledger/_diagnostic-links")
+async def api_ledger_diagnostic_links(request: Request):
+    """Diagnostic-only: list every ledger_links row for the current user
+    with the linked transaction's amount/description and the receipt's
+    store/total. Lets the user (and us) see exactly which links exist."""
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required.")
+    from database import _fetchall_dicts
+    rows = _fetchall_dicts(
+        "SELECT l.transaction_id, l.receipt_id, l.match_strategy, l.confidence, "
+        "l.user_confirmed, l.reason, "
+        "t.description AS tx_desc, t.amount AS tx_amount, t.date_iso AS tx_date, "
+        "r.store_name AS rc_store, r.total_amount AS rc_total, r.date_iso AS rc_date "
+        "FROM ledger_links l "
+        "JOIN ledger_transactions t ON l.transaction_id = t.id "
+        "JOIN ledger_receipts r ON l.receipt_id = r.id "
+        "WHERE t.user_id = ? "
+        "ORDER BY t.date_iso DESC",
+        (user["id"],),
+    )
+    return JSONResponse({"links": rows, "count": len(rows)})
+
+
 @app.post("/api/ledger/categorise-all")
 @limiter.limit("5/minute")
 async def api_ledger_categorise_all(request: Request):

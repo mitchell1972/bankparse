@@ -241,6 +241,109 @@ def test_link_validates_body():
 
 
 # ---------------------------------------------------------------------------
+# /api/ledger/rematch-all  — clear auto-links and re-run the matcher
+# ---------------------------------------------------------------------------
+
+
+def test_rematch_all_clears_auto_links_keeps_user_confirmed():
+    """The button that lets Mitchell wipe nonsense matches and start over.
+    Auto-created links (user_confirmed=0) go; manual ones stay."""
+    client, user, csrf = _make_client_for_user("rematcher@example.com")
+    import database as _db
+
+    tx1 = _seed_tx(user["id"], description="TESCO STORES", amount=-50.0)
+    tx2 = _seed_tx(user["id"], description="AMAZON UK",    amount=-30.0)
+    rc_auto = _seed_rc(user["id"], store_name="Wrong Match", total_amount=99.99)
+    rc_manual = _seed_rc(user["id"], store_name="Amazon", total_amount=30.0)
+
+    # Auto-link (matcher-created): should be wiped
+    _db.insert_ledger_link(
+        transaction_id=tx1, receipt_id=rc_auto,
+        match_strategy="exact", confidence=85, user_confirmed=False,
+    )
+    # Manual link (user drag-drop): should survive
+    _db.insert_ledger_link(
+        transaction_id=tx2, receipt_id=rc_manual,
+        match_strategy="manual", confidence=100, user_confirmed=True,
+    )
+
+    r = client.post(
+        "/api/ledger/rematch-all",
+        headers={"X-CSRF-Token": csrf, "Content-Type": "application/json"},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["status"] == "ok"
+    assert body["cleared"] >= 1
+
+    # tx1 should no longer have a link; tx2's manual link survives
+    assert _db.get_links_for_transaction(tx1) == [], \
+        "auto link must be cleared"
+    surviving = _db.get_links_for_transaction(tx2)
+    assert len(surviving) == 1
+    assert surviving[0]["match_strategy"] == "manual"
+
+
+def test_rematch_all_does_not_link_credits_to_receipts():
+    """Regression: the Mitchell-bug from 2026-05-20. A £1,700 salary credit
+    must not get linked to a £20.68 burger receipt no matter how attractive
+    the date+merchant signals are."""
+    client, user, csrf = _make_client_for_user("nocreditmatch@example.com")
+    import database as _db
+
+    # Salary credit on the same day with the same merchant string as the receipt
+    salary_tx = _seed_tx(
+        user["id"],
+        description="Love Thy Burger PAYMENT IN",
+        amount=1700.00,  # POSITIVE = income
+    )
+    receipt = _seed_rc(
+        user["id"], store_name="Love Thy Burger", total_amount=20.68,
+    )
+    # Set the receipt's date to the same day as the salary tx so the matcher's
+    # date signal would fire if it were going to.
+    _db._execute(
+        "UPDATE ledger_receipts SET date_iso = (SELECT date_iso FROM ledger_transactions WHERE id = ?) WHERE id = ?",
+        (salary_tx, receipt),
+    )
+
+    r = client.post(
+        "/api/ledger/rematch-all",
+        headers={"X-CSRF-Token": csrf, "Content-Type": "application/json"},
+    )
+    assert r.status_code == 200
+
+    # The salary credit must NOT have a receipt linked
+    assert _db.get_links_for_transaction(salary_tx) == [], \
+        "credit must never be linked to an expense receipt"
+    # The receipt must still be marked as unmatched
+    rc_row = _db.get_receipt_by_id(receipt, user["id"])
+    assert rc_row["match_status"] == "unmatched"
+
+
+def test_diagnostic_links_returns_per_user_rows():
+    """The diagnostic endpoint lets the user see what matches actually exist."""
+    client, user, csrf = _make_client_for_user("diag@example.com")
+    import database as _db
+
+    tx = _seed_tx(user["id"], description="TESCO 0123", amount=-12.50)
+    rc = _seed_rc(user["id"], store_name="Tesco", total_amount=12.50)
+    _db.insert_ledger_link(
+        transaction_id=tx, receipt_id=rc,
+        match_strategy="exact", confidence=98, user_confirmed=False,
+        reason="amount + merchant match",
+    )
+    r = client.get("/api/ledger/_diagnostic-links")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["count"] == 1
+    link = body["links"][0]
+    assert link["tx_desc"] == "TESCO 0123"
+    assert link["rc_store"] == "Tesco"
+    assert link["match_strategy"] == "exact"
+
+
+# ---------------------------------------------------------------------------
 # /api/ledger/transaction/status
 # ---------------------------------------------------------------------------
 

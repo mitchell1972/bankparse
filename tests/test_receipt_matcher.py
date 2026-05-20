@@ -90,6 +90,76 @@ def test_no_match_when_amount_differs_by_one_pence_too_far_for_exact():
 
 
 # ---------------------------------------------------------------------------
+# Sign-aware sanity rail (regression: 2026-05-20)
+# ---------------------------------------------------------------------------
+
+
+def test_receipt_never_matches_income_credit_even_with_perfect_signals():
+    """A £20.68 Love Thy Burger receipt must NEVER link to a £20.68
+    salary credit no matter how well the dates and merchant line up. Bank
+    credits aren't expenses — receipts are. This is the Mitchell-bug from
+    /ledger where £1,700 salary credits showed "matched" to burger receipts."""
+    txs = [
+        # Perfect amount + date + merchant overlap... but it's a CREDIT (positive).
+        _tx(1, "2026-05-15", "Love Thy Burger PAYMENT IN", 20.68),
+    ]
+    r = match_receipt(_receipt("Love Thy Burger", "2026-05-15", 20.68), txs)
+    assert r.strategy == "orphan", \
+        f"income credit must never match an expense receipt, got {r.strategy}"
+
+
+def test_receipt_picks_debit_over_credit_when_both_match():
+    """If both a debit and a credit match the receipt amount, the matcher
+    must pick the DEBIT — that's the only one that could be a real purchase."""
+    txs = [
+        _tx(1, "2026-05-15", "Love Thy Burger CREDIT", 20.68),   # credit (income)
+        _tx(2, "2026-05-15", "Love Thy Burger CARD", -20.68),    # debit (expense)
+    ]
+    r = match_receipt(_receipt("Love Thy Burger", "2026-05-15", 20.68), txs)
+    assert r.strategy == "exact"
+    assert r.transaction_id == 2, "must link to the debit, not the credit"
+
+
+def test_strong_strategy_also_rejects_credits():
+    """Strong matching (2-of-3 signals) must also refuse to link credits."""
+    txs = [
+        # Date + merchant match, amount within 2% — would be a strong match...
+        # ...except the amount is POSITIVE (income).
+        _tx(1, "2026-05-15", "Love Thy Burger CR", 20.50),  # 0.9% diff, positive
+    ]
+    r = match_receipt(_receipt("Love Thy Burger", "2026-05-15", 20.68), txs)
+    assert r.strategy == "orphan"
+
+
+def test_ai_strategy_only_offered_debits():
+    """AI fallback must also exclude credits from its candidate pool.
+    Scenario: exact and strong both fail (amounts diverge, descriptions
+    don't share tokens with 'Tesco'), so AI fires. Pool must be debits only."""
+    captured = {}
+
+    def fake_ai_call(receipt, candidates):
+        captured["candidates"] = candidates
+        return None  # AI declines
+
+    txs = [
+        _tx(1, "2026-05-15", "WAGES IN",          120.00),  # credit — excluded
+        _tx(2, "2026-05-16", "CARD PAYMENT XYZ",  -55.00),  # debit — allowed
+        _tx(3, "2026-05-17", "REFUND RECEIVED",    99.99),  # credit — excluded
+        _tx(4, "2026-05-18", "DD ENERGY CO",      -70.00),  # debit — allowed
+    ]
+    match_receipt(
+        _receipt("Tesco", "2026-05-15", 82.75), txs,
+        enable_ai=True, ai_call=fake_ai_call,
+    )
+    # AI must have been called (exact/strong failed because no merchant match)
+    assert "candidates" in captured, "AI strategy must run for this case"
+    seen_ids = {c["id"] for c in captured["candidates"]}
+    assert 1 not in seen_ids, "credit 1 should be filtered out"
+    assert 3 not in seen_ids, "credit 3 should be filtered out"
+    assert seen_ids == {2, 4}, f"expected only debits, got {seen_ids}"
+
+
+# ---------------------------------------------------------------------------
 # Strategy 2: strong candidate (2-of-3 signals)
 # ---------------------------------------------------------------------------
 

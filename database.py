@@ -1231,6 +1231,26 @@ def insert_ledger_link(
     )
 
 
+def clear_user_auto_links(user_id: int) -> int:
+    """Delete every ledger_links row for the user that the matcher created
+    automatically (user_confirmed = 0). Returns count of removed links.
+
+    Manually-confirmed links (drag-drop, "Confirm" in the inbox) are kept —
+    they reflect a deliberate user decision. After this, the matcher can be
+    re-run with a clean slate."""
+    rows = _fetchall_dicts(
+        "SELECT l.transaction_id, l.receipt_id FROM ledger_links l "
+        "JOIN ledger_transactions t ON l.transaction_id = t.id "
+        "WHERE t.user_id = ? AND l.user_confirmed = 0",
+        (user_id,),
+    )
+    count = 0
+    for r in rows:
+        remove_ledger_link(int(r["transaction_id"]), int(r["receipt_id"]))
+        count += 1
+    return count
+
+
 def remove_ledger_link(transaction_id: int, receipt_id: int) -> None:
     _execute(
         "DELETE FROM ledger_links WHERE transaction_id = ? AND receipt_id = ?",
