@@ -87,10 +87,13 @@ def test_full_ledger_interactions(live_server: str, page: Page):
     expect(page.locator("#auditPct")).not_to_contain_text("—", timeout=10_000)
 
     # ----------------------------------------------------------------------
-    # 1. Forwarding address visible in snap-and-send card
+    # 1. Forwarding address visible in snap-and-send card. The local-part
+    # is a per-user random token (8 alphanumeric chars), NOT the integer
+    # user id — see test_auto_categorise_and_receipt_token.py.
     # ----------------------------------------------------------------------
-    expected_addr = f"{seeded['user_id']}@receipts.bankscanai.com"
-    expect(page.locator("#forwardingAddress")).to_have_text(expected_addr)
+    expect(page.locator("#forwardingAddress")).to_contain_text(
+        "@receipts.bankscanai.com"
+    )
 
     # ----------------------------------------------------------------------
     # 2. Snap-and-send camera button — setInputFiles drives the hidden input

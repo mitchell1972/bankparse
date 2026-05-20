@@ -47,6 +47,68 @@ def ingest_statement_rows(
     return new_ids
 
 
+async def auto_categorise_user_transactions(
+    user_id: int,
+    *,
+    business_type: str = "se",
+    only_uncategorised: bool = True,
+    limit: int = 500,
+) -> int:
+    """Run the HMRC categoriser on the user's transactions and persist the
+    result on each row.
+
+    By default only runs on rows where ``hmrc_category`` is NULL so we don't
+    keep re-categorising things the user has already confirmed. Returns the
+    number of transactions that got a category attached this run.
+    """
+    # Local imports — keep ledger_ingest importable without the full hmrc stack
+    from hmrc.schemas.categorise import CategoriseRequest, TransactionIn
+    from hmrc.services.categorisation import resolve
+
+    txs = database.get_user_ledger_transactions(user_id, limit=limit)
+    if only_uncategorised:
+        targets = [tx for tx in txs if not tx.get("hmrc_category")]
+    else:
+        targets = txs
+    if not targets:
+        return 0
+
+    # Build the request payload — preserve the tx id so we can match the
+    # response back to the ledger row.
+    rows_in = [
+        TransactionIn(
+            description=tx.get("description") or "",
+            amount=float(tx.get("amount") or 0),
+            date=tx.get("date_iso"),
+            id=tx["id"],
+        )
+        for tx in targets
+    ]
+    req = CategoriseRequest(business_type=business_type, rows=rows_in)
+
+    try:
+        resp, _metrics = await resolve(req, user_id=user_id)
+    except Exception:  # noqa: BLE001 — auto-categorisation is best-effort
+        logger.exception("Auto-categorisation failed for user %s", user_id)
+        return 0
+
+    # The response preserves order, so zip back to the input ids.
+    updated = 0
+    for tx, out_row in zip(targets, resp.rows):
+        cls = out_row.hmrc
+        if not cls or not cls.category:
+            continue
+        confidence = int(round(float(cls.confidence) * 100))
+        database.update_transaction_status(
+            tx["id"],
+            hmrc_category=cls.category,
+            hmrc_category_confidence=confidence,
+            hmrc_category_reason=cls.reasoning or None,
+        )
+        updated += 1
+    return updated
+
+
 def ingest_receipt_and_match(
     user_id: int,
     extracted_data_id: int,

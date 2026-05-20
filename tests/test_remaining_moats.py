@@ -300,11 +300,19 @@ def test_anomaly_endpoint_returns_shape():
 
 
 def test_forwarding_address_endpoint():
+    """The forwarding address is now a random 8-char token (not the bare
+    integer user id) — see test_auto_categorise_and_receipt_token.py
+    for the pinning tests on the token format."""
+    import re
     client, user, _ = _client("forward@example.com")
     r = client.get("/api/receipts/forwarding-address")
     assert r.status_code == 200
     addr = r.json()["address"]
-    assert addr == f"{user['id']}@receipts.bankscanai.com"
+    assert addr.endswith("@receipts.bankscanai.com")
+    local = addr.split("@")[0]
+    assert re.fullmatch(r"[a-z0-9]{8}", local), f"Bad token format: {local!r}"
+    # And explicitly NOT the user id
+    assert local != str(user["id"])
 
 
 def test_email_in_with_session_attaches_to_logged_in_user():
