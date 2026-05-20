@@ -158,3 +158,73 @@ def send_trial_reminder_email(to_email: str, days_left: int = 2) -> bool:
         message_id = "<unparseable-json>"
     logger.info("Trial reminder sent to %s via Resend (id=%s)", to_email, message_id)
     return True
+
+
+def send_password_reset_email(to_email: str, reset_link: str) -> bool:
+    """Send the password-reset email. Returns True on success.
+    If RESEND_API_KEY is not set, logs the link and returns True so
+    local development still works."""
+    if not RESEND_API_KEY:
+        logger.warning(
+            "RESEND_API_KEY not set — password reset link for %s: %s",
+            to_email, reset_link,
+        )
+        return True
+
+    subject = "BankScan AI — Reset your password"
+    html_body = f"""
+    <div style="font-family: -apple-system, sans-serif; max-width: 480px; margin: 0 auto; padding: 2rem;">
+        <h2 style="color: #1B4F72;">Reset your BankScan AI password</h2>
+        <p>Someone (hopefully you) asked to reset the password for this account.
+        Use the button below to choose a new one:</p>
+        <div style="text-align: center; margin: 1.5rem 0;">
+            <a href="{reset_link}"
+               style="display: inline-block; padding: 0.75rem 1.5rem; background: #1B4F72; color: white; text-decoration: none; border-radius: 6px; font-weight: 600;">
+                Choose a new password
+            </a>
+        </div>
+        <p style="color: #666;">This link expires in <strong>30 minutes</strong>.</p>
+        <p style="color: #666;">If you didn't ask for this, you can safely ignore this email — nothing has changed.</p>
+        <hr style="border: none; border-top: 1px solid #eee; margin: 1.5rem 0;">
+        <p style="color: #999; font-size: 0.85rem;">BankScan AI — AI-powered bank statement &amp; receipt intelligence</p>
+    </div>
+    """
+    text_body = (
+        "Reset your BankScan AI password\n\n"
+        f"Click this link to choose a new password (expires in 30 minutes):\n{reset_link}\n\n"
+        "If you didn't ask for this, ignore the email — nothing has changed."
+    )
+
+    try:
+        response = httpx.post(
+            RESEND_API_URL,
+            headers={
+                "Authorization": f"Bearer {RESEND_API_KEY}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "from": RESEND_FROM,
+                "to": [to_email],
+                "subject": subject,
+                "html": html_body,
+                "text": text_body,
+            },
+            timeout=RESEND_TIMEOUT_SECONDS,
+        )
+    except httpx.HTTPError:
+        logger.exception("Password reset email failed for %s", to_email)
+        return False
+
+    if response.status_code >= 400:
+        logger.error(
+            "Resend rejected password reset to %s — status=%d body=%s",
+            to_email, response.status_code, response.text[:500],
+        )
+        return False
+
+    try:
+        message_id = response.json().get("id", "<no-id>")
+    except ValueError:
+        message_id = "<unparseable-json>"
+    logger.info("Password reset email sent to %s via Resend (id=%s)", to_email, message_id)
+    return True

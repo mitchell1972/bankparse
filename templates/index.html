@@ -782,6 +782,7 @@
     <div id="accountMenu" style="position:absolute; top:1rem; right:1rem; display:none; align-items:center; gap:0.5rem;">
         <a href="/admin" id="headerAdminLink" style="display:none; color:rgba(255,255,255,0.8); font-size:0.8rem; text-decoration:underline; cursor:pointer;">Admin</a>
         <a href="#" id="headerManageLink" onclick="manageBilling(); return false;" style="display:none; color:rgba(255,255,255,0.8); font-size:0.8rem; text-decoration:underline; cursor:pointer;">Manage Subscription</a>
+        <a href="#" id="headerCancelLink" onclick="cancelSubscription(); return false;" style="display:none; color:rgba(255,255,255,0.8); font-size:0.8rem; text-decoration:underline; cursor:pointer;">Cancel</a>
         <button onclick="logout()" id="logoutBtn" style="background:rgba(255,255,255,0.2); border:1px solid rgba(255,255,255,0.4); color:white; padding:0.4rem 1rem; border-radius:6px; cursor:pointer; font-size:0.85rem;">Logout</button>
     </div>
     <h1>BankScan AI</h1>
@@ -1423,6 +1424,32 @@
         }
     }
 
+    async function cancelSubscription() {
+        const confirmed = window.confirm(
+            "Cancel your subscription?\n\n" +
+            "You'll keep access until the end of your current billing period, " +
+            "then your account will revert to the free tier. You can re-subscribe " +
+            "any time."
+        );
+        if (!confirmed) return;
+        try {
+            const csrf = getCsrfToken();
+            const res = await fetch('/api/cancel-subscription', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
+            });
+            const data = await res.json();
+            if (res.ok) {
+                alert(data.message || 'Subscription cancelled. You keep access until your period ends.');
+                window.location.reload();
+            } else {
+                alert(data.detail || 'Cancellation failed. Try Manage Subscription as a backup.');
+            }
+        } catch (e) {
+            alert('Could not connect to billing service.');
+        }
+    }
+
     async function loadUsage() {
         try {
             const res = await fetch('/api/usage');
@@ -1434,9 +1461,14 @@
             if (usageData.email && usageData.email.toLowerCase() === 'mitchell_agoma@yahoo.co.uk') {
                 document.getElementById('headerAdminLink').style.display = 'inline';
             }
-            // Show header manage link for paid tiers
+            // Show header manage + cancel link for paid tiers
             const headerManageLink = document.getElementById('headerManageLink');
-            if (usageData.tier && usageData.tier !== 'free') headerManageLink.style.display = 'inline';
+            const headerCancelLink = document.getElementById('headerCancelLink');
+            const isPaidTier = usageData.tier && usageData.tier !== 'free';
+            if (isPaidTier) {
+                headerManageLink.style.display = 'inline';
+                headerCancelLink.style.display = 'inline';
+            }
             updateUsageBar();
             checkPaywall();
 
