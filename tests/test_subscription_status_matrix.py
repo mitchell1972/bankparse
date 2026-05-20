@@ -350,16 +350,30 @@ def test_is_trial_active_requires_stripe_trialing_status():
     future = time.time() + 86400
     past = time.time() - 86400
 
+    # 'trialing' WITH stripe_subscription_id AND future trial_end_at → True
     assert is_trial_active({
-        "subscription_status": "trialing", "trial_end_at": future,
+        "subscription_status": "trialing",
+        "stripe_subscription_id": "sub_real",
+        "trial_end_at": future,
+    })
+    # 'trialing' WITHOUT stripe_subscription_id (orphan row) → False.
+    # This was the live.co.uk production bug.
+    assert not is_trial_active({
+        "subscription_status": "trialing",
+        "stripe_subscription_id": None,
+        "trial_end_at": future,
     })
     # Future end but not 'trialing' → False
     assert not is_trial_active({
-        "subscription_status": "active", "trial_end_at": future,
+        "subscription_status": "active",
+        "stripe_subscription_id": "sub_real",
+        "trial_end_at": future,
     })
     # Trialing but ended → False
     assert not is_trial_active({
-        "subscription_status": "trialing", "trial_end_at": past,
+        "subscription_status": "trialing",
+        "stripe_subscription_id": "sub_real",
+        "trial_end_at": past,
     })
     # Trialing but no end at all → False
     assert not is_trial_active({"subscription_status": "trialing"})

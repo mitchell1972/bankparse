@@ -412,16 +412,35 @@ def trial_days_remaining(user: dict) -> int:
 def is_trial_active(user: dict) -> bool:
     """True if the user is within their Stripe-backed free trial window.
 
-    Single path: Stripe subscription in `trialing` status with
-    `trial_end_at` in the future. Grandfathered users no longer get
-    free access — they go through Stripe Checkout like everyone else.
+    Requires THREE conditions, all of which must hold:
+      - subscription_status == 'trialing'
+      - trial_end_at in the future
+      - stripe_subscription_id is non-empty (proves the user actually
+        completed Stripe Checkout — a bare 'trialing' status without an
+        attached Stripe subscription is a stale orphan record and must
+        NOT grant access. This was the live.co.uk production bug.)
+
+    Grandfathered users no longer get free access — they go through
+    Stripe Checkout like everyone else.
     """
     import time
 
     if user.get("subscription_status") != "trialing":
         return False
+    if not user.get("stripe_subscription_id"):
+        return False
     end = user.get("trial_end_at")
     return bool(end and float(end) > time.time())
+
+
+def has_active_subscription(user: dict) -> bool:
+    """True if the user has a real Stripe subscription in a paywall-bypassing
+    state. Requires BOTH a valid subscription_status AND a Stripe
+    subscription_id — a bare status without the id is a stale orphan that
+    must not grant access (live.co.uk production bug)."""
+    if user.get("subscription_status") not in ("trialing", "active", "past_due"):
+        return False
+    return bool(user.get("stripe_subscription_id"))
 
 
 def check_can_use(user: dict, mode: str, num_pages: int = 1) -> tuple[bool, str, str, float]:

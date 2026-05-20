@@ -271,3 +271,81 @@ def test_live_co_uk_with_active_stripe_trial_lands_on_dashboard():
         "A live.co.uk user with an active Stripe trial must reach the "
         "dashboard — the paywall fix should not have blocked subscribers."
     )
+
+
+# ---------------------------------------------------------------------------
+# THE LIVE.CO.UK PRODUCTION BUG — orphan subscription_status without Stripe sub
+# ---------------------------------------------------------------------------
+
+def test_stale_trialing_status_without_stripe_sub_is_paywalled():
+    """REGRESSION — In production, mitchell_agoma@live.co.uk had
+    subscription_status='trialing' set in the DB but NO stripe_subscription_id
+    (the Stripe sub was never created, or was deleted, or the column was
+    manually set during testing). The old gate honoured 'trialing' as a
+    bypass without checking the sub id — so the user reached the dashboard
+    without ever entering a card.
+
+    The fix: has_active_subscription requires BOTH subscription_status in
+    (trialing/active/past_due) AND stripe_subscription_id non-empty."""
+    import database as _db
+    client, user = _register_and_verify("mitchell_agoma@live.co.uk")
+    _db.update_user(
+        user["id"],
+        subscription_status="trialing",
+        stripe_subscription_id=None,                  # ← the bug condition
+        trial_end_at=time.time() + 7 * 86400,
+    )
+    r = client.get("/", follow_redirects=False)
+    assert r.status_code == 302, (
+        "A 'trialing' status without a Stripe sub is an orphan — must NOT "
+        "bypass the paywall. This was the live.co.uk production bug."
+    )
+    assert r.headers["location"] == "/start-trial"
+
+
+def test_stale_active_status_without_stripe_sub_is_paywalled():
+    """Same orphan-row attack but for 'active' status."""
+    import database as _db
+    client, user = _register_and_verify("orphan-active@example.com")
+    _db.update_user(
+        user["id"],
+        subscription_status="active",
+        stripe_subscription_id=None,
+    )
+    r = client.get("/", follow_redirects=False)
+    assert r.status_code == 302
+    assert r.headers["location"] == "/start-trial"
+
+
+def test_is_trial_active_requires_stripe_subscription_id():
+    """Unit test on the core helper — 'trialing' without a stripe_subscription_id
+    is no longer enough."""
+    from core import is_trial_active
+    user_orphan = {
+        "subscription_status": "trialing",
+        "stripe_subscription_id": None,
+        "trial_end_at": time.time() + 7 * 86400,
+    }
+    user_real = {
+        "subscription_status": "trialing",
+        "stripe_subscription_id": "sub_real_test",
+        "trial_end_at": time.time() + 7 * 86400,
+    }
+    assert is_trial_active(user_orphan) is False
+    assert is_trial_active(user_real) is True
+
+
+def test_has_active_subscription_requires_both_status_and_sub_id():
+    """Unit test on the new helper across the four states."""
+    from core import has_active_subscription
+    # No status, no sub
+    assert has_active_subscription({"subscription_status": None, "stripe_subscription_id": None}) is False
+    # Status but no sub (the orphan bug)
+    assert has_active_subscription({"subscription_status": "trialing", "stripe_subscription_id": None}) is False
+    assert has_active_subscription({"subscription_status": "active",   "stripe_subscription_id": ""})   is False
+    # Both present
+    assert has_active_subscription({"subscription_status": "trialing", "stripe_subscription_id": "sub_x"}) is True
+    assert has_active_subscription({"subscription_status": "active",   "stripe_subscription_id": "sub_y"}) is True
+    assert has_active_subscription({"subscription_status": "past_due", "stripe_subscription_id": "sub_z"}) is True
+    # Cancelled / unpaid is paywall-eligible even with a sub id
+    assert has_active_subscription({"subscription_status": "canceled", "stripe_subscription_id": "sub_x"}) is False

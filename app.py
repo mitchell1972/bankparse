@@ -72,7 +72,7 @@ from core import (
     verify_subscription, check_can_use, get_user_tier,
     record_ai_spend, QUOTA_REASON_MESSAGES,
     # Trial helpers
-    trial_days_remaining, is_trial_active,
+    trial_days_remaining, is_trial_active, has_active_subscription,
     # Session cap
     SESSION_MAX_BYTES,
 )
@@ -234,7 +234,7 @@ async def home(request: Request):
     if (
         not trial_started_flag
         and email not in PAYWALL_BYPASS_EMAILS
-        and user.get("subscription_status") not in ("trialing", "active", "past_due")
+        and not has_active_subscription(user)
     ):
         return RedirectResponse(url="/start-trial", status_code=302)
     return templates.TemplateResponse(request, "index.html")
@@ -380,7 +380,7 @@ async def start_trial_page(request: Request):
     user = get_current_user(request)
     if not user:
         return RedirectResponse(url="/login?next=/start-trial", status_code=302)
-    if user.get("subscription_status") in ("trialing", "active"):
+    if has_active_subscription(user):
         return RedirectResponse(url="/", status_code=302)
     return templates.TemplateResponse(request, "start_trial.html")
 
@@ -543,7 +543,7 @@ async def verify_email_code(request: Request):
     #     so they enter a card and start the 7-day countdown under the same
     #     Stripe flow as every other user.
     redirect_to = "/"
-    if user.get("subscription_status") not in ("trialing", "active"):
+    if not has_active_subscription(user):
         redirect_to = "/start-trial"
 
     return JSONResponse({"status": "ok", "verified": True, "redirect_to": redirect_to})
@@ -1844,7 +1844,7 @@ async def start_trial_checkout(request: Request):
     # Note: grandfathered users used to be 409'd here. They're now allowed
     # through so they can enter a card and start the new 7-day countdown.
 
-    if user.get("subscription_status") in ("trialing", "active"):
+    if has_active_subscription(user):
         raise HTTPException(status_code=409, detail="You already have an active subscription.")
 
     from services.billing import create_trial_checkout_session
