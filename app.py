@@ -631,6 +631,22 @@ async def get_usage_status(request: Request):
 # The differentiator the design doc calls "the single most demoable feature".
 # ---------------------------------------------------------------------------
 
+@app.get("/ledger", response_class=HTMLResponse)
+async def ledger_page(request: Request):
+    """The unified-ledger dashboard page. The single most demoable feature."""
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login?next=/ledger", status_code=302)
+    # Gate on paywall like the main dashboard
+    email = (user.get("email") or "").lower()
+    if (
+        email not in PAYWALL_BYPASS_EMAILS
+        and not has_active_subscription(user)
+    ):
+        return RedirectResponse(url="/start-trial", status_code=302)
+    return templates.TemplateResponse(request, "ledger.html")
+
+
 @app.get("/api/ledger")
 async def api_ledger(request: Request):
     """Return the unified ledger: every transaction with linked receipts,

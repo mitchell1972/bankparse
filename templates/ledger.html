@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex, nofollow">
+    <title>HMRC Ledger — BankScan AI</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        :root {
+            --primary: #1B4F72;
+            --primary-light: #2E86C1;
+            --accent: #27AE60;
+            --warn: #F39C12;
+            --danger: #E74C3C;
+            --bg: #F8F9FA;
+            --card: #FFFFFF;
+            --text: #2C3E50;
+            --muted: #7F8C8D;
+            --border: #E5E7EB;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+        }
+        header {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%);
+            color: white;
+            padding: 1.5rem 2rem;
+        }
+        header .row {
+            display: flex; align-items: center; justify-content: space-between;
+            max-width: 1200px; margin: 0 auto;
+        }
+        header h1 { font-size: 1.4rem; }
+        header .nav a {
+            color: rgba(255,255,255,0.9); margin-left: 1rem;
+            text-decoration: none; font-size: 0.9rem;
+        }
+        header .nav a:hover { color: white; text-decoration: underline; }
+
+        .container { max-width: 1200px; margin: 1.5rem auto; padding: 0 1.5rem; }
+
+        .top-grid {
+            display: grid; grid-template-columns: 1.5fr 1fr; gap: 1.25rem;
+            margin-bottom: 1.5rem;
+        }
+        @media (max-width: 900px) { .top-grid { grid-template-columns: 1fr; } }
+
+        .card {
+            background: var(--card); border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+            padding: 1.25rem 1.5rem;
+        }
+        .card h2 {
+            font-size: 0.95rem; color: var(--muted);
+            font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;
+            margin-bottom: 0.75rem;
+        }
+
+        /* Audit-ready hero */
+        .audit-hero {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%);
+            color: white;
+        }
+        .audit-hero h2 { color: rgba(255,255,255,0.85); }
+        .audit-hero .pct {
+            font-size: 3.5rem; font-weight: 700; line-height: 1; margin: 0.5rem 0;
+        }
+        .audit-hero .sub { font-size: 0.95rem; opacity: 0.9; }
+        .audit-hero .stats {
+            display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem;
+            margin-top: 1rem; padding-top: 1rem;
+            border-top: 1px solid rgba(255,255,255,0.2);
+        }
+        .audit-hero .stat .label { font-size: 0.75rem; opacity: 0.8; text-transform: uppercase; letter-spacing: 0.5px; }
+        .audit-hero .stat .val { font-size: 1.15rem; font-weight: 600; margin-top: 0.25rem; }
+
+        /* Tax forecast */
+        .forecast .total {
+            font-size: 2.4rem; font-weight: 700; color: var(--primary);
+            margin: 0.25rem 0;
+        }
+        .forecast .breakdown { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-top: 0.75rem; }
+        .forecast .breakdown .pair {
+            background: var(--bg); padding: 0.6rem 0.75rem; border-radius: 6px; font-size: 0.85rem;
+        }
+        .forecast .breakdown .pair .lbl { color: var(--muted); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.5px; }
+        .forecast .breakdown .pair .val { color: var(--text); font-weight: 600; }
+        .forecast .notes { margin-top: 0.75rem; font-size: 0.8rem; color: var(--muted); }
+
+        .actions-bar {
+            display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1.25rem;
+        }
+        .btn {
+            background: var(--primary); color: white; border: none;
+            padding: 0.6rem 1.1rem; border-radius: 8px;
+            font-size: 0.9rem; font-weight: 600; cursor: pointer;
+            text-decoration: none; display: inline-block;
+        }
+        .btn:hover { background: var(--primary-light); }
+        .btn.secondary { background: white; color: var(--primary); border: 1px solid var(--primary); }
+        .btn.secondary:hover { background: var(--bg); }
+
+        /* Categories table */
+        .cat-table { width: 100%; border-collapse: collapse; }
+        .cat-table th, .cat-table td {
+            padding: 0.7rem 0.5rem; border-bottom: 1px solid var(--border);
+            text-align: left; font-size: 0.88rem;
+        }
+        .cat-table th {
+            color: var(--muted); font-weight: 600; background: var(--bg);
+            text-transform: uppercase; font-size: 0.72rem; letter-spacing: 0.5px;
+        }
+        .cat-table td.num, .cat-table th.num { text-align: right; }
+        .bar-wrap {
+            background: var(--border); border-radius: 4px; overflow: hidden;
+            position: relative; height: 18px;
+        }
+        .bar { height: 100%; transition: width 0.3s; }
+        .bar.good { background: var(--accent); }
+        .bar.warn { background: var(--warn); }
+        .bar.bad { background: var(--danger); }
+        .bar-label {
+            position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+            color: white; font-size: 0.72rem; font-weight: 600;
+            display: flex; align-items: center; justify-content: center;
+        }
+
+        /* Transactions table */
+        .tx-table { width: 100%; border-collapse: collapse; }
+        .tx-table th, .tx-table td {
+            padding: 0.65rem 0.5rem; border-bottom: 1px solid var(--border);
+            font-size: 0.85rem; vertical-align: top;
+        }
+        .tx-table th {
+            text-align: left; color: var(--muted);
+            background: var(--bg); font-size: 0.72rem; text-transform: uppercase;
+            letter-spacing: 0.5px; position: sticky; top: 0;
+        }
+        .tx-table td.num, .tx-table th.num { text-align: right; }
+        .tx-row.drag-over { background: #FFF7E0; }
+        .tx-row.matched { background: #F0FBF4; }
+        .tx-row.excluded { opacity: 0.55; }
+        .status-pill {
+            display: inline-block; padding: 0.15rem 0.55rem; border-radius: 12px;
+            font-size: 0.72rem; font-weight: 600;
+        }
+        .status-pill.matched { background: #D5F5E3; color: #1E8449; }
+        .status-pill.missing { background: #FADBD8; color: #A93226; }
+        .status-pill.na { background: var(--border); color: var(--muted); }
+        .status-pill.excluded { background: #EBDEF0; color: #6C3483; }
+        .receipt-chip {
+            display: inline-block; background: var(--bg); border: 1px solid var(--border);
+            border-radius: 4px; padding: 0.15rem 0.45rem; font-size: 0.72rem;
+            margin-right: 0.25rem;
+        }
+        .explain-link {
+            color: var(--primary-light); text-decoration: none; font-size: 0.8rem;
+        }
+        .explain-link:hover { text-decoration: underline; }
+
+        /* Orphan receipts */
+        .orphan-list {
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+            gap: 0.75rem;
+        }
+        .orphan-card {
+            background: var(--bg); border: 1px dashed var(--border);
+            border-radius: 8px; padding: 0.75rem; cursor: grab;
+            user-select: none;
+        }
+        .orphan-card:active { cursor: grabbing; }
+        .orphan-card .store { font-weight: 600; font-size: 0.88rem; }
+        .orphan-card .amt { color: var(--muted); font-size: 0.8rem; }
+
+        /* Empty states */
+        .empty {
+            text-align: center; padding: 2rem; color: var(--muted);
+            border: 1px dashed var(--border); border-radius: 8px;
+        }
+
+        /* Loading shimmer */
+        .loading {
+            text-align: center; padding: 2rem; color: var(--muted); font-size: 0.9rem;
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <div class="row">
+        <h1>HMRC Ledger</h1>
+        <div class="nav">
+            <a href="/">← Dashboard</a>
+            <a href="/api/audit-certificate" target="_blank">Certificate</a>
+            <a href="#" id="downloadExportBtn" onclick="downloadExport(); return false;">Export for accountant</a>
+        </div>
+    </div>
+</header>
+
+<div class="container">
+
+    <div class="top-grid">
+
+        <!-- Audit-ready hero -->
+        <div class="card audit-hero" id="auditHero">
+            <h2>Audit-readiness</h2>
+            <div class="pct" id="auditPct">—</div>
+            <div class="sub" id="auditLabel">Loading…</div>
+            <div class="stats">
+                <div class="stat">
+                    <div class="label">Total expenses</div>
+                    <div class="val" id="statExpenses">—</div>
+                </div>
+                <div class="stat">
+                    <div class="label">VAT recorded</div>
+                    <div class="val" id="statVat">—</div>
+                </div>
+                <div class="stat">
+                    <div class="label">Transactions</div>
+                    <div class="val" id="statTx">—</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Live tax forecast -->
+        <div class="card forecast" id="forecastCard">
+            <h2>Tax due if quarter ended today</h2>
+            <div class="total" id="forecastTotal">£—</div>
+            <div class="sub" id="forecastTaxYear" style="color:var(--muted); font-size:0.85rem;">—</div>
+            <div class="breakdown">
+                <div class="pair">
+                    <div class="lbl">Self-employment</div>
+                    <div class="val" id="forecastSe">£—</div>
+                </div>
+                <div class="pair">
+                    <div class="lbl">Property</div>
+                    <div class="val" id="forecastProp">£—</div>
+                </div>
+                <div class="pair">
+                    <div class="lbl">Income tax</div>
+                    <div class="val" id="forecastTax">£—</div>
+                </div>
+                <div class="pair">
+                    <div class="lbl">Class 4 NI</div>
+                    <div class="val" id="forecastNi">£—</div>
+                </div>
+            </div>
+            <div class="notes" id="forecastNotes"></div>
+        </div>
+
+    </div>
+
+    <div class="actions-bar">
+        <a href="/" class="btn">Upload more bank statements or receipts</a>
+        <a href="/api/audit-certificate" target="_blank" class="btn secondary">Download Audit Certificate (PDF-ready)</a>
+        <a href="#" onclick="downloadExport(); return false;" class="btn secondary">Download accountant ZIP</a>
+    </div>
+
+    <!-- Per-category audit-ready table -->
+    <div class="card" style="margin-bottom: 1.5rem;">
+        <h2>Per-category audit-readiness</h2>
+        <div id="categoryTableWrap" class="loading">Loading…</div>
+    </div>
+
+    <!-- Orphan receipts inbox (drag source) -->
+    <div class="card" id="orphanCard" style="margin-bottom: 1.5rem; display: none;">
+        <h2>Unmatched receipts <span id="orphanCount" style="font-weight:400;color:var(--muted);"></span></h2>
+        <p style="font-size:0.85rem; color:var(--muted); margin-bottom:0.75rem;">
+            Drag a receipt onto its bank line below to attach it manually.
+        </p>
+        <div class="orphan-list" id="orphanList"></div>
+    </div>
+
+    <!-- Unified ledger table -->
+    <div class="card">
+        <h2>Bank transactions</h2>
+        <div id="txTableWrap" class="loading">Loading…</div>
+    </div>
+
+</div>
+
+<script>
+function getCsrfToken() {
+    const m = document.cookie.match(/(^|;\s*)bp_csrf=([^;]+)/);
+    return m ? m[2] : '';
+}
+function fmtGBP(n) {
+    if (n === null || n === undefined) return '£—';
+    return '£' + (Math.abs(n)).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+function fmtNeg(n) {
+    if (n === null || n === undefined) return '—';
+    const sign = n < 0 ? '−' : '';
+    return sign + '£' + Math.abs(n).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+function colourForPct(pct) {
+    if (pct >= 80) return 'good';
+    if (pct >= 50) return 'warn';
+    return 'bad';
+}
+function bandLabel(pct) {
+    if (pct >= 90) return 'Excellent';
+    if (pct >= 70) return 'Strong';
+    if (pct >= 50) return 'Adequate';
+    return 'Needs improvement';
+}
+
+let LEDGER = null;
+let SUMMARY = null;
+let FORECAST = null;
+
+async function loadAll() {
+    const [ledgerR, sumR, fcR] = await Promise.all([
+        fetch('/api/ledger'),
+        fetch('/api/audit-summary'),
+        fetch('/api/tax-forecast'),
+    ]);
+    if (!ledgerR.ok) {
+        document.body.innerHTML = '<div style="padding:3rem;text-align:center;">Please log in to view the ledger.</div>';
+        return;
+    }
+    LEDGER = await ledgerR.json();
+    SUMMARY = await sumR.json();
+    FORECAST = await fcR.json();
+    renderHero();
+    renderForecast();
+    renderCategories();
+    renderOrphans();
+    renderTransactions();
+}
+
+function renderHero() {
+    const pct = SUMMARY.totals.audit_ready_pct || 0;
+    document.getElementById('auditPct').textContent = pct + '%';
+    document.getElementById('auditLabel').textContent = bandLabel(pct) + ' — ' +
+        (SUMMARY.totals.transactions_matched + ' of ' + SUMMARY.totals.transactions_total +
+         ' transactions backed by receipts');
+    document.getElementById('statExpenses').textContent = fmtGBP(SUMMARY.totals.expenses);
+    document.getElementById('statVat').textContent = fmtGBP(SUMMARY.totals.vat_total);
+    document.getElementById('statTx').textContent = SUMMARY.totals.transactions_total || 0;
+}
+
+function renderForecast() {
+    document.getElementById('forecastTotal').textContent = fmtGBP(FORECAST.combined.total_due);
+    document.getElementById('forecastTaxYear').textContent =
+        'Tax year ' + FORECAST.tax_year + ' as of ' + FORECAST.as_of;
+    document.getElementById('forecastSe').textContent = fmtGBP(FORECAST.self_employment.income_tax_due);
+    document.getElementById('forecastProp').textContent = fmtGBP(FORECAST.property.income_tax_due);
+    document.getElementById('forecastTax').textContent = fmtGBP(FORECAST.combined.income_tax_due);
+    document.getElementById('forecastNi').textContent = fmtGBP(FORECAST.combined.class_4_ni_due);
+    const notes = document.getElementById('forecastNotes');
+    notes.innerHTML = '';
+    (FORECAST.notes || []).forEach(n => {
+        const div = document.createElement('div');
+        div.textContent = '• ' + n;
+        notes.appendChild(div);
+    });
+}
+
+function renderCategories() {
+    const wrap = document.getElementById('categoryTableWrap');
+    if (!SUMMARY.categories.length) {
+        wrap.className = 'empty';
+        wrap.textContent = 'No categorised transactions yet. Upload a bank statement to start.';
+        return;
+    }
+    wrap.className = '';
+    let html = '<table class="cat-table">';
+    html += '<thead><tr><th>Category</th><th class="num">Gross</th><th class="num">VAT</th><th class="num">Receipts</th><th>Audit-ready</th></tr></thead><tbody>';
+    SUMMARY.categories.forEach(c => {
+        const label = (c.category || '—').replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+        const cls = colourForPct(c.audit_ready_pct);
+        const tagged = c.is_income ? ' <span class="receipt-chip">Income</span>' : '';
+        html += `<tr>
+            <td>${label}${tagged}${c.needs_attention ? ' <span class="receipt-chip" style="background:#FADBD8;color:#A93226;border:none;">Needs attention</span>' : ''}</td>
+            <td class="num">${fmtGBP(c.total_gross_gbp)}</td>
+            <td class="num">${fmtGBP(c.total_vat_gbp)}</td>
+            <td class="num">${c.matched_count}/${c.transaction_count}</td>
+            <td>
+                ${c.is_income ? '<span style="color:var(--muted);font-size:0.8rem;">n/a (income)</span>' : `
+                <div class="bar-wrap">
+                    <div class="bar ${cls}" style="width: ${c.audit_ready_pct}%"></div>
+                    <div class="bar-label">${c.audit_ready_pct}%</div>
+                </div>`}
+            </td>
+        </tr>`;
+    });
+    html += '</tbody></table>';
+    wrap.innerHTML = html;
+}
+
+function renderOrphans() {
+    const orphans = LEDGER.orphan_receipts || [];
+    const card = document.getElementById('orphanCard');
+    if (!orphans.length) { card.style.display = 'none'; return; }
+    card.style.display = '';
+    document.getElementById('orphanCount').textContent = '(' + orphans.length + ')';
+    const list = document.getElementById('orphanList');
+    list.innerHTML = '';
+    orphans.forEach(r => {
+        const div = document.createElement('div');
+        div.className = 'orphan-card';
+        div.draggable = true;
+        div.dataset.receiptId = r.id;
+        div.innerHTML = `
+            <div class="store">${r.store_name || '—'}</div>
+            <div class="amt">${fmtGBP(r.total_amount)} &middot; ${r.date_iso || ''}</div>
+        `;
+        div.addEventListener('dragstart', e => {
+            e.dataTransfer.setData('text/plain', String(r.id));
+        });
+        list.appendChild(div);
+    });
+}
+
+function renderTransactions() {
+    const wrap = document.getElementById('txTableWrap');
+    const txs = LEDGER.transactions || [];
+    if (!txs.length) {
+        wrap.className = 'empty';
+        wrap.textContent = 'No bank transactions yet. Upload a statement on the dashboard to populate this view.';
+        return;
+    }
+    wrap.className = '';
+    let html = '<table class="tx-table"><thead><tr><th>Date</th><th>Description</th><th class="num">Amount</th><th>Category</th><th>Status</th><th>Receipts</th><th>VAT</th><th></th></tr></thead><tbody>';
+    txs.forEach(tx => {
+        const rowCls = (tx.receipt_status === 'matched' ? 'matched ' : '') +
+            (tx.receipt_status === 'excluded' ? 'excluded ' : '');
+        const statusLabel = tx.receipt_status || 'missing';
+        const receipts = (tx.linked_receipts || []).map(r =>
+            `<span class="receipt-chip">${r.store_name || '?'} ${fmtGBP(r.total_amount)}</span>`
+        ).join('');
+        const cat = (tx.hmrc_category || '—').replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+        html += `<tr class="tx-row ${rowCls}" data-tx-id="${tx.id}">
+            <td>${tx.date_iso || '—'}</td>
+            <td>${tx.description || '—'}</td>
+            <td class="num">${fmtNeg(tx.amount)}</td>
+            <td>${cat}</td>
+            <td><span class="status-pill ${statusLabel}">${statusLabel}</span></td>
+            <td>${receipts || '<span style="color:var(--muted);font-size:0.8rem;">Drop a receipt here</span>'}</td>
+            <td class="num">${tx.vat_amount ? fmtGBP(tx.vat_amount) : ''}</td>
+            <td><a href="/api/transaction/${tx.id}/explain" target="_blank" class="explain-link">Explain</a></td>
+        </tr>`;
+    });
+    html += '</tbody></table>';
+    wrap.innerHTML = html;
+    // Wire drop targets
+    wrap.querySelectorAll('.tx-row').forEach(row => {
+        row.addEventListener('dragover', e => { e.preventDefault(); row.classList.add('drag-over'); });
+        row.addEventListener('dragleave', () => row.classList.remove('drag-over'));
+        row.addEventListener('drop', async e => {
+            e.preventDefault();
+            row.classList.remove('drag-over');
+            const rcId = parseInt(e.dataTransfer.getData('text/plain'), 10);
+            const txId = parseInt(row.dataset.txId, 10);
+            if (!rcId || !txId) return;
+            await linkReceipt(txId, rcId);
+        });
+    });
+}
+
+async function linkReceipt(txId, rcId) {
+    const r = await fetch('/api/ledger/link', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': getCsrfToken() },
+        body: JSON.stringify({ transaction_id: txId, receipt_id: rcId }),
+    });
+    if (r.ok) {
+        await loadAll();
+    } else {
+        const data = await r.json().catch(() => ({}));
+        alert(data.detail || 'Link failed.');
+    }
+}
+
+function downloadExport() {
+    window.location.href = '/api/accountant-export';
+}
+
+loadAll();
+</script>
+</body>
+</html>
