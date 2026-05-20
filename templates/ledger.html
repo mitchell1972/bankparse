@@ -286,13 +286,14 @@
     <div class="card" id="exportPanel" style="margin-bottom: 1.5rem;">
         <h2 style="margin-top: 0;">Send to your accountant</h2>
         <p style="color: var(--muted); margin-top: 0.25rem;">
-            Builds a single ZIP: an Excel workbook with SA103/SA105 box mapping,
-            every transaction, every receipt grouped by category, and a printable
-            Audit Confidence Certificate. Open in Excel — the accountant can
-            transcribe straight onto the tax return.
+            Excel workbook with SA103/SA105 box mapping, action items, trial
+            balance, every transaction, every receipt grouped by category, and
+            a printable Audit Confidence Certificate. Three ways to deliver it:
         </p>
-        <div style="display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: flex-end;">
-            <label style="display: flex; flex-direction: column; font-size: 0.85rem; min-width: 220px;">
+
+        <!-- Common inputs: client name + period -->
+        <div style="display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: flex-end; margin-bottom: 1rem;">
+            <label style="display: flex; flex-direction: column; font-size: 0.85rem; min-width: 220px; flex: 1;">
                 <span style="color: var(--muted); margin-bottom: 0.2rem;">Business or client name</span>
                 <input id="exportClientName" type="text"
                        placeholder="e.g. Mitoba Property Services Ltd"
@@ -311,10 +312,92 @@
                     <option value="2025-26 tax year">2025-26 tax year</option>
                 </select>
             </label>
-            <a href="#" onclick="downloadExport(); return false;" class="btn"
-               id="exportDownloadBtn" style="background: var(--primary);">
-                Download Accountant Pack (.zip)
-            </a>
+        </div>
+
+        <!-- Delivery options as three side-by-side cards -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem;">
+            <!-- 1. Email straight to the accountant -->
+            <div style="border: 1px solid var(--border); border-radius: 8px; padding: 1rem;">
+                <div style="font-weight: 600; margin-bottom: 0.5rem;">
+                    📧 Email to accountant
+                    <span style="background: #D5F5E3; color: #1E8449; font-size: 0.7rem;
+                                 padding: 0.1rem 0.4rem; border-radius: 3px; margin-left: 0.25rem;">
+                        Recommended
+                    </span>
+                </div>
+                <p style="color: var(--muted); font-size: 0.82rem; margin: 0 0 0.6rem;">
+                    Sends a link to your accountant. They click, see totals, download.
+                    No attachments to bounce.
+                </p>
+                <input id="accountantEmail" type="email"
+                       placeholder="accountant@firm.co.uk"
+                       style="width: 100%; padding: 0.4rem 0.55rem; margin-bottom: 0.4rem;
+                              border: 1px solid var(--border); border-radius: 6px;
+                              box-sizing: border-box;" />
+                <input id="accountantName" type="text"
+                       placeholder="Accountant name (optional)"
+                       style="width: 100%; padding: 0.4rem 0.55rem; margin-bottom: 0.6rem;
+                              border: 1px solid var(--border); border-radius: 6px;
+                              box-sizing: border-box;" />
+                <a href="#" onclick="emailToAccountant(); return false;" class="btn"
+                   id="sendAccountantBtn"
+                   style="background: var(--primary); display: block; text-align: center;">
+                    Send invite
+                </a>
+                <div id="sendAccountantStatus"
+                     style="font-size: 0.82rem; margin-top: 0.5rem; color: var(--muted);"></div>
+            </div>
+
+            <!-- 2. Generate a copy-able link -->
+            <div style="border: 1px solid var(--border); border-radius: 8px; padding: 1rem;">
+                <div style="font-weight: 600; margin-bottom: 0.5rem;">
+                    🔗 Shareable link
+                </div>
+                <p style="color: var(--muted); font-size: 0.82rem; margin: 0 0 0.6rem;">
+                    Paste the link into Slack, WhatsApp, or any messenger.
+                    Expires in 60 days.
+                </p>
+                <input id="shareLinkOutput" type="text" readonly
+                       placeholder="(click Generate to create)"
+                       style="width: 100%; padding: 0.4rem 0.55rem; margin-bottom: 0.6rem;
+                              border: 1px solid var(--border); border-radius: 6px;
+                              box-sizing: border-box; font-family: monospace; font-size: 0.78rem;
+                              background: #FBFCFC;" />
+                <div style="display: flex; gap: 0.4rem;">
+                    <a href="#" onclick="generateShareLink(); return false;" class="btn secondary"
+                       id="generateShareBtn" style="flex: 1; text-align: center;">
+                        Generate
+                    </a>
+                    <a href="#" onclick="copyShareLink(); return false;" class="btn secondary"
+                       id="copyShareBtn" style="flex: 1; text-align: center;">
+                        Copy
+                    </a>
+                </div>
+            </div>
+
+            <!-- 3. Direct download -->
+            <div style="border: 1px solid var(--border); border-radius: 8px; padding: 1rem;">
+                <div style="font-weight: 600; margin-bottom: 0.5rem;">
+                    💾 Download .zip
+                </div>
+                <p style="color: var(--muted); font-size: 0.82rem; margin: 0 0 0.6rem;">
+                    Old-school. Download to your computer, then attach to your own
+                    email or upload to Dropbox / Google Drive.
+                </p>
+                <a href="#" onclick="downloadExport(); return false;" class="btn secondary"
+                   id="exportDownloadBtn"
+                   style="display: block; text-align: center;">
+                    Download Accountant Pack
+                </a>
+            </div>
+        </div>
+
+        <!-- Previously-sent shares so the user can see history + revoke -->
+        <div id="sharesHistoryWrap" style="margin-top: 1.25rem; display: none;">
+            <h3 style="font-size: 0.95rem; color: var(--muted); margin-bottom: 0.4rem;">
+                Previously sent
+            </h3>
+            <div id="sharesHistoryList"></div>
         </div>
     </div>
 
@@ -849,6 +932,180 @@ function downloadExport() {
     window.location.href = '/api/accountant-export' + (qs ? '?' + qs : '');
 }
 
+function _exportInputs() {
+    return {
+        client_name: (document.getElementById('exportClientName')?.value || '').trim(),
+        period: (document.getElementById('exportPeriod')?.value || '').trim(),
+    };
+}
+
+async function emailToAccountant() {
+    const inputs = _exportInputs();
+    const email = (document.getElementById('accountantEmail')?.value || '').trim();
+    const name = (document.getElementById('accountantName')?.value || '').trim();
+    const status = document.getElementById('sendAccountantStatus');
+    if (!email) {
+        status.textContent = 'Enter the accountant’s email first.';
+        status.style.color = 'var(--warn)';
+        return;
+    }
+    const btn = document.getElementById('sendAccountantBtn');
+    const originalText = btn.textContent;
+    btn.textContent = 'Sending…';
+    btn.style.opacity = '0.6';
+    btn.style.pointerEvents = 'none';
+    status.style.color = 'var(--muted)';
+    status.textContent = '';
+    try {
+        const r = await fetch('/api/accountant-export/share', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': getCsrfToken() },
+            body: JSON.stringify({
+                period: inputs.period || null,
+                client_name: inputs.client_name || null,
+                accountant_email: email,
+                accountant_name: name || null,
+                send_email: true,
+            }),
+        });
+        const data = await r.json();
+        if (r.ok) {
+            if (data.email_sent) {
+                status.innerHTML =
+                    '✓ Invite sent to <strong>' + email + '</strong>. ' +
+                    'They\'ll get an email with a download link. ' +
+                    'You\'ll see when they open it under "Previously sent".';
+                status.style.color = '#1E8449';
+            } else {
+                status.innerHTML =
+                    '⚠ Link created but the email didn\'t go out. ' +
+                    'Copy the link manually: <code>' + data.share_url + '</code>';
+                status.style.color = '#B7950B';
+            }
+            loadSharesHistory();
+        } else {
+            status.textContent = data.detail || 'Send failed.';
+            status.style.color = 'var(--warn)';
+        }
+    } catch (e) {
+        status.textContent = 'Network error — try again.';
+        status.style.color = 'var(--warn)';
+    } finally {
+        btn.textContent = originalText;
+        btn.style.opacity = '';
+        btn.style.pointerEvents = '';
+    }
+}
+
+async function generateShareLink() {
+    const inputs = _exportInputs();
+    const out = document.getElementById('shareLinkOutput');
+    const btn = document.getElementById('generateShareBtn');
+    const originalText = btn.textContent;
+    btn.textContent = '…';
+    btn.style.pointerEvents = 'none';
+    try {
+        const r = await fetch('/api/accountant-export/share', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': getCsrfToken() },
+            body: JSON.stringify({
+                period: inputs.period || null,
+                client_name: inputs.client_name || null,
+                send_email: false,
+            }),
+        });
+        const data = await r.json();
+        if (r.ok) {
+            out.value = data.share_url;
+            out.select();
+            loadSharesHistory();
+        } else {
+            out.value = '';
+            alert(data.detail || 'Could not create link.');
+        }
+    } catch (e) {
+        alert('Network error — try again.');
+    } finally {
+        btn.textContent = originalText;
+        btn.style.pointerEvents = '';
+    }
+}
+
+async function copyShareLink() {
+    const out = document.getElementById('shareLinkOutput');
+    if (!out.value) {
+        await generateShareLink();
+        if (!out.value) return;
+    }
+    try {
+        await navigator.clipboard.writeText(out.value);
+        const btn = document.getElementById('copyShareBtn');
+        const originalText = btn.textContent;
+        btn.textContent = '✓ Copied';
+        setTimeout(() => { btn.textContent = originalText; }, 1500);
+    } catch (e) {
+        // Fallback for browsers that block clipboard.writeText
+        out.select();
+        document.execCommand('copy');
+    }
+}
+
+async function loadSharesHistory() {
+    try {
+        const r = await fetch('/api/accountant-export/shares');
+        if (!r.ok) return;
+        const data = await r.json();
+        const wrap = document.getElementById('sharesHistoryWrap');
+        const list = document.getElementById('sharesHistoryList');
+        if (!data.shares || data.shares.length === 0) {
+            wrap.style.display = 'none';
+            return;
+        }
+        wrap.style.display = '';
+        list.innerHTML = data.shares.map(s => {
+            const when = s.created_at
+                ? new Date(s.created_at * 1000).toLocaleDateString()
+                : '—';
+            const downloads = s.download_count > 0
+                ? `Opened ${s.download_count}×`
+                : 'Not opened yet';
+            const status = !s.is_active
+                ? '<span style="color:var(--warn);">revoked / expired</span>'
+                : `<span style="color:#1E8449;">${downloads}</span>`;
+            const revokeBtn = s.is_active
+                ? `<a href="#" onclick="revokeShare(${s.id}); return false;"
+                       style="color:#C0392B; font-size:0.78rem; margin-left:0.6rem;">revoke</a>`
+                : '';
+            const target = s.accountant_email || '(link only — not emailed)';
+            return `<div style="font-size: 0.85rem; padding: 0.4rem 0;
+                                border-bottom: 1px solid var(--border);">
+                <strong>${target}</strong>
+                <span style="color:var(--muted);"> · ${when} · ${s.period_label || 'All time'}</span>
+                · ${status}${revokeBtn}
+            </div>`;
+        }).join('');
+    } catch (e) {
+        // History is non-critical
+    }
+}
+
+async function revokeShare(shareId) {
+    if (!confirm('Revoke this share? The accountant\'s link will stop working.')) return;
+    try {
+        const r = await fetch('/api/accountant-export/share/' + shareId + '/revoke', {
+            method: 'POST',
+            headers: { 'X-CSRF-Token': getCsrfToken() },
+        });
+        if (r.ok) {
+            loadSharesHistory();
+        } else {
+            alert('Could not revoke.');
+        }
+    } catch (e) {
+        alert('Network error.');
+    }
+}
+
 async function categoriseAllNow() {
     const btn = document.getElementById('categoriseAllBtn');
     const originalText = btn.textContent;
@@ -918,6 +1175,7 @@ async function rematchAllNow() {
 }
 
 loadAll();
+loadSharesHistory();
 </script>
 </body>
 </html>

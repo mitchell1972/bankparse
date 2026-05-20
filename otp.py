@@ -160,6 +160,157 @@ def send_trial_reminder_email(to_email: str, days_left: int = 2) -> bool:
     return True
 
 
+def send_accountant_pack_email(
+    *,
+    accountant_email: str,
+    accountant_name: str | None,
+    share_url: str,
+    client_name: str,
+    period_label: str,
+    sender_email: str,
+    totals: dict | None = None,
+    expires_human: str | None = None,
+) -> bool:
+    """Send the accountant a polished invite to download the pack.
+
+    Body covers: who sent it, what period, key totals (so the accountant
+    knows the shape before opening anything), big download CTA, plain
+    Reply-To set to sender_email so questions go straight back to the
+    client. Returns True on success or when key is missing (logged)."""
+    if not RESEND_API_KEY:
+        logger.warning(
+            "RESEND_API_KEY not set — accountant invite for %s would point to %s",
+            accountant_email, share_url,
+        )
+        return True
+
+    totals = totals or {}
+    income = float(totals.get("income", 0) or 0)
+    expenses = float(totals.get("expenses", 0) or 0)
+    net = income - expenses
+    audit_pct = totals.get("audit_ready_pct", 0)
+    tx_count = totals.get("transactions_total", 0)
+
+    greeting = (
+        f"Hi {accountant_name}," if accountant_name
+        else "Hi,"
+    )
+    subject = (
+        f"Accountant pack from {client_name} "
+        f"— {period_label}"
+    )
+    expires_line = (
+        f"This link expires {expires_human}. "
+        if expires_human else
+        "This link is valid for 60 days. "
+    )
+
+    html_body = f"""
+    <div style="font-family: -apple-system, sans-serif; max-width: 560px; margin: 0 auto; padding: 2rem; color: #2C3E50;">
+        <h2 style="color: #1B4F72; margin-bottom: 0.25rem;">Accountant pack ready for your review</h2>
+        <p style="color: #566573; margin-top: 0;">From {client_name} · Period: {period_label}</p>
+
+        <p>{greeting}</p>
+        <p>{client_name} has prepared an AI-assisted bookkeeping pack for the period above
+           and asked me to send it across.</p>
+
+        <div style="background: #F8F9F9; border-left: 4px solid #1B4F72; padding: 1rem 1.25rem; margin: 1.5rem 0; border-radius: 4px;">
+            <div style="font-size: 0.85rem; color: #566573; margin-bottom: 0.5rem;">AT A GLANCE</div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem 1.25rem; font-size: 0.95rem;">
+                <div>Income</div><div style="text-align: right;"><strong>£{income:,.2f}</strong></div>
+                <div>Expenses</div><div style="text-align: right;"><strong>£{expenses:,.2f}</strong></div>
+                <div>Net</div><div style="text-align: right;"><strong>£{net:,.2f}</strong></div>
+                <div>Transactions</div><div style="text-align: right;"><strong>{tx_count}</strong></div>
+                <div>Receipt-backed</div><div style="text-align: right;"><strong>{audit_pct}%</strong></div>
+            </div>
+        </div>
+
+        <div style="text-align: center; margin: 2rem 0;">
+            <a href="{share_url}"
+               style="display: inline-block; padding: 0.9rem 1.75rem; background: #1B4F72; color: white; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 1.05rem;">
+                Open the pack
+            </a>
+            <div style="margin-top: 0.6rem; font-size: 0.85rem; color: #566573;">
+                {expires_line}No login required.
+            </div>
+        </div>
+
+        <p style="font-size: 0.9rem; color: #566573;">
+          What's inside:
+          <ul style="font-size: 0.9rem; color: #566573;">
+            <li>Cover, Action Items, Tax Return Boxes (SA103/SA105), Trial Balance — single workbook</li>
+            <li>Receipts grouped by HMRC category</li>
+            <li>Raw CSVs (transactions / mismatch / reasoning log) for software import</li>
+            <li>Audit Confidence Certificate (PDF-printable HTML)</li>
+            <li>SHA-256 manifest for tamper-evidence</li>
+          </ul>
+        </p>
+
+        <p style="font-size: 0.9rem; color: #566573;">
+          Questions? Just reply to this email — it goes straight to {client_name} at
+          <a href="mailto:{sender_email}" style="color: #2874A6;">{sender_email}</a>.
+        </p>
+
+        <hr style="border: none; border-top: 1px solid #eee; margin: 2rem 0;">
+        <p style="font-size: 0.8rem; color: #999;">
+          Sent via BankScan AI on behalf of {client_name}.
+          AI-assisted, not professional advice — your sign-off is what makes it a return.
+        </p>
+    </div>
+    """
+    text_body = (
+        f"{greeting}\n\n"
+        f"{client_name} has prepared an accountant pack for {period_label}.\n\n"
+        f"At a glance:\n"
+        f"  Income:        £{income:,.2f}\n"
+        f"  Expenses:      £{expenses:,.2f}\n"
+        f"  Net:           £{net:,.2f}\n"
+        f"  Transactions:  {tx_count}\n"
+        f"  Receipt-backed: {audit_pct}%\n\n"
+        f"Open the pack:\n{share_url}\n\n"
+        f"{expires_line}No login required.\n\n"
+        f"Reply to this email to send questions to {sender_email}.\n"
+    )
+
+    try:
+        response = httpx.post(
+            RESEND_API_URL,
+            headers={
+                "Authorization": f"Bearer {RESEND_API_KEY}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "from": RESEND_FROM,
+                "to": [accountant_email],
+                "reply_to": sender_email,
+                "subject": subject,
+                "html": html_body,
+                "text": text_body,
+            },
+            timeout=RESEND_TIMEOUT_SECONDS,
+        )
+    except httpx.HTTPError:
+        logger.exception("Accountant invite send failed for %s", accountant_email)
+        return False
+
+    if response.status_code >= 400:
+        logger.error(
+            "Resend rejected accountant invite to %s — status=%d body=%s",
+            accountant_email, response.status_code, response.text[:500],
+        )
+        return False
+
+    try:
+        message_id = response.json().get("id", "<no-id>")
+    except ValueError:
+        message_id = "<unparseable-json>"
+    logger.info(
+        "Accountant invite sent to %s via Resend (id=%s, from=%s)",
+        accountant_email, message_id, sender_email,
+    )
+    return True
+
+
 def send_password_reset_email(to_email: str, reset_link: str) -> bool:
     """Send the password-reset email. Returns True on success.
     If RESEND_API_KEY is not set, logs the link and returns True so
