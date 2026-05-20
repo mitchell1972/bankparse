@@ -213,6 +213,14 @@ def category_meta(category: str | None) -> dict:
             "hmrc_ref": "—", "is_income": True,
             "business_type": "—",
         }
+    # Same sentinel for expenses.
+    if category == "uncategorised":  # noqa: HMRC005 internal sentinel
+        return {
+            "label": "Uncategorised expenses — review needed",
+            "box_short": "—", "box_full": "—",
+            "hmrc_ref": "—", "is_income": False,
+            "business_type": "—",
+        }
     if category in _SE_META:
         label, sshort, sfull, ref, is_inc = _SE_META[category]
         return {
