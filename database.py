@@ -115,7 +115,7 @@ def _execute_insert(sql: str, params: tuple = ()) -> int:
         return cursor.lastrowid
 
 
-_USER_COLS = "id, email, password_hash, stripe_customer_id, stripe_subscription_id, statements_used, receipts_used, subscription_status, subscription_checked_at, chat_count, chat_date, scans_this_month, scan_month, statements_this_month, receipts_this_month, usage_month, email_verified, ai_credit_balance_gbp, ai_spend_this_month, created_at, trial_reminder_sent_at, trial_end_at, grandfathered_trial"
+_USER_COLS = "id, email, password_hash, stripe_customer_id, stripe_subscription_id, statements_used, receipts_used, subscription_status, subscription_checked_at, chat_count, chat_date, scans_this_month, scan_month, statements_this_month, receipts_this_month, usage_month, email_verified, ai_credit_balance_gbp, ai_spend_this_month, created_at, trial_reminder_sent_at, trial_end_at, grandfathered_trial, receipts_token"
 
 
 # --- Schema ---
@@ -442,6 +442,11 @@ def init_db():
         ("stripe_subscription_id", "TEXT DEFAULT NULL"),
         ("trial_end_at", "REAL DEFAULT NULL"),
         ("grandfathered_trial", "INTEGER DEFAULT 0"),
+        # Per-user random token used as the local-part of their personal
+        # receipts forwarding address — e.g. "x7f2k9q3@receipts.bankscanai.com".
+        # Lazy-generated on first access to /api/receipts/forwarding-address,
+        # so existing users get one on the next call rather than via a backfill.
+        ("receipts_token", "TEXT DEFAULT NULL"),
     ]:
         try:
             _execute(f"ALTER TABLE users ADD COLUMN {col} {col_def}")
@@ -515,7 +520,7 @@ def get_user_by_stripe_customer(stripe_customer_id: str) -> dict | None:
 
 
 def update_user(user_id: int, **kwargs):
-    allowed = {"stripe_customer_id", "stripe_subscription_id", "statements_used", "receipts_used", "email", "password_hash", "subscription_status", "subscription_checked_at", "chat_count", "chat_date", "scans_this_month", "scan_month", "statements_this_month", "receipts_this_month", "usage_month", "email_verified", "ai_credit_balance_gbp", "ai_spend_this_month", "trial_end_at", "grandfathered_trial"}
+    allowed = {"stripe_customer_id", "stripe_subscription_id", "statements_used", "receipts_used", "email", "password_hash", "subscription_status", "subscription_checked_at", "chat_count", "chat_date", "scans_this_month", "scan_month", "statements_this_month", "receipts_this_month", "usage_month", "email_verified", "ai_credit_balance_gbp", "ai_spend_this_month", "trial_end_at", "grandfathered_trial", "receipts_token"}
     fields = {k: v for k, v in kwargs.items() if k in allowed}
     if not fields:
         return

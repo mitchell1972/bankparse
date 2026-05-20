@@ -735,6 +735,36 @@ async def api_ledger_unlink(request: Request):
     return JSONResponse({"status": "ok"})
 
 
+@app.post("/api/ledger/categorise-all")
+@limiter.limit("5/minute")
+async def api_ledger_categorise_all(request: Request):
+    """Run the HMRC AI categoriser on every uncategorised transaction the
+    user has in the ledger. Useful for accounts uploaded before auto-
+    categorisation was wired in.
+
+    Returns ``{"status": "ok", "categorised": N}``.
+    """
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required.")
+    body = {}
+    try:
+        body = await request.json()
+    except Exception:
+        pass
+    business_type = body.get("business_type", "se")
+    from services.ledger_ingest import auto_categorise_user_transactions
+    try:
+        n = await auto_categorise_user_transactions(
+            user["id"], business_type=business_type, only_uncategorised=True,
+            limit=2000,
+        )
+    except Exception as e:
+        logger.exception("Manual auto-categorise failed for user %s", user["id"])
+        raise HTTPException(status_code=500, detail="Categoriser failed.")
+    return JSONResponse({"status": "ok", "categorised": n})
+
+
 @app.get("/api/audit-summary")
 async def api_audit_summary(request: Request):
     """The HMRC audit-readiness summary — per-category totals, VAT, and
@@ -908,23 +938,32 @@ async def api_email_in_receipt(request: Request):
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid JSON body.")
 
-    # Identify the user. Two paths:
-    #   1. Session cookie (the in-app button case)
-    #   2. The `to` field — local-part is the user id
+    # Identify the user. Three paths, tried in order:
+    #   1. Session cookie (the in-app upload button case)
+    #   2. `to` local-part is a per-user token (current scheme — 8 alnum chars)
+    #   3. `to` local-part is an integer user-id (legacy scheme, kept for
+    #      backwards-compat with any address that's already in the wild)
     user = get_current_user(request)
     if user is None:
         to_addr = (body.get("to") or "").lower()
         if "@receipts.bankscanai.com" not in to_addr:
             raise HTTPException(status_code=401, detail="Unrecognised recipient.")
         local = to_addr.split("@", 1)[0]
-        try:
-            uid = int(local)
-        except ValueError:
-            raise HTTPException(status_code=400, detail="Invalid recipient local-part.")
-        from database import get_user_by_id
-        user = get_user_by_id(uid)
+        from database import get_user_by_id, _fetchone_dict
+        # Try the token route first
+        user = _fetchone_dict(
+            "SELECT id, email, receipts_token FROM users WHERE receipts_token = ?",
+            (local,),
+        )
         if user is None:
-            raise HTTPException(status_code=404, detail="User not found.")
+            # Fall back to integer id (legacy)
+            try:
+                uid = int(local)
+            except ValueError:
+                raise HTTPException(status_code=400, detail="Invalid recipient local-part.")
+            user = get_user_by_id(uid)
+            if user is None:
+                raise HTTPException(status_code=404, detail="User not found.")
 
     attachments = body.get("attachments") or []
     if not attachments:
@@ -964,14 +1003,40 @@ async def api_email_in_receipt(request: Request):
     })
 
 
+def _receipts_token_for(user: dict) -> str:
+    """Lazy-generate + return the user's per-user receipts forwarding token.
+
+    Per-user random token (8 url-safe chars) used as the local-part of
+    {token}@receipts.bankscanai.com. Stable for the lifetime of the user.
+    Bare integer ids made the address look like a spam-bot endpoint
+    (e.g. "4@receipts.bankscanai.com") — this gives it a proper-looking
+    handle and removes the user-id enumeration vector.
+    """
+    import secrets
+    token = (user or {}).get("receipts_token")
+    if token:
+        return token
+    new = secrets.token_urlsafe(6).replace("_", "").replace("-", "").lower()[:8]
+    # Guarantee 8 chars even after stripping non-alnum
+    while len(new) < 8:
+        new += secrets.token_urlsafe(2).replace("_", "").replace("-", "").lower()[:8 - len(new)]
+    from database import update_user
+    update_user(user["id"], receipts_token=new)
+    return new
+
+
 @app.get("/api/receipts/forwarding-address")
 async def api_forwarding_address(request: Request):
-    """Returns the user's personal {id}@receipts.bankscanai.com address."""
+    """Returns the user's personal receipts forwarding address.
+
+    Format: ``{token}@receipts.bankscanai.com`` where token is an 8-char
+    random handle stable per user. Lazy-generated on first call."""
     user = get_current_user(request)
     if not user:
         raise HTTPException(status_code=401, detail="Authentication required.")
+    token = _receipts_token_for(user)
     return JSONResponse({
-        "address": f"{user['id']}@receipts.bankscanai.com",
+        "address": f"{token}@receipts.bankscanai.com",
     })
 
 
@@ -1865,10 +1930,23 @@ async def parse_statement(request: Request, file: UploadFile = File(...)):
             try:
                 from services.ledger_ingest import (
                     ingest_statement_rows, rematch_user_unmatched_receipts,
+                    auto_categorise_user_transactions,
                 )
                 ingest_statement_rows(
                     user["id"], extracted_data_id, result.get("transactions") or [],
                 )
+                # Run the HMRC categoriser on every freshly-ingested row so
+                # the dashboard shows real categories straight away rather
+                # than "Uncategorised". Best-effort: a failure here doesn't
+                # block the upload. Only touches rows that don't already
+                # have a category.
+                try:
+                    await auto_categorise_user_transactions(
+                        user["id"], business_type="se",
+                        only_uncategorised=True,
+                    )
+                except Exception:
+                    logger.exception("Auto-categorise failed (user %s)", user["id"])
                 # Brand-new bank data → existing orphan receipts might now match.
                 rematch_user_unmatched_receipts(user["id"], enable_ai=False)
             except Exception:
