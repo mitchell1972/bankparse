@@ -155,6 +155,13 @@ def init_db():
             used INTEGER DEFAULT 0,
             PRIMARY KEY (email, code)
         )""",
+        """CREATE TABLE IF NOT EXISTS password_reset_tokens (
+            token TEXT PRIMARY KEY,
+            user_id INTEGER NOT NULL,
+            created_at REAL DEFAULT (strftime('%s', 'now')),
+            used INTEGER DEFAULT 0,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )""",
         """CREATE TABLE IF NOT EXISTS output_files (
             filename TEXT PRIMARY KEY,
             created_at REAL DEFAULT (strftime('%s', 'now'))
@@ -749,6 +756,48 @@ def verify_otp(email: str, code: str) -> str | None:
 
 def cleanup_expired_otps():
     _execute("DELETE FROM otp_codes WHERE created_at < ? OR used = 1", (time.time() - 600,))
+
+
+# --- Password reset tokens ---
+
+PASSWORD_RESET_TTL_SECONDS = 30 * 60  # 30 minutes
+
+
+def create_password_reset_token(user_id: int) -> str:
+    """Generate a 32-byte URL-safe token, store it, return it. Any prior
+    unused tokens for the user are invalidated so only the latest works."""
+    import secrets
+    _execute("UPDATE password_reset_tokens SET used = 1 WHERE user_id = ? AND used = 0", (user_id,))
+    token = secrets.token_urlsafe(32)
+    _execute(
+        "INSERT INTO password_reset_tokens (token, user_id) VALUES (?, ?)",
+        (token, user_id),
+    )
+    return token
+
+
+def consume_password_reset_token(token: str) -> int | None:
+    """Validate the token: unused, within TTL. On success, mark used and
+    return the user_id. Otherwise return None."""
+    row = _fetchone_dict(
+        "SELECT user_id, created_at, used FROM password_reset_tokens WHERE token = ?",
+        (token,),
+    )
+    if row is None:
+        return None
+    if row["used"]:
+        return None
+    if time.time() - float(row["created_at"]) > PASSWORD_RESET_TTL_SECONDS:
+        return None
+    _execute("UPDATE password_reset_tokens SET used = 1 WHERE token = ?", (token,))
+    return int(row["user_id"])
+
+
+def cleanup_expired_password_reset_tokens():
+    _execute(
+        "DELETE FROM password_reset_tokens WHERE created_at < ? OR used = 1",
+        (time.time() - PASSWORD_RESET_TTL_SECONDS,),
+    )
 
 
 # --- Output file tracking ---

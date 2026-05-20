@@ -2159,6 +2159,131 @@ async def manage_billing(request: Request):
         raise HTTPException(status_code=500, detail="Billing request failed. Please try again.")
 
 
+@app.post("/api/cancel-subscription")
+@limiter.limit("5/minute")
+async def cancel_subscription(request: Request):
+    """One-click cancel — schedules the user's Stripe subscription to end
+    at the current period's close. They keep access until then; no refunds.
+    Idempotent: re-calling on an already-cancelling sub is a no-op.
+
+    Returns ``{"status": "ok", "cancel_at": <unix-ts>}`` on success."""
+    if not STRIPE_AVAILABLE or not STRIPE_SECRET_KEY:
+        raise HTTPException(status_code=501, detail="Stripe is not configured.")
+
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required.")
+
+    sub_id = user.get("stripe_subscription_id")
+    if not sub_id:
+        raise HTTPException(
+            status_code=400,
+            detail="No active subscription to cancel.",
+        )
+
+    try:
+        sub = stripe.Subscription.modify(
+            sub_id,
+            cancel_at_period_end=True,
+        )
+        cancel_at = getattr(sub, "cancel_at", None) or getattr(sub, "current_period_end", None)
+        return JSONResponse({
+            "status": "ok",
+            "cancel_at": cancel_at,
+            "message": "Subscription cancelled. You keep access until your current period ends.",
+        })
+    except Exception as e:
+        logger.exception("Cancel subscription error for user %s: %s", user.get("id"), e)
+        raise HTTPException(
+            status_code=500,
+            detail="Cancellation failed. Please use Manage Subscription as a backup, or contact support.",
+        )
+
+
+# ==========================================================================
+# Password reset — email-token flow
+# ==========================================================================
+
+@app.post("/api/forgot-password")
+@limiter.limit("3/minute")
+async def forgot_password(request: Request):
+    """Initiate a password reset.
+
+    Always returns 200 (no email enumeration). Generates a single-use
+    token, stores it server-side, and emails the reset link to the user
+    if the email exists. If it doesn't, we silently no-op so an attacker
+    can't probe for valid accounts.
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON body.")
+
+    email = (body.get("email") or "").strip().lower()
+    if not email or "@" not in email:
+        raise HTTPException(status_code=400, detail="Valid email required.")
+
+    from database import get_user_by_email, create_password_reset_token
+    from otp import send_password_reset_email
+
+    user = get_user_by_email(email)
+    if user:
+        token = create_password_reset_token(user["id"])
+        origin = get_safe_origin(request)
+        reset_link = f"{origin}/reset-password?token={token}"
+        try:
+            send_password_reset_email(email, reset_link)
+        except Exception:
+            logger.exception("Failed to send password reset email to %s", email)
+
+    # Always return ok, regardless of whether the email existed.
+    return JSONResponse({
+        "status": "ok",
+        "message": "If an account exists for that email, a reset link has been sent.",
+    })
+
+
+@app.post("/api/reset-password")
+@limiter.limit("5/minute")
+async def reset_password(request: Request):
+    """Complete a password reset.
+
+    Body: ``{"token": "...", "password": "newpass1234"}``.
+    Verifies the token, updates password_hash, marks the token used.
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON body.")
+
+    token = (body.get("token") or "").strip()
+    new_password = body.get("password") or ""
+
+    if not token:
+        raise HTTPException(status_code=400, detail="Reset token is required.")
+    if len(new_password) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters.")
+
+    from database import consume_password_reset_token, update_user
+
+    user_id = consume_password_reset_token(token)
+    if user_id is None:
+        raise HTTPException(status_code=400, detail="Invalid or expired reset link.")
+
+    update_user(user_id, password_hash=hash_password(new_password))
+    return JSONResponse({"status": "ok", "message": "Password updated. You can now sign in."})
+
+
+@app.get("/forgot-password", response_class=HTMLResponse)
+async def forgot_password_page(request: Request):
+    return templates.TemplateResponse(request, "forgot_password.html")
+
+
+@app.get("/reset-password", response_class=HTMLResponse)
+async def reset_password_page(request: Request):
+    return templates.TemplateResponse(request, "reset_password.html")
+
+
 # ==========================================================================
 # QuickBooks Online (Intuit) integration
 # ==========================================================================
