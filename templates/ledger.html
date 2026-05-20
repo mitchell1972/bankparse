@@ -278,7 +278,44 @@
         <a href="#" onclick="rematchAllNow(); return false;" class="btn" id="rematchAllBtn"
            style="background: #8E44AD;">Re-run receipt matcher</a>
         <a href="/api/audit-certificate" target="_blank" class="btn secondary">Download Audit Certificate (PDF-ready)</a>
-        <a href="#" onclick="downloadExport(); return false;" class="btn secondary">Download accountant ZIP</a>
+    </div>
+
+    <!-- Send to accountant panel: replaces the old bare "Download ZIP" button.
+         Lets the user label the pack with their business name and a period
+         so the file the accountant opens isn't generic. -->
+    <div class="card" id="exportPanel" style="margin-bottom: 1.5rem;">
+        <h2 style="margin-top: 0;">Send to your accountant</h2>
+        <p style="color: var(--muted); margin-top: 0.25rem;">
+            Builds a single ZIP: an Excel workbook with SA103/SA105 box mapping,
+            every transaction, every receipt grouped by category, and a printable
+            Audit Confidence Certificate. Open in Excel — the accountant can
+            transcribe straight onto the tax return.
+        </p>
+        <div style="display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: flex-end;">
+            <label style="display: flex; flex-direction: column; font-size: 0.85rem; min-width: 220px;">
+                <span style="color: var(--muted); margin-bottom: 0.2rem;">Business or client name</span>
+                <input id="exportClientName" type="text"
+                       placeholder="e.g. Mitoba Property Services Ltd"
+                       style="padding: 0.45rem 0.6rem; border: 1px solid var(--border); border-radius: 6px;" />
+            </label>
+            <label style="display: flex; flex-direction: column; font-size: 0.85rem; min-width: 200px;">
+                <span style="color: var(--muted); margin-bottom: 0.2rem;">Period</span>
+                <select id="exportPeriod"
+                        style="padding: 0.45rem 0.6rem; border: 1px solid var(--border); border-radius: 6px; background: #fff;">
+                    <option value="">All time (default)</option>
+                    <option value="2026-27 tax year">2026-27 tax year</option>
+                    <option value="Q1 2026-27 (Apr-Jun)">Q1 2026-27 (Apr-Jun)</option>
+                    <option value="Q2 2026-27 (Jul-Sep)">Q2 2026-27 (Jul-Sep)</option>
+                    <option value="Q3 2026-27 (Oct-Dec)">Q3 2026-27 (Oct-Dec)</option>
+                    <option value="Q4 2026-27 (Jan-Mar)">Q4 2026-27 (Jan-Mar)</option>
+                    <option value="2025-26 tax year">2025-26 tax year</option>
+                </select>
+            </label>
+            <a href="#" onclick="downloadExport(); return false;" class="btn"
+               id="exportDownloadBtn" style="background: var(--primary);">
+                Download Accountant Pack (.zip)
+            </a>
+        </div>
     </div>
 
     <!-- Per-category audit-ready table -->
@@ -798,7 +835,18 @@ async function linkReceipt(txId, rcId) {
 }
 
 function downloadExport() {
-    window.location.href = '/api/accountant-export';
+    // Read the client-name + period inputs from the export panel. Both
+    // are optional — the endpoint defaults to "current quarter" + email
+    // if either is blank.
+    const clientEl = document.getElementById('exportClientName');
+    const periodEl = document.getElementById('exportPeriod');
+    const params = new URLSearchParams();
+    if (periodEl && periodEl.value) params.set('period', periodEl.value);
+    if (clientEl && clientEl.value.trim()) {
+        params.set('client_name', clientEl.value.trim());
+    }
+    const qs = params.toString();
+    window.location.href = '/api/accountant-export' + (qs ? '?' + qs : '');
 }
 
 async function categoriseAllNow() {

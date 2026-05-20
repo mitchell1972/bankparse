@@ -6,6 +6,7 @@ Storage: SQLite database. Email verification via OTP for subscription restore.
 """
 
 import os
+import re
 import uuid
 import asyncio
 import logging
@@ -865,17 +866,34 @@ async def api_tax_forecast(request: Request):
 
 
 @app.get("/api/accountant-export")
-async def api_accountant_export(request: Request, period: str | None = None):
-    """Download the accountant-ready ZIP pack. Streams ``application/zip``."""
+async def api_accountant_export(
+    request: Request,
+    period: str | None = None,
+    client_name: str | None = None,
+):
+    """Download the accountant-ready ZIP pack.
+
+    Query params:
+      ``period``       — Human label shown on the cover sheet (e.g. "Q2-2026-27",
+                         "2025-26 tax year", "All time"). Does not filter rows
+                         yet — the workbook always covers the full ledger.
+      ``client_name``  — Optional business / client name for the cover sheet.
+    """
     user = get_current_user(request)
     if not user:
         raise HTTPException(status_code=401, detail="Authentication required.")
     from services.accountant_export import build_export_zip
     zip_bytes = build_export_zip(
-        user["id"], user["email"], period_label=period,
+        user["id"], user["email"],
+        period_label=period,
+        client_name=client_name,
     )
     safe_period = (period or "current").replace(" ", "_").replace("/", "-")
-    filename = f"bankscanai_export_{safe_period}.zip"
+    # Use the client name (if given) in the filename so the accountant's
+    # download folder isn't 30 identical-looking ZIPs.
+    safe_client = re.sub(r"[^A-Za-z0-9._-]+", "_", (client_name or "")).strip("_")[:40]
+    name_part = f"{safe_client}_" if safe_client else ""
+    filename = f"BankScan_Accountant_Pack_{name_part}{safe_period}.zip"
     return Response(
         content=zip_bytes,
         media_type="application/zip",
