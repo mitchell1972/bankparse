@@ -153,9 +153,26 @@
         .status-pill.na { background: var(--border); color: var(--muted); }
         .status-pill.excluded { background: #EBDEF0; color: #6C3483; }
         .receipt-chip {
-            display: inline-block; background: var(--bg); border: 1px solid var(--border);
+            display: inline-flex; align-items: center; gap: 0.3rem;
+            background: var(--bg); border: 1px solid var(--border);
             border-radius: 4px; padding: 0.15rem 0.45rem; font-size: 0.72rem;
-            margin-right: 0.25rem;
+            margin-right: 0.25rem; margin-bottom: 0.15rem;
+            cursor: default;
+        }
+        .receipt-chip.suspicious {
+            background: #FEF9E7; border-color: #F4D03F;
+        }
+        .receipt-chip .unmatch-x {
+            display: inline-block; width: 14px; height: 14px;
+            line-height: 12px; text-align: center;
+            border-radius: 50%; background: #FADBD8; color: #A93226;
+            font-weight: 700; font-size: 0.8rem; cursor: pointer;
+            user-select: none; flex-shrink: 0;
+        }
+        .receipt-chip .unmatch-x:hover { background: #F1948A; color: #fff; }
+        .receipt-chip .chip-warn {
+            color: #B7950B; font-weight: 700;
+            margin-right: 0.15rem;
         }
         .explain-link {
             color: var(--primary-light); text-decoration: none; font-size: 0.8rem;
@@ -683,9 +700,40 @@ function renderTransactions() {
         const rowCls = (tx.receipt_status === 'matched' ? 'matched ' : '') +
             (tx.receipt_status === 'excluded' ? 'excluded ' : '');
         const statusLabel = tx.receipt_status || 'missing';
-        const receipts = (tx.linked_receipts || []).map(r =>
-            `<span class="receipt-chip">${r.store_name || '?'} ${fmtGBP(r.total_amount)}</span>`
-        ).join('');
+        // Build the receipt chip(s) for this row. Each chip shows store +
+        // amount + date and a small ✕ to unmatch. If the receipt total
+        // doesn't sanity-check against the bank line (sign mismatch, or
+        // amount diverges by more than 50% with low merchant overlap), we
+        // mark the chip "suspicious" so the user notices and can unmatch.
+        const txAmt = Math.abs(parseFloat(tx.amount) || 0);
+        const receipts = (tx.linked_receipts || []).map(r => {
+            const rcAmt = Math.abs(parseFloat(r.total_amount) || 0);
+            const txIsCredit = (parseFloat(tx.amount) || 0) > 0;
+            const amtDrift = txAmt > 0
+                ? Math.abs(txAmt - rcAmt) / txAmt
+                : 1;
+            const suspicious = txIsCredit || (txAmt > 0 && amtDrift > 0.5);
+            const safeStore = (r.store_name || 'Unknown')
+                .replace(/&/g, '&amp;').replace(/</g, '&lt;');
+            const tooltip = [
+                `${safeStore} — ${fmtGBP(r.total_amount)}`,
+                r.date_iso ? `Date: ${r.date_iso}` : '',
+                r.match_strategy ? `Strategy: ${r.match_strategy}` : '',
+                r.confidence ? `Confidence: ${r.confidence}%` : '',
+                r.user_confirmed ? 'User-confirmed' : 'Auto-matched',
+                suspicious ? '⚠ Sign or amount mismatch — likely wrong' : '',
+            ].filter(Boolean).join('\n');
+            return (
+                `<span class="receipt-chip${suspicious ? ' suspicious' : ''}" ` +
+                `title="${tooltip.replace(/"/g, '&quot;')}">` +
+                (suspicious ? '<span class="chip-warn" title="Probably wrong">⚠</span>' : '') +
+                `${safeStore} ${fmtGBP(r.total_amount)}` +
+                `<span class="unmatch-x" ` +
+                `onclick="unmatchReceipt(${tx.id}, ${r.receipt_id}); return false;" ` +
+                `title="Unmatch this receipt from this transaction">✕</span>` +
+                `</span>`
+            );
+        }).join('');
         const cat = (tx.hmrc_category || '—').replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
         html += `<tr class="tx-row ${rowCls}" data-tx-id="${tx.id}">
             <td>${tx.date_iso || '—'}</td>
@@ -713,6 +761,26 @@ function renderTransactions() {
             await linkReceipt(txId, rcId);
         });
     });
+}
+
+async function unmatchReceipt(txId, rcId) {
+    if (!confirm('Unmatch this receipt from this transaction? The receipt will go back to the orphan list.')) {
+        return;
+    }
+    const r = await fetch('/api/ledger/unlink', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-Token': getCsrfToken(),
+        },
+        body: JSON.stringify({ transaction_id: txId, receipt_id: rcId }),
+    });
+    if (r.ok) {
+        await loadAll();
+    } else {
+        const data = await r.json().catch(() => ({}));
+        alert(data.detail || 'Unmatch failed. Try again.');
+    }
 }
 
 async function linkReceipt(txId, rcId) {
