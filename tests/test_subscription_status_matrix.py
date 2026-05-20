@@ -53,8 +53,11 @@ def _set_env(monkeypatch):
         pass
     yield
     try:
-        if getattr(_app_module.app.state, "limiter", None) is not None:
-            _app_module.app.state.limiter.enabled = True
+        lim = getattr(_app_module.app.state, "limiter", None)
+        if lim is not None:
+            try: lim.reset()
+            except Exception: pass
+            lim.enabled = True
     except Exception:
         pass
 

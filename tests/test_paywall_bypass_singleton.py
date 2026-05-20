@@ -51,8 +51,14 @@ def _set_env(monkeypatch):
     yield
     try:
         from app import app as _app
-        if getattr(_app.state, "limiter", None) is not None:
-            _app.state.limiter.enabled = True
+        lim = getattr(_app.state, "limiter", None)
+        if lim is not None:
+            # Reset the in-memory counters before re-enabling — otherwise
+            # the registrations these tests do leak through to later tests
+            # and trip the /api/register 10-per-minute limit.
+            try: lim.reset()
+            except Exception: pass
+            lim.enabled = True
     except Exception:
         pass
 
