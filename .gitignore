@@ -6,6 +6,7 @@ outputs/
 *.xlsx
 .DS_Store
 .env
+.env.*
 *.db
 usage/
 bankparse.db*
