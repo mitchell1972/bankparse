@@ -320,25 +320,45 @@ def test_home_redirects_to_landing():
 # -----------------------------------------------------------------------
 
 def test_home_authenticated():
-    """GET / with auth: unverified user is bounced to /verify-email,
-    verified+grandfathered user lands on the dashboard."""
+    """GET / with auth:
+       1. unverified user → 302 to /verify-email
+       2. verified user without a Stripe subscription → 302 to /start-trial
+          (grandfathered_trial no longer bypasses — PR #34)
+       3. verified user with a Stripe trial → 200 dashboard
+    """
+    import time
     from database import mark_email_verified, get_user_by_email, update_user
     with TestClient(app, raise_server_exceptions=False) as client:
         reg_resp = _register(client, "home@example.com", "password1234")
         assert reg_resp.status_code == 200
         auth_cookie = reg_resp.cookies.get("bp_auth", "")
 
-        # Unverified → 302 to /verify-email
+        # 1. Unverified → 302 to /verify-email
         resp = client.get("/", cookies={"bp_auth": auth_cookie}, follow_redirects=False)
         assert resp.status_code == 302
         assert "/verify-email" in resp.headers.get("location", "")
 
-        # Verified user — flag as grandfathered so they skip the new
-        # card-on-file gate (the /start-trial redirect is exercised in
-        # tests/test_billing_trial.py).
+        # 2. Verified but no Stripe sub → 302 to /start-trial. Setting
+        # grandfathered_trial=1 here is the historic bypass that PR #34
+        # explicitly closed — the redirect MUST still fire.
         user = get_user_by_email("home@example.com")
         mark_email_verified(user["id"])
         update_user(user["id"], grandfathered_trial=1)
+        resp = client.get("/", cookies={"bp_auth": auth_cookie}, follow_redirects=False)
+        assert resp.status_code == 302, (
+            "grandfathered_trial must NOT bypass the paywall — PR #34 contract."
+        )
+        assert resp.headers.get("location") == "/start-trial"
+
+        # 3. Once they've completed Stripe Checkout (subscription_status =
+        # 'trialing' with a stripe_subscription_id), the dashboard opens.
+        update_user(
+            user["id"],
+            grandfathered_trial=0,
+            subscription_status="trialing",
+            stripe_subscription_id="sub_test_home_authenticated",
+            trial_end_at=time.time() + 7 * 86400,
+        )
         resp = client.get("/", cookies={"bp_auth": auth_cookie}, follow_redirects=False)
         assert resp.status_code == 200
 
