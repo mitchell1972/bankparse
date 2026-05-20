@@ -1036,7 +1036,8 @@ async def api_email_in_receipt(request: Request):
                 matched += 1
             match_summaries.append({
                 "filename": fname,
-                "store": (parsed.get("summary") or {}).get("store_name"),
+                # parse_receipt_ai surfaces store/date under "metadata".
+                "store": (parsed.get("metadata") or {}).get("store_name"),
                 "total": (parsed.get("totals") or {}).get("total"),
                 "match": outcome["match"],
             })
