@@ -1051,6 +1051,32 @@
 
                 <div id="hmrcDeadlinesError" style="display:none; margin-top:0.5rem; font-size:0.85rem; color:#B91C1C;"></div>
                 <ul id="hmrcDeadlinesList" style="list-style:none; padding:0; margin:0.75rem 0 0 0;"></ul>
+
+                <!-- Headline strip + Submit gateway. Three tiles + a CTA. -->
+                <div id="hmrcHeadlineStrip"
+                     style="display:none; margin-top:1rem; display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:0.6rem;">
+                    <div style="background:#fff; border:1px solid #E5E7EB; border-radius:8px; padding:0.6rem 0.8rem;">
+                        <div style="font-size:0.7rem; color:#7F8C8D; text-transform:uppercase; letter-spacing:0.05em;">Estimated tax</div>
+                        <div id="hmrcTileTax" style="font-size:1.3rem; font-weight:700; color:#1B4F72;">—</div>
+                        <div id="hmrcTileTaxSub" style="font-size:0.72rem; color:#7F8C8D;">If quarter ended today</div>
+                    </div>
+                    <div style="background:#fff; border:1px solid #E5E7EB; border-radius:8px; padding:0.6rem 0.8rem;">
+                        <div style="font-size:0.7rem; color:#7F8C8D; text-transform:uppercase; letter-spacing:0.05em;">Next deadline</div>
+                        <div id="hmrcTileDeadline" style="font-size:1.3rem; font-weight:700; color:#1B4F72;">—</div>
+                        <div id="hmrcTileDeadlineSub" style="font-size:0.72rem; color:#7F8C8D;">Quarterly update</div>
+                    </div>
+                    <div style="background:#fff; border:1px solid #E5E7EB; border-radius:8px; padding:0.6rem 0.8rem;">
+                        <div style="font-size:0.7rem; color:#7F8C8D; text-transform:uppercase; letter-spacing:0.05em;">Penalty points</div>
+                        <div id="hmrcTilePoints" style="font-size:1.3rem; font-weight:700; color:#1B4F72;">0 / 4</div>
+                        <div id="hmrcTilePointsSub" style="font-size:0.72rem; color:#7F8C8D;">£200 fine at 4 points</div>
+                    </div>
+                </div>
+                <div style="margin-top:0.75rem; text-align:right;">
+                    <a href="/hmrc/file" id="hmrcFileLink"
+                       style="display:inline-block; padding:0.5rem 1rem; background:#1B4F72; color:#fff; text-decoration:none; border-radius:6px; font-weight:600; font-size:0.88rem;">
+                        Open File-with-HMRC page →
+                    </a>
+                </div>
             </div>
 
             <!-- HMRC categorisation panel — hidden until user clicks the toggle. -->
@@ -2380,10 +2406,70 @@
                     + `<span style="font-weight:600;">${escapeHtml(ob.human_due)}</span>`;
                 list.appendChild(li);
             });
+
+            // Populate the headline strip's "Next deadline" tile from the
+            // soonest non-filed obligation. Hide the whole strip if there
+            // aren't any (newly-connected user, or all caught up).
+            populateNextDeadlineTile(data.obligations || []);
         } catch (e) {
             errEl.textContent = 'Could not load deadlines.';
             errEl.style.display = 'block';
         }
+    }
+
+    // --- Headline strip on the home dashboard ---
+    function populateNextDeadlineTile(obligations) {
+        const strip = document.getElementById('hmrcHeadlineStrip');
+        const tile  = document.getElementById('hmrcTileDeadline');
+        const sub   = document.getElementById('hmrcTileDeadlineSub');
+        if (!strip || !tile) return;
+        const open = obligations.filter(o =>
+            o.status === 'open' || o.status === 'upcoming' || o.status === 'overdue');
+        if (!open.length) { strip.style.display = 'none'; return; }
+        open.sort((a, b) => a.days_until_due - b.days_until_due);
+        const next = open[0];
+        tile.textContent = next.human_due;
+        tile.style.color = next.days_until_due < 0 ? '#C0392B'
+                         : (next.days_until_due <= 7 ? '#F39C12' : '#1B4F72');
+        sub.textContent = `${next.business_label}`;
+        // Show the strip only when we actually have something useful.
+        strip.style.display = 'grid';
+    }
+
+    async function loadHmrcHeadlineExtras() {
+        // Tax-forecast tile
+        try {
+            const r = await fetch('/api/tax-forecast', { credentials: 'include' });
+            if (r.ok) {
+                const d = await r.json();
+                const total = (d.combined &&
+                    (d.combined.income_tax_due_gbp + d.combined.class4_ni_due_gbp)) || 0;
+                document.getElementById('hmrcTileTax').textContent =
+                    '£' + Number(total).toLocaleString('en-GB',
+                        { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+                if (total === 0) {
+                    document.getElementById('hmrcTileTaxSub').textContent =
+                        'Below £12,570 personal allowance';
+                }
+            }
+        } catch (e) {}
+        // Penalty-points tile
+        try {
+            const r = await fetch('/api/hmrc/penalty-status', { credentials: 'include' });
+            if (r.ok) {
+                const d = await r.json();
+                const tile = document.getElementById('hmrcTilePoints');
+                const sub  = document.getElementById('hmrcTilePointsSub');
+                tile.textContent = `${d.points} / ${d.threshold}`;
+                if (d.points >= d.threshold) {
+                    tile.style.color = '#C0392B';
+                    sub.textContent = `Next late filing = £${d.next_fine_gbp} fine`;
+                } else if (d.points >= d.threshold - 1) {
+                    tile.style.color = '#F39C12';
+                    sub.textContent = `${d.remaining} more late filings → £${d.next_fine_gbp} fine`;
+                }
+            }
+        } catch (e) {}
     }
 
     function escapeHtml(s) {
@@ -2513,10 +2599,12 @@
         document.addEventListener('DOMContentLoaded', () => {
             wireHmrcSetupForm();
             loadHmrcDeadlines();
+            loadHmrcHeadlineExtras();
         });
     } else {
         wireHmrcSetupForm();
         loadHmrcDeadlines();
+        loadHmrcHeadlineExtras();
     }
 
     // ---------------------------------------------------------------
