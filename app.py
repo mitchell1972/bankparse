@@ -627,6 +627,159 @@ async def get_usage_status(request: Request):
 
 
 # ---------------------------------------------------------------------------
+# Unified ledger — bank transactions + linked receipts in one view.
+# The differentiator the design doc calls "the single most demoable feature".
+# ---------------------------------------------------------------------------
+
+@app.get("/api/ledger")
+async def api_ledger(request: Request):
+    """Return the unified ledger: every transaction with linked receipts,
+    plus orphan (unmatched) receipts, plus summary counts."""
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required.")
+    from services.ledger_ingest import build_unified_ledger
+    return JSONResponse(build_unified_ledger(user["id"]))
+
+
+@app.post("/api/ledger/link")
+@limiter.limit("60/minute")
+async def api_ledger_link(request: Request):
+    """Manually link a receipt to a transaction (the drag-and-drop or
+    'Confirm' button in the inbox lands here).
+
+    Body: ``{"transaction_id": 12, "receipt_id": 34}``
+    """
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required.")
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON body.")
+
+    tx_id = body.get("transaction_id")
+    rc_id = body.get("receipt_id")
+    if not tx_id or not rc_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Both transaction_id and receipt_id are required.",
+        )
+
+    # Verify both belong to the caller — never trust client ids.
+    from database import (
+        get_transaction_by_id, get_receipt_by_id, insert_ledger_link,
+    )
+    tx = get_transaction_by_id(int(tx_id), user["id"])
+    rc = get_receipt_by_id(int(rc_id), user["id"])
+    if tx is None or rc is None:
+        raise HTTPException(status_code=404, detail="Transaction or receipt not found.")
+
+    insert_ledger_link(
+        transaction_id=int(tx_id),
+        receipt_id=int(rc_id),
+        match_strategy="manual",
+        confidence=100,
+        user_confirmed=True,
+        reason="User manually linked",
+    )
+    return JSONResponse({"status": "ok", "transaction_id": tx_id, "receipt_id": rc_id})
+
+
+@app.post("/api/ledger/unlink")
+@limiter.limit("60/minute")
+async def api_ledger_unlink(request: Request):
+    """Remove an existing link.
+
+    Body: ``{"transaction_id": 12, "receipt_id": 34}``
+    """
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required.")
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON body.")
+
+    tx_id = body.get("transaction_id")
+    rc_id = body.get("receipt_id")
+    if not tx_id or not rc_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Both transaction_id and receipt_id are required.",
+        )
+    from database import (
+        get_transaction_by_id, get_receipt_by_id, remove_ledger_link,
+    )
+    tx = get_transaction_by_id(int(tx_id), user["id"])
+    rc = get_receipt_by_id(int(rc_id), user["id"])
+    if tx is None or rc is None:
+        raise HTTPException(status_code=404, detail="Transaction or receipt not found.")
+    remove_ledger_link(int(tx_id), int(rc_id))
+    return JSONResponse({"status": "ok"})
+
+
+@app.post("/api/ledger/transaction/status")
+@limiter.limit("120/minute")
+async def api_ledger_transaction_status(request: Request):
+    """Update a transaction's user-controlled flags: exclusion reason
+    (personal/cash/dd/subscription), business_pct (0-100), is_capital,
+    or override HMRC category.
+
+    Body: any subset of:
+      {"transaction_id": 12,
+       "exclusion_reason": "personal" | null,
+       "business_pct": 60,
+       "is_capital": 1,
+       "hmrc_category": "office_expenses",
+       "hmrc_category_reason": "User override"}
+    """
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required.")
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON body.")
+
+    tx_id = body.get("transaction_id")
+    if not tx_id:
+        raise HTTPException(status_code=400, detail="transaction_id is required.")
+    from database import get_transaction_by_id, update_transaction_status
+    tx = get_transaction_by_id(int(tx_id), user["id"])
+    if tx is None:
+        raise HTTPException(status_code=404, detail="Transaction not found.")
+
+    # Validate enums
+    excl = body.get("exclusion_reason")
+    if excl is not None and excl not in (None, "personal", "cash", "dd", "subscription"):
+        raise HTTPException(status_code=400, detail="Invalid exclusion_reason.")
+    bpct = body.get("business_pct")
+    if bpct is not None and not (0 <= int(bpct) <= 100):
+        raise HTTPException(status_code=400, detail="business_pct must be 0-100.")
+
+    # Treat exclusion as a state transition on receipt_status
+    receipt_status = None
+    if excl == "personal":
+        receipt_status = "excluded"
+    elif excl in ("cash", "dd", "subscription"):
+        receipt_status = "na"
+    elif excl is None and body.get("clear_exclusion"):
+        receipt_status = "missing"
+
+    update_transaction_status(
+        int(tx_id),
+        receipt_status=receipt_status,
+        exclusion_reason=excl,
+        business_pct=int(bpct) if bpct is not None else None,
+        is_capital=int(body["is_capital"]) if body.get("is_capital") is not None else None,
+        hmrc_category=body.get("hmrc_category"),
+        hmrc_category_reason=body.get("hmrc_category_reason"),
+    )
+    return JSONResponse({"status": "ok"})
+
+
+# ---------------------------------------------------------------------------
 # Persisted cumulative extraction — survives logout, only cleared by the
 # explicit "Clear & Upload New" button.
 # ---------------------------------------------------------------------------
@@ -1143,13 +1296,29 @@ async def parse_statement(request: Request, file: UploadFile = File(...)):
         # Persist the extracted rows on the user account so the dashboard can
         # show cumulative totals across uploads, surviving logout. Cleared
         # only when the user clicks "Clear & Upload New".
+        extracted_data_id = None
         try:
-            save_extracted_data(
+            extracted_data_id = save_extracted_data(
                 user["id"], "statement", safe_filename,
                 result["transactions"], source_size_bytes=len(contents),
             )
         except Exception:
             logger.exception("Failed to persist extracted statement data for user %s", user["id"])
+
+        # ALSO write structured ledger rows + try to re-match any orphan
+        # receipts the user has already uploaded against these new bank lines.
+        if extracted_data_id is not None:
+            try:
+                from services.ledger_ingest import (
+                    ingest_statement_rows, rematch_user_unmatched_receipts,
+                )
+                ingest_statement_rows(
+                    user["id"], extracted_data_id, result.get("transactions") or [],
+                )
+                # Brand-new bank data → existing orphan receipts might now match.
+                rematch_user_unmatched_receipts(user["id"], enable_ai=False)
+            except Exception:
+                logger.exception("Ledger ingest failed for statement upload (user %s)", user["id"])
 
         # Deduct the exact AI cost from the user's monthly budget / credit balance.
         ai_usage = result.get("metadata", {}).get("ai_usage") or {}
@@ -1247,13 +1416,32 @@ async def parse_receipt_endpoint(request: Request, file: UploadFile = File(...))
         increment_monthly_receipts(user["id"], 1)
 
         # Persist the extracted line items on the user account (cumulative).
+        extracted_data_id = None
         try:
-            save_extracted_data(
+            extracted_data_id = save_extracted_data(
                 user["id"], "receipt", safe_filename,
                 result["items"], source_size_bytes=len(contents),
             )
         except Exception:
             logger.exception("Failed to persist extracted receipt data for user %s", user["id"])
+
+        # Write the receipt to the structured ledger and try to auto-match
+        # it against the user's existing bank transactions.
+        match_meta = None
+        if extracted_data_id is not None:
+            try:
+                from services.ledger_ingest import ingest_receipt_and_match
+                outcome = ingest_receipt_and_match(
+                    user["id"],
+                    extracted_data_id,
+                    result,
+                    file_path=str(upload_path),
+                    source_filename=safe_filename,
+                    enable_ai=False,  # Heuristics only on the upload hot path
+                )
+                match_meta = outcome
+            except Exception:
+                logger.exception("Ledger ingest failed for receipt upload (user %s)", user["id"])
 
         # Deduct the exact AI cost from the user's monthly budget / credit balance.
         ai_usage = result.get("metadata", {}).get("ai_usage") or {}
@@ -1265,12 +1453,18 @@ async def parse_receipt_endpoint(request: Request, file: UploadFile = File(...))
                 success=True,
             )
 
-        response = JSONResponse({
+        response_body = {
             "items": result["items"],
             "totals": result["totals"],
             "metadata": result["metadata"],
             "download_url": f"/downloads/{output_filename}",
-        })
+        }
+        if match_meta is not None:
+            # Expose the matcher's verdict so the dashboard can show the
+            # green tick / "Awaiting check" inbox card immediately.
+            response_body["receipt_id"] = match_meta["receipt_id"]
+            response_body["match"] = match_meta["match"]
+        response = JSONResponse(response_body)
         return response
 
     except HTTPException:
