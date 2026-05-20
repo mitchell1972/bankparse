@@ -603,6 +603,25 @@ def test_action_items_sheet_says_all_clear_when_no_issues():
 # ---------------------------------------------------------------------------
 
 
+def test_trial_balance_uncategorised_expense_shows_friendly_label():
+    """Sentinel "uncategorised" bucket must render as a clear
+    "Uncategorised expenses — review needed" not "Unrecognised code:
+    uncategorised". Mitchell-quote: 'this feels DIY'."""
+    from services.accountant_export import build_export_zip
+    from openpyxl import load_workbook
+    uid = _seed_user("uncat-label@example.com")
+    _add_tx(uid, hmrc_category=None, description="MYSTERY", amount=-89.50)
+    zip_bytes = build_export_zip(uid, "uncat-label@example.com")
+    zf = zipfile.ZipFile(io.BytesIO(zip_bytes))
+    wb = load_workbook(io.BytesIO(zf.read("Accountant_Pack.xlsx")))
+    text = "\n".join(
+        " ".join(str(c.value or "") for c in row)
+        for row in wb["Trial Balance"].iter_rows()
+    )
+    assert "Uncategorised expenses — review needed" in text
+    assert "Unrecognised code" not in text
+
+
 def test_trial_balance_sheet_has_correct_debit_credit_columns():
     from services.accountant_export import build_export_zip
     from openpyxl import load_workbook
