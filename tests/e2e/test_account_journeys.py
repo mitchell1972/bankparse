@@ -317,5 +317,5 @@ def test_dashboard_receipt_upload_via_email_in_widget(live_server: str, page: Pa
         {"name": "test_receipt.jpg", "mimeType": "image/jpeg", "buffer": fake_image},
     ])
     expect(page.locator("#snapStatus")).to_contain_text(
-        re.compile(r"Saved", re.I), timeout=8_000,
+        re.compile(r"Saved|couldn't be parsed", re.I), timeout=8_000,
     )

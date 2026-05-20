@@ -512,8 +512,11 @@ async function onBulkReceiptUpload(event) {
 
 async function uploadReceiptViaApi(files) {
     const status = document.getElementById('snapStatus');
-    status.textContent = `Uploading ${files.length} receipt${files.length>1?'s':''}…`;
+    status.textContent = `Uploading ${files.length} receipt${files.length>1?'s':''}… (parsing can take a few seconds each)`;
     let saved = 0;
+    let matched = 0;
+    let errors = [];
+    let summaries = [];
     for (const f of files) {
         const b64 = await new Promise((resolve, reject) => {
             const reader = new FileReader();
@@ -521,19 +524,42 @@ async function uploadReceiptViaApi(files) {
             reader.onerror = reject;
             reader.readAsDataURL(f);
         });
-        const r = await fetch('/api/receipts/email-in', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                from: 'self-upload',
-                subject: 'Browser upload',
-                attachments: [{ filename: f.name, content_b64: b64 }],
-            }),
-        });
-        if (r.ok) saved += 1;
+        let r;
+        try {
+            r = await fetch('/api/receipts/email-in', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    from: 'self-upload',
+                    subject: 'Browser upload',
+                    attachments: [{ filename: f.name, content_b64: b64 }],
+                }),
+            });
+        } catch (e) {
+            errors.push(`${f.name}: network`);
+            continue;
+        }
+        if (!r.ok) {
+            errors.push(`${f.name}: HTTP ${r.status}`);
+            continue;
+        }
+        const data = await r.json();
+        saved += data.saved || 0;
+        matched += data.auto_matched || 0;
+        (data.parse_errors || []).forEach(e => errors.push(e));
+        (data.receipts || []).forEach(rc => summaries.push(rc));
     }
-    status.textContent = `Saved ${saved} of ${files.length}. They'll be auto-matched once parsed.`;
-    setTimeout(() => { status.textContent = ''; loadAll(); }, 2500);
+    // Build a user-friendly summary
+    const parts = [];
+    if (saved > 0) parts.push(`Saved ${saved} receipt${saved>1?'s':''}`);
+    if (matched > 0) parts.push(`${matched} auto-matched to bank lines`);
+    if (errors.length > 0) parts.push(`${errors.length} couldn't be parsed`);
+    if (parts.length === 0) parts.push('No receipts processed');
+    status.textContent = parts.join(' · ');
+    if (errors.length > 0) {
+        console.warn('Receipt upload errors:', errors);
+    }
+    setTimeout(() => { status.textContent = ''; loadAll(); }, 4000);
 }
 
 function renderHero() {
