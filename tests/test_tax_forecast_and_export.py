@@ -161,6 +161,39 @@ def test_forecast_excludes_capital_items_from_revenue_expenses():
     assert f["self_employment"]["profit"] == 20000
 
 
+def test_forecast_counts_uncategorised_credits_as_provisional_income():
+    """An uploaded statement whose transactions haven't been categorised
+    yet should still produce a meaningful forecast — credits go into SE
+    income provisionally, debits into SE expenses, with a caveat note.
+    Pinned after Mitchell's 2026-05-20 audit."""
+    from services.tax_forecast import forecast_tax_due
+    uid = _seed_user()
+    _add_tx(uid, hmrc_category=None, amount=20_000.0)
+    _add_tx(uid, hmrc_category=None, amount=-3_000.0)
+    f = forecast_tax_due(uid)
+    assert f["provisional"]["uncategorised_income"] == 20_000.0
+    assert f["provisional"]["uncategorised_expenses"] == 3_000.0
+    # Flowed into SE buckets
+    assert f["self_employment"]["income"] == 20_000.0
+    assert f["self_employment"]["expenses"] == 3_000.0
+    # Profit £17k > £12,570 → some income tax
+    assert f["combined"]["income_tax_due"] > 0
+    assert any("uncategorised" in n.lower() for n in f["notes"])
+
+
+def test_forecast_uncategorised_handles_mitchell_real_data():
+    """Real numbers from Mitchell's bank statement: credits £10,699.61,
+    debits £8,439.72 → net £2,259.89, no tax due (under PA)."""
+    from services.tax_forecast import forecast_tax_due
+    uid = _seed_user()
+    _add_tx(uid, hmrc_category=None, amount=10_699.61)
+    _add_tx(uid, hmrc_category=None, amount=-8_439.72)
+    f = forecast_tax_due(uid)
+    assert abs(f["combined"]["profit"] - 2_259.89) < 0.01
+    assert f["combined"]["income_tax_due"] == 0  # under PA
+    assert any("uncategorised" in n.lower() for n in f["notes"])
+
+
 def test_forecast_business_pct_proportional():
     """A 60% business expense reduces profit by 60% of the amount."""
     from services.tax_forecast import forecast_tax_due
