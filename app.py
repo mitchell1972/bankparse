@@ -1476,6 +1476,117 @@ async def test_seed_ledger_fixture(request: Request):
     })
 
 
+@app.post("/api/test/seed-ledger-rich")
+async def test_seed_ledger_rich(request: Request):
+    """Test-only: seed enough varied data to exercise every ledger UI:
+       - 1 matched transaction + receipt
+       - 1 unmatched bank transaction (so drag-drop has a target)
+       - 1 orphan receipt (so drag-drop has a source — amount that
+         WILL NOT auto-match the unmatched bank line)
+       - 3 uncategorised transactions (for bulk-approve test)
+       - Baseline transactions across 3 prior quarters for anomaly test
+
+    Returns the IDs the test needs."""
+    _test_mode_guard()
+    body = await request.json()
+    email = (body.get("email") or "").strip().lower()
+    if not email:
+        raise HTTPException(status_code=400, detail="email required")
+    from database import (
+        get_user_by_email, update_user, save_extracted_data,
+        insert_ledger_transaction, insert_ledger_receipt, insert_ledger_link,
+    )
+    import time as _time, datetime as _dt
+    user = get_user_by_email(email)
+    if not user:
+        raise HTTPException(status_code=404, detail="user not found")
+
+    update_user(
+        user["id"],
+        subscription_status="trialing",
+        stripe_subscription_id="sub_rich",
+        stripe_customer_id="cus_rich",
+        trial_end_at=_time.time() + 7 * 86400,
+    )
+    ed_stmt = save_extracted_data(user["id"], "statement", "rich.pdf", [], 0)
+    ed_rc = save_extracted_data(user["id"], "receipt", "rich.pdf", [], 0)
+
+    today = _dt.date.today()
+    iso_today = today.isoformat()
+
+    # Matched transaction + receipt
+    tx_matched = insert_ledger_transaction(
+        user["id"], extracted_data_id=ed_stmt,
+        date_iso=iso_today, description="AMAZON UK MARKETPLACE",
+        amount=-42.99, hmrc_category="se_general_admin_costs",
+        hmrc_category_confidence=95,
+        hmrc_category_reason="Office consumables per BIM47800.",
+    )
+    rc_matched = insert_ledger_receipt(
+        user["id"], extracted_data_id=ed_rc, file_path=None,
+        source_filename="rc1.pdf", store_name="Amazon",
+        date_iso=iso_today, total_amount=42.99, tax_amount=7.16,
+    )
+    insert_ledger_link(transaction_id=tx_matched, receipt_id=rc_matched,
+                       match_strategy="exact", confidence=100)
+
+    # Unmatched bank tx (drag-drop target)
+    tx_unmatched = insert_ledger_transaction(
+        user["id"], extracted_data_id=ed_stmt,
+        date_iso=iso_today, description="SHELL HOLLOWAY ROAD",
+        amount=-58.20, hmrc_category="se_business_travel_costs",
+        hmrc_category_confidence=80,
+        hmrc_category_reason="Fuel — qualifies as business travel BIM45000.",
+    )
+
+    # Orphan receipt with amount NOT matching the unmatched tx
+    # (so the auto-matcher leaves it alone — the user has to drag it)
+    rc_orphan = insert_ledger_receipt(
+        user["id"], extracted_data_id=ed_rc, file_path=None,
+        source_filename="orphan.pdf", store_name="LonelyStore",
+        date_iso=iso_today, total_amount=999.50, tax_amount=166.58,
+    )
+
+    # 3 uncategorised transactions for bulk approve seeding
+    for i in range(3):
+        insert_ledger_transaction(
+            user["id"], extracted_data_id=ed_stmt,
+            date_iso=iso_today, description=f"VENDOR_X_{i}",
+            amount=-(15.0 + i),
+            hmrc_category="se_office_expenses",
+            hmrc_category_confidence=50,  # low confidence so bulk-approve has work
+            hmrc_category_reason="Categorised by AI; awaiting user confirmation.",
+        )
+
+    # Baseline transactions for anomaly test: 3 prior quarters of motor expenses
+    q_start = _dt.date(today.year, ((today.month - 1) // 3) * 3 + 1, 1)
+    for q in range(1, 4):
+        # Step back q quarters
+        d = q_start
+        for _ in range(q):
+            if d.month == 1:
+                d = _dt.date(d.year - 1, 10, 1)
+            else:
+                d = _dt.date(d.year, d.month - 3, 1)
+        for i in range(3):
+            insert_ledger_transaction(
+                user["id"], extracted_data_id=ed_stmt,
+                date_iso=(d + _dt.timedelta(days=i * 10)).isoformat(),
+                description=f"SHELL Q{q}_{i}",
+                amount=-(150.0 + i * 10),
+                hmrc_category="se_motor_expenses",
+                hmrc_category_confidence=90,
+                hmrc_category_reason="Fuel for business travel — BIM45000.",
+            )
+
+    return JSONResponse({
+        "user_id": user["id"],
+        "tx_matched": tx_matched,
+        "tx_unmatched": tx_unmatched,
+        "rc_orphan": rc_orphan,
+    })
+
+
 @app.get("/api/cron/trial-reminders")
 async def cron_trial_reminders(request: Request):
     expected = os.environ.get("CRON_SECRET", "")
