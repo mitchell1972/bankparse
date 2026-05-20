@@ -256,6 +256,8 @@
 
     <div class="actions-bar">
         <a href="/" class="btn">Upload more bank statements or receipts</a>
+        <a href="#" onclick="categoriseAllNow(); return false;" class="btn" id="categoriseAllBtn"
+           style="background: var(--accent);">Categorise uncategorised transactions</a>
         <a href="/api/audit-certificate" target="_blank" class="btn secondary">Download Audit Certificate (PDF-ready)</a>
         <a href="#" onclick="downloadExport(); return false;" class="btn secondary">Download accountant ZIP</a>
     </div>
@@ -727,6 +729,38 @@ async function linkReceipt(txId, rcId) {
 
 function downloadExport() {
     window.location.href = '/api/accountant-export';
+}
+
+async function categoriseAllNow() {
+    const btn = document.getElementById('categoriseAllBtn');
+    const originalText = btn.textContent;
+    btn.textContent = 'Categorising…';
+    btn.style.opacity = '0.6';
+    btn.style.pointerEvents = 'none';
+    try {
+        const r = await fetch('/api/ledger/categorise-all', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-Token': getCsrfToken(),
+            },
+            body: JSON.stringify({ business_type: 'se' }),
+        });
+        const data = await r.json();
+        if (r.ok) {
+            btn.textContent = `Categorised ${data.categorised || 0} transactions`;
+            setTimeout(() => { loadAll(); btn.textContent = originalText; }, 1500);
+        } else {
+            btn.textContent = data.detail || 'Categoriser failed';
+        }
+    } catch (e) {
+        btn.textContent = 'Network error — try again';
+    } finally {
+        setTimeout(() => {
+            btn.style.opacity = '';
+            btn.style.pointerEvents = '';
+        }, 2000);
+    }
 }
 
 loadAll();
