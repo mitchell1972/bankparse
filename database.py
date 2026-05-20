@@ -411,6 +411,21 @@ def init_db():
         "ON accountant_pack_shares(user_id)",
         "CREATE INDEX IF NOT EXISTS idx_accountant_shares_token "
         "ON accountant_pack_shares(token)",
+        # Idempotency record for the HMRC-deadline reminder cron. One row
+        # per (user, deadline_iso, lead_days). Lets the cron run as often
+        # as we want without double-emailing anyone.
+        """CREATE TABLE IF NOT EXISTS hmrc_deadline_reminders (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            deadline_iso TEXT NOT NULL,
+            lead_days INTEGER NOT NULL,
+            sent_at REAL NOT NULL,
+            business_label TEXT,
+            UNIQUE(user_id, deadline_iso, lead_days),
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+        )""",
+        "CREATE INDEX IF NOT EXISTS idx_hmrc_deadline_reminders_user "
+        "ON hmrc_deadline_reminders(user_id)",
         "CREATE INDEX IF NOT EXISTS idx_extracted_user_mode ON user_extracted_data(user_id, mode)",
         "CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)",
         "CREATE INDEX IF NOT EXISTS idx_users_stripe ON users(stripe_customer_id)",
@@ -1300,6 +1315,45 @@ def remove_ledger_link(transaction_id: int, receipt_id: int) -> None:
             "UPDATE ledger_receipts SET match_status = 'unmatched' WHERE id = ?",
             (receipt_id,),
         )
+
+
+def mark_hmrc_deadline_reminder_sent(
+    *, user_id: int, deadline_iso: str, lead_days: int, business_label: str | None = None,
+) -> bool:
+    """Insert one row recording that we've emailed (user, deadline, lead).
+    Returns True if newly inserted, False if it was already there."""
+    import time as _time
+    try:
+        _execute(
+            "INSERT INTO hmrc_deadline_reminders "
+            "(user_id, deadline_iso, lead_days, sent_at, business_label) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (int(user_id), deadline_iso, int(lead_days), _time.time(), business_label),
+        )
+        return True
+    except Exception:
+        # UNIQUE violation = already reminded for this combination
+        return False
+
+
+def has_hmrc_deadline_reminder(*, user_id: int, deadline_iso: str, lead_days: int) -> bool:
+    row = _fetchone_dict(
+        "SELECT id FROM hmrc_deadline_reminders "
+        "WHERE user_id = ? AND deadline_iso = ? AND lead_days = ?",
+        (int(user_id), deadline_iso, int(lead_days)),
+    )
+    return row is not None
+
+
+def list_users_with_hmrc_connection() -> list[dict]:
+    """Users who have stored HMRC OAuth tokens — candidates for deadline
+    reminders. Joined on hmrc_connections."""
+    return _fetchall_dicts(
+        "SELECT u.id, u.email FROM users u "
+        "JOIN hmrc_connections h ON h.user_id = u.id "
+        "WHERE h.access_token_enc IS NOT NULL",
+        (),
+    )
 
 
 def create_accountant_pack_share(

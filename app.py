@@ -186,6 +186,8 @@ try:
     from hmrc.routers import eops as _hmrc_eops_router
     from hmrc.routers import calculation as _hmrc_calc_router
     from hmrc.routers import final_declaration as _hmrc_final_decl_router
+    from hmrc.routers import submissions as _hmrc_submissions_router
+    from hmrc.routers import penalties as _hmrc_penalties_router
     app.include_router(_hmrc_oauth_router.router)
     app.include_router(_hmrc_fraud_router.router)
     app.include_router(_hmrc_pages_router.router)
@@ -198,6 +200,8 @@ try:
     app.include_router(_hmrc_eops_router.router)
     app.include_router(_hmrc_calc_router.router)
     app.include_router(_hmrc_final_decl_router.router)
+    app.include_router(_hmrc_submissions_router.router)
+    app.include_router(_hmrc_penalties_router.router)
 except Exception:
     logger.exception("Failed to register HMRC routers — continuing without HMRC routes")
 
@@ -422,6 +426,17 @@ async def privacy_page(request: Request):
         request,
         "privacy.html",
         {"effective_date": "8 April 2026"},
+    )
+
+
+@app.get("/terms", response_class=HTMLResponse)
+async def terms_page(request: Request):
+    """Terms of Service. HMRC software recognition checks the URL resolves
+    so this page must always return 200 with substantive content."""
+    return templates.TemplateResponse(
+        request,
+        "terms.html",
+        {"effective_date": "21 May 2026"},
     )
 
 
@@ -2199,6 +2214,86 @@ async def cron_trial_reminders(request: Request):
             failed += 1
 
     return JSONResponse({"status": "ok", "candidates": len(users), "sent": sent, "failed": failed})
+
+
+@app.get("/api/cron/hmrc-deadline-reminders")
+async def cron_hmrc_deadline_reminders(request: Request):
+    """Daily cron — emails any HMRC-connected user with an obligation due
+    in exactly 7 or 1 days. Idempotent via hmrc_deadline_reminders table.
+
+    Configure on Railway/Vercel to fire once a day. The cron secret guard
+    matches the existing trial-reminders pattern."""
+    expected = os.environ.get("CRON_SECRET", "")
+    if expected:
+        auth = request.headers.get("authorization", "")
+        if auth != f"Bearer {expected}":
+            raise HTTPException(status_code=401, detail="Unauthorized")
+
+    from hmrc.services import obligations as _obl_service
+    from otp import send_hmrc_deadline_reminder
+
+    LEAD_DAYS = (7, 1)
+    candidates = database.list_users_with_hmrc_connection()
+    base_url = str(request.base_url).rstrip("/")
+    file_url = f"{base_url}/hmrc/file"
+
+    sent = 0
+    skipped_already_sent = 0
+    failed = 0
+    no_deadline = 0
+    for user in candidates:
+        try:
+            # Reuse the in-app obligations fetch. It needs a request object
+            # for fraud headers — we pass the cron request itself which
+            # carries valid Vendor headers but no user-specific Client ones.
+            # That's acceptable for a server-to-server cron.
+            response = _obl_service.fetch_for_user(
+                user_id=user["id"], request_obj=request,
+            )
+        except Exception:
+            logger.exception("cron_hmrc_deadline_reminders: fetch failed for user %s", user["id"])
+            failed += 1
+            continue
+        if not response or not getattr(response, "obligations", None):
+            no_deadline += 1
+            continue
+        for obl in response.obligations:
+            if obl.status not in ("open", "upcoming"):
+                continue
+            if obl.days_until_due not in LEAD_DAYS:
+                continue
+            # Idempotency: never double-send for this (user, deadline, lead).
+            already = database.has_hmrc_deadline_reminder(
+                user_id=user["id"], deadline_iso=obl.due, lead_days=obl.days_until_due,
+            )
+            if already:
+                skipped_already_sent += 1
+                continue
+            ok = send_hmrc_deadline_reminder(
+                to_email=user["email"],
+                business_label=obl.business_label,
+                period_start=obl.period_start, period_end=obl.period_end,
+                due_iso=obl.due, days_until_due=obl.days_until_due,
+                file_url=file_url,
+            )
+            if ok:
+                database.mark_hmrc_deadline_reminder_sent(
+                    user_id=user["id"], deadline_iso=obl.due,
+                    lead_days=obl.days_until_due,
+                    business_label=obl.business_label,
+                )
+                sent += 1
+            else:
+                failed += 1
+
+    return JSONResponse({
+        "status": "ok",
+        "candidates": len(candidates),
+        "sent": sent,
+        "skipped_already_sent": skipped_already_sent,
+        "no_deadline": no_deadline,
+        "failed": failed,
+    })
 
 
 @app.post("/api/restore/request")

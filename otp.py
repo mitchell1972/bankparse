@@ -311,6 +311,100 @@ def send_accountant_pack_email(
     return True
 
 
+def send_hmrc_deadline_reminder(
+    *,
+    to_email: str,
+    business_label: str,
+    period_start: str,
+    period_end: str,
+    due_iso: str,
+    days_until_due: int,
+    file_url: str,
+) -> bool:
+    """Email a user that an HMRC submission is coming up. Sent at 7-day +
+    1-day milestones from a daily cron. Idempotent at the caller layer."""
+    if not RESEND_API_KEY:
+        logger.warning(
+            "RESEND_API_KEY not set — HMRC reminder for %s (due %s in %d days) skipped",
+            to_email, due_iso, days_until_due,
+        )
+        return True
+
+    if days_until_due <= 1:
+        urgency = "TOMORROW"
+        subject = f"⚠ Your {business_label} HMRC quarterly update is due tomorrow"
+    else:
+        urgency = f"in {days_until_due} days"
+        subject = f"Reminder: {business_label} HMRC quarterly update due {urgency}"
+
+    html_body = f"""
+    <div style="font-family: -apple-system, sans-serif; max-width: 520px; margin: 0 auto; padding: 2rem; color: #2C3E50;">
+        <h2 style="color: #1B4F72;">{business_label} quarterly update — due {urgency}</h2>
+        <p>Your next HMRC submission covers the period:</p>
+        <div style="background: #F8F9F9; padding: 1rem 1.25rem; border-radius: 6px; border-left: 4px solid #1B4F72; margin: 1rem 0;">
+            <strong>{period_start} → {period_end}</strong><br>
+            <span style="color: #566573;">Due by {due_iso}</span>
+        </div>
+        <p>One click in BankScan AI and the figures go straight to HMRC.
+           No spreadsheets, no transcribing, no copy-paste errors.</p>
+        <div style="text-align: center; margin: 1.5rem 0;">
+            <a href="{file_url}"
+               style="display: inline-block; padding: 0.85rem 1.6rem; background: #1B4F72; color: white; text-decoration: none; border-radius: 6px; font-weight: 600;">
+                File with HMRC now
+            </a>
+        </div>
+        <p style="font-size: 0.85rem; color: #566573;">
+          Missing a deadline triggers an HMRC penalty point — four in a row
+          and you'll pay a £200 fine. Better to file now and adjust later.
+        </p>
+        <hr style="border: none; border-top: 1px solid #eee; margin: 1.5rem 0;">
+        <p style="font-size: 0.8rem; color: #999;">
+          BankScan AI · AI-assisted MTD ITSA filing. Not professional advice.
+        </p>
+    </div>
+    """
+    text_body = (
+        f"Your {business_label} HMRC quarterly update is due {urgency} ({due_iso}).\n\n"
+        f"Period: {period_start} to {period_end}.\n\n"
+        f"File in one click here: {file_url}\n\n"
+        "Missing the deadline triggers a penalty point — 4 in a row = £200 fine.\n"
+    )
+
+    try:
+        response = httpx.post(
+            RESEND_API_URL,
+            headers={
+                "Authorization": f"Bearer {RESEND_API_KEY}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "from": RESEND_FROM,
+                "to": [to_email],
+                "subject": subject,
+                "html": html_body,
+                "text": text_body,
+            },
+            timeout=RESEND_TIMEOUT_SECONDS,
+        )
+    except httpx.HTTPError:
+        logger.exception("HMRC deadline reminder send failed for %s", to_email)
+        return False
+
+    if response.status_code >= 400:
+        logger.error(
+            "Resend rejected HMRC reminder to %s — status=%d body=%s",
+            to_email, response.status_code, response.text[:500],
+        )
+        return False
+
+    try:
+        message_id = response.json().get("id", "<no-id>")
+    except ValueError:
+        message_id = "<unparseable-json>"
+    logger.info("HMRC deadline reminder sent to %s (id=%s, due=%s)", to_email, message_id, due_iso)
+    return True
+
+
 def send_password_reset_email(to_email: str, reset_link: str) -> bool:
     """Send the password-reset email. Returns True on success.
     If RESEND_API_KEY is not set, logs the link and returns True so

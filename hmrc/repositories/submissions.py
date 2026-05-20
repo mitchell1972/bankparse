@@ -58,3 +58,103 @@ def record(
         ),
     )
     return audit_id
+
+
+# ---------------------------------------------------------------------------
+# Read-side helpers — for the user-facing "Submission history" screen.
+# ---------------------------------------------------------------------------
+
+
+# Endpoint → friendly label + submission type. Keyed on `endpoint` substring
+# (we record the full URL but the suffix is enough to identify the action).
+_KIND_RULES: list[tuple[str, str, str]] = [
+    # (endpoint_substring, kind_label, plain-english status verb)
+    ("self-employment-business",        "Quarterly update (Self-employment)", "filed"),
+    ("uk-property-business",            "Quarterly update (UK property)",     "filed"),
+    ("/individuals/business/end-of-period-statement", "End of period statement", "submitted"),
+    ("eops",                            "End of period statement",            "submitted"),
+    ("crystallisation",                 "Final declaration",                  "filed"),
+    ("final-declaration",               "Final declaration",                  "filed"),
+    ("calculations",                    "Tax calculation",                    "calculated"),
+    ("obligations",                     "Obligations check",                  "checked"),
+    ("business-details",                "Business details lookup",            "looked up"),
+]
+
+
+def _classify(endpoint: str) -> tuple[str, str]:
+    """Map a raw endpoint URL to a (human label, status verb) pair."""
+    e = (endpoint or "").lower()
+    for needle, label, verb in _KIND_RULES:
+        if needle in e:
+            return label, verb
+    return "HMRC call", "called"
+
+
+def list_for_user(user_id: int, *, limit: int = 100) -> list[dict]:
+    """Return the user's submissions newest-first with a human-readable
+    label and a derived success flag (2xx response status)."""
+    from database import _fetchall_dicts
+    import json as _json
+
+    rows = _fetchall_dicts(
+        "SELECT audit_id, endpoint, method, response_status, "
+        "       request_body_json, response_body_json, "
+        "       idempotency_key, created_at "
+        "FROM hmrc_submissions "
+        "WHERE user_id = ? "
+        "ORDER BY created_at DESC LIMIT ?",
+        (int(user_id), int(limit)),
+    )
+    out: list[dict] = []
+    for r in rows:
+        label, verb = _classify(r["endpoint"] or "")
+        status = int(r.get("response_status") or 0)
+        ok = 200 <= status < 300
+        # Try to pull a useful identifier from the response body.
+        ref = None
+        try:
+            body = _json.loads(r.get("response_body_json") or "null")
+            if isinstance(body, dict):
+                # MTD ITSA responses include either `transactionReference`,
+                # `submissionId`, or `calculationId` depending on the op.
+                ref = (
+                    body.get("transactionReference")
+                    or body.get("submissionId")
+                    or body.get("calculationId")
+                    or body.get("id")
+                )
+        except (TypeError, _json.JSONDecodeError):
+            pass
+        # Period start/end (where we have them in the request body)
+        period_start = period_end = None
+        try:
+            req = _json.loads(r.get("request_body_json") or "null")
+            if isinstance(req, dict):
+                period_start = (
+                    req.get("periodStartDate")
+                    or req.get("periodFromDate")
+                    or req.get("from")
+                )
+                period_end = (
+                    req.get("periodEndDate")
+                    or req.get("periodToDate")
+                    or req.get("to")
+                )
+        except (TypeError, _json.JSONDecodeError):
+            pass
+
+        out.append({
+            "audit_id": r["audit_id"],
+            "endpoint": r["endpoint"],
+            "method": r["method"],
+            "label": label,
+            "status_verb": verb,
+            "response_status": status,
+            "ok": ok,
+            "hmrc_reference": ref,
+            "period_start": period_start,
+            "period_end": period_end,
+            "idempotency_key": r.get("idempotency_key"),
+            "created_at": r["created_at"],
+        })
+    return out

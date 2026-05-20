@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="BankScan AI Terms of Service. The contract between BankScan AI and its users — usage, billing, MTD ITSA filing, and limitations.">
+    <title>Terms of Service — BankScan AI</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        :root {
+            --primary: #1B4F72;
+            --primary-light: #2E86C1;
+            --accent: #27AE60;
+            --bg: #F8F9FA;
+            --card: #FFFFFF;
+            --text: #2C3E50;
+            --muted: #7F8C8D;
+            --border: #E5E7EB;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg); color: var(--text);
+            line-height: 1.65; padding: 2rem 1rem;
+        }
+        .container { max-width: 780px; margin: 0 auto; }
+        header { text-align: center; margin-bottom: 2.5rem; }
+        header h1 {
+            font-size: 2.2rem;
+            background: linear-gradient(135deg, var(--primary), var(--primary-light));
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            background-clip: text; margin-bottom: 0.5rem;
+        }
+        header p { color: var(--muted); font-size: 0.95rem; }
+        .card {
+            background: var(--card); border: 1px solid var(--border);
+            border-radius: 12px; padding: 2rem; margin-bottom: 1.25rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+        }
+        h2 { color: var(--primary); margin-bottom: 0.6rem; font-size: 1.25rem; }
+        h3 { color: var(--text); margin: 1rem 0 0.4rem; font-size: 1rem; }
+        p { margin-bottom: 0.7rem; }
+        ul { margin: 0.5rem 0 0.5rem 1.5rem; }
+        li { margin-bottom: 0.3rem; }
+        a { color: var(--primary-light); }
+        .muted { color: var(--muted); font-size: 0.88rem; }
+        footer { text-align: center; color: var(--muted); margin-top: 2rem; font-size: 0.88rem; }
+        footer a { color: var(--primary); text-decoration: none; margin: 0 0.5rem; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <header>
+        <h1>Terms of Service</h1>
+        <p>Effective {{ effective_date }} · Last updated {{ effective_date }}</p>
+    </header>
+
+    <div class="card">
+        <h2>1. What BankScan AI is</h2>
+        <p>BankScan AI (the "Service") parses UK bank statements and receipts,
+           categorises the resulting transactions against HMRC's MTD ITSA
+           taxonomy, and — once HMRC recognition is granted — submits quarterly
+           updates, end-of-period statements, and final declarations to HMRC on
+           behalf of the user (the "Customer").</p>
+        <p>The Service is operated by <strong>BankScan AI</strong>
+           (trading name; the underlying legal entity is Mitoba Consulting Ltd,
+           registered in England &amp; Wales). Contact:
+           <a href="mailto:mitchellagoma@gmail.com">mitchellagoma@gmail.com</a>.</p>
+    </div>
+
+    <div class="card">
+        <h2>2. Who can use the Service</h2>
+        <ul>
+            <li>UK-resident sole traders and landlords whose qualifying income
+                brings them within MTD ITSA scope.</li>
+            <li>UK-based accountants and bookkeepers acting on behalf of such
+                clients.</li>
+            <li>Users must be 18+, have a valid email address, and a UK bank
+                account.</li>
+        </ul>
+        <p class="muted">We are not authorised by the Financial Conduct
+           Authority. We do not provide regulated financial, accounting,
+           investment, or legal advice.</p>
+    </div>
+
+    <div class="card">
+        <h2>3. Customer responsibilities</h2>
+        <ul>
+            <li>Provide accurate, complete bank statements and receipts.</li>
+            <li>Review every AI-suggested categorisation before submitting it
+                to HMRC. The user, not BankScan AI, is the legal taxpayer.</li>
+            <li>Connect the Service to the correct Government Gateway account
+                and provide an accurate National Insurance number.</li>
+            <li>Keep their account credentials secure and notify us promptly
+                of suspected compromise.</li>
+        </ul>
+    </div>
+
+    <div class="card">
+        <h2>4. MTD ITSA filing</h2>
+        <p>The Service offers a one-click submission flow for quarterly
+           updates, end-of-period statements, and final declarations once
+           HMRC has issued the Customer a Self Assessment Unique Taxpayer
+           Reference and the Service has obtained explicit OAuth consent.</p>
+        <p>Filed submissions become the Customer's legal record with HMRC.
+           BankScan AI provides an audit trail (the "Submission history")
+           but cannot undo a submission once HMRC has accepted it.</p>
+        <p>Until BankScan AI appears on the GOV.UK list of MTD ITSA-recognised
+           software, no Customer may use the Service to submit a return to
+           live HMRC services. Sandbox / test-API submissions are unrestricted.</p>
+    </div>
+
+    <div class="card">
+        <h2>5. Subscription &amp; payment</h2>
+        <p>Plans, prices, and trial terms are shown at the point of purchase.
+           Billing is handled by Stripe; BankScan AI does not store full card
+           details. Cancellation takes effect at the end of the current
+           billing period.</p>
+        <p>Refunds are at our discretion. We will not unreasonably withhold a
+           refund for unused time within the first 14 days of a paid plan.</p>
+    </div>
+
+    <div class="card">
+        <h2>6. Data, accuracy &amp; limitations</h2>
+        <ul>
+            <li>Bank statement parsing is AI-assisted and best-effort. We do
+                not guarantee 100% accuracy of category assignment, VAT
+                detection, or transaction extraction.</li>
+            <li>Tax forecasts shown in the Service are <em>estimates</em>,
+                not professional advice.</li>
+            <li>The Service may be unavailable for maintenance, third-party
+                outage (HMRC sandbox, Anthropic, Stripe, Resend), or other
+                reasons. We aim for 99% monthly availability but do not
+                guarantee it.</li>
+        </ul>
+    </div>
+
+    <div class="card">
+        <h2>7. Acceptable use</h2>
+        <p>Customers must not:</p>
+        <ul>
+            <li>Upload data that does not belong to them or that they do not
+                have permission to share.</li>
+            <li>Use the Service to submit fraudulent or knowingly inaccurate
+                returns to HMRC.</li>
+            <li>Reverse-engineer, scrape, or attempt to bypass our security
+                controls.</li>
+            <li>Resell access to the Service without a written agreement.</li>
+        </ul>
+    </div>
+
+    <div class="card">
+        <h2>8. Intellectual property</h2>
+        <p>The Service software, designs, and trade marks belong to
+           BankScan AI. The Customer retains ownership of their uploaded
+           data and any submissions filed via the Service.</p>
+    </div>
+
+    <div class="card">
+        <h2>9. Liability</h2>
+        <p>To the maximum extent permitted by law, BankScan AI's aggregate
+           liability arising out of or in connection with the Service is
+           capped at the fees the Customer paid in the 12 months preceding
+           the claim. We exclude liability for indirect, special, or
+           consequential loss.</p>
+        <p>Nothing in these Terms limits liability for death, personal
+           injury caused by negligence, or fraudulent misrepresentation.</p>
+    </div>
+
+    <div class="card">
+        <h2>10. Termination</h2>
+        <p>Either party may terminate the agreement at any time. The
+           Customer can delete their account from the dashboard; we will
+           erase personal data per the Privacy Policy except where retained
+           for legal or tax-evidence purposes.</p>
+        <p>We may suspend or terminate accounts that breach these Terms or
+           that we reasonably suspect are being used for fraud or other
+           unlawful activity.</p>
+    </div>
+
+    <div class="card">
+        <h2>11. Changes to these Terms</h2>
+        <p>We may update these Terms. Material changes will be announced
+           via email or in-app notice at least 14 days in advance.
+           Continued use after the effective date constitutes acceptance.</p>
+    </div>
+
+    <div class="card">
+        <h2>12. Governing law</h2>
+        <p>These Terms are governed by the laws of England and Wales. The
+           parties submit to the exclusive jurisdiction of the courts of
+           England and Wales.</p>
+    </div>
+
+    <footer>
+        <a href="/">Home</a> ·
+        <a href="/privacy">Privacy Policy</a> ·
+        <a href="mailto:mitchellagoma@gmail.com">Contact</a>
+        <p style="margin-top: 0.7rem;">© 2026 BankScan AI / Mitoba Consulting Ltd</p>
+    </footer>
+</div>
+</body>
+</html>

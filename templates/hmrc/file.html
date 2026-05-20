@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex, nofollow">
+  <title>File with HMRC — BankScan AI</title>
+  <style>
+    :root {
+      --primary: #1B4F72;
+      --primary-light: #2E86C1;
+      --accent: #27AE60;
+      --warn: #F39C12;
+      --danger: #C0392B;
+      --bg: #F4F6F7;
+      --card: #FFFFFF;
+      --text: #2C3E50;
+      --muted: #7F8C8D;
+      --border: #E5E7EB;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--bg); color: var(--text);
+      margin: 0; padding: 0;
+    }
+    .wrap { max-width: 960px; margin: 0 auto; padding: 1.5rem 1.25rem; }
+    header.bar {
+      background: var(--primary); color: #fff;
+      padding: 0.9rem 1.25rem;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    header.bar h1 { margin: 0; font-size: 1.1rem; font-weight: 700; }
+    header.bar a { color: rgba(255,255,255,0.9); text-decoration: none; font-size: 0.9rem; }
+    header.bar a:hover { color: #fff; }
+    h2 { color: var(--primary); margin: 0 0 0.5rem; }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.25rem 1.5rem;
+      margin-bottom: 1.25rem;
+    }
+    .strip {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 0.9rem;
+    }
+    .tile {
+      background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+      padding: 0.9rem 1.1rem;
+    }
+    .tile .label { color: var(--muted); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; }
+    .tile .value { font-size: 1.6rem; font-weight: 700; color: var(--primary); margin-top: 0.25rem; }
+    .tile .value.warn { color: var(--warn); }
+    .tile .value.danger { color: var(--danger); }
+    .tile .sub { color: var(--muted); font-size: 0.78rem; margin-top: 0.2rem; }
+    .conn-banner {
+      padding: 0.8rem 1rem; border-radius: 8px; margin-bottom: 1.25rem; font-size: 0.95rem;
+    }
+    .conn-ok    { background: #D5F5E3; color: #1E8449; border: 1px solid #ABEBC6; }
+    .conn-warn  { background: #FCF3CF; color: #B7950B; border: 1px solid #F7DC6F; }
+    .pill {
+      display: inline-block; padding: 0.15rem 0.55rem; border-radius: 12px;
+      font-size: 0.72rem; font-weight: 700;
+    }
+    .pill.open    { background: #FDEBD0; color: #B9770E; }
+    .pill.overdue { background: #FADBD8; color: #A93226; }
+    .pill.upcoming{ background: #D6EAF8; color: #21618C; }
+    .pill.filed   { background: #D5F5E3; color: #1E8449; }
+    .obligation {
+      display: grid; grid-template-columns: 1fr auto auto; gap: 1rem; align-items: center;
+      padding: 0.75rem 0; border-bottom: 1px solid var(--border);
+    }
+    .obligation:last-child { border-bottom: 0; }
+    .obligation .meta { font-size: 0.85rem; color: var(--muted); }
+    .obligation .meta strong { color: var(--text); font-weight: 600; }
+    .btn {
+      background: var(--primary); color: #fff; border: 0; padding: 0.55rem 1rem;
+      border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 0.88rem;
+      text-decoration: none; display: inline-block;
+    }
+    .btn:hover { background: var(--primary-light); }
+    .btn.sec { background: #fff; color: var(--primary); border: 1px solid var(--primary); }
+    .btn.sec:hover { background: #EBF5FB; }
+    .btn:disabled { background: #BDC3C7; cursor: not-allowed; }
+    .submission {
+      display: grid; grid-template-columns: 1fr 1fr auto;
+      gap: 0.5rem 1rem; padding: 0.6rem 0; border-bottom: 1px solid var(--border);
+      font-size: 0.88rem;
+    }
+    .submission:last-child { border-bottom: 0; }
+    .submission .when { color: var(--muted); font-size: 0.78rem; }
+    .submission .ref  { color: var(--muted); font-family: ui-monospace, monospace; font-size: 0.78rem; }
+    .submission .status-ok { color: #1E8449; font-weight: 600; }
+    .submission .status-err { color: #A93226; font-weight: 600; }
+    .empty { color: var(--muted); padding: 1rem 0; font-size: 0.9rem; }
+    .help { color: var(--muted); font-size: 0.85rem; margin-top: 0.4rem; }
+    dialog#submitDialog {
+      border: 0; border-radius: 12px; padding: 0;
+      max-width: 540px; width: 90%;
+    }
+    dialog#submitDialog::backdrop { background: rgba(0,0,0,0.4); }
+    dialog .dlg-inner { padding: 1.5rem; }
+    dialog h3 { margin: 0 0 0.5rem; color: var(--primary); }
+    dialog .totals {
+      background: #F8F9F9; padding: 0.75rem 1rem; border-radius: 6px;
+      border-left: 4px solid var(--primary); margin: 0.75rem 0;
+      font-size: 0.9rem;
+    }
+    dialog .totals .row {
+      display: flex; justify-content: space-between; padding: 0.15rem 0;
+    }
+    dialog .actions {
+      display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 1rem;
+    }
+    .reference-box {
+      background: #D5F5E3; padding: 0.8rem 1rem; border-radius: 6px;
+      border-left: 4px solid var(--accent); margin: 0.5rem 0;
+    }
+    .reference-box strong { font-family: ui-monospace, monospace; }
+  </style>
+</head>
+<body>
+
+<header class="bar">
+  <h1>File with HMRC</h1>
+  <a href="/">← Back to dashboard</a>
+</header>
+
+<div class="wrap">
+
+  <!-- Connection state -->
+  {% if connected %}
+    <div class="conn-banner conn-ok">
+      ✓ Connected to HMRC as <strong>{{ user_email }}</strong>.
+      <a href="/hmrc/connect" style="color:#1E8449; margin-left:0.4rem;">Reconnect</a>
+    </div>
+  {% else %}
+    <div class="conn-banner conn-warn">
+      ⚠ You're not connected to HMRC yet.
+      <a href="/hmrc/connect" class="btn" style="margin-left:0.5rem; padding:0.4rem 0.9rem;">Connect now</a>
+    </div>
+  {% endif %}
+
+  <!-- Headline strip: tax due / next deadline / penalty points -->
+  <div class="strip" style="margin-bottom: 1.25rem;">
+    <div class="tile">
+      <div class="label">Estimated tax owed</div>
+      <div class="value" id="tileTax">—</div>
+      <div class="sub" id="tileTaxSub">If quarter ended today</div>
+    </div>
+    <div class="tile">
+      <div class="label">Next deadline</div>
+      <div class="value" id="tileDeadline">—</div>
+      <div class="sub" id="tileDeadlineSub">Quarterly update</div>
+    </div>
+    <div class="tile">
+      <div class="label">Penalty points</div>
+      <div class="value" id="tilePoints">0 / 4</div>
+      <div class="sub" id="tilePointsSub">£200 fine after 4 points</div>
+    </div>
+  </div>
+
+  <!-- Open obligations + submit buttons -->
+  <div class="card">
+    <h2>What HMRC is expecting from you</h2>
+    <p class="help">Every open obligation can be submitted in one click. The Submit button shows you the totals before sending anything.</p>
+    <div id="obligationsList" class="empty">Loading…</div>
+  </div>
+
+  <!-- Submission history -->
+  <div class="card">
+    <h2>Submission history</h2>
+    <p class="help">Every API call we've made to HMRC on your behalf. HMRC can ask for this if you're audited.</p>
+    <div id="submissionsList" class="empty">Loading…</div>
+  </div>
+
+</div>
+
+<!-- Submit confirmation dialog (one dialog, reused for all four types) -->
+<dialog id="submitDialog">
+  <div class="dlg-inner">
+    <h3 id="dlgTitle">Confirm submission</h3>
+    <p id="dlgIntro" class="help"></p>
+    <div class="totals" id="dlgTotals"></div>
+    <p id="dlgWarning" class="help" style="color: var(--warn);"></p>
+    <div class="actions">
+      <button class="btn sec" onclick="closeDialog()">Cancel</button>
+      <button class="btn" id="dlgConfirmBtn" onclick="confirmSubmit()">Submit to HMRC</button>
+    </div>
+    <div id="dlgResult" style="margin-top: 0.75rem;"></div>
+  </div>
+</dialog>
+
+<script>
+const STATE = {
+  obligations: [],
+  submissions: [],
+  penaltyStatus: null,
+  pendingAction: null,
+};
+
+function getCsrf() {
+  const m = document.cookie.match(/(^|;\s*)bp_csrf=([^;]+)/);
+  return m ? decodeURIComponent(m[2]) : '';
+}
+
+function fmtGBP(n) {
+  if (n == null || isNaN(n)) return '—';
+  return '£' + Number(n).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function fmtDate(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+function fmtDateTime(epoch) {
+  if (!epoch) return '—';
+  const d = new Date(epoch * 1000);
+  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+       + ' ' + d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+}
+
+async function loadAll() {
+  await Promise.all([
+    loadObligations(),
+    loadSubmissions(),
+    loadPenalty(),
+    loadTaxForecast(),
+  ]);
+}
+
+async function loadObligations() {
+  try {
+    const r = await fetch('/api/hmrc/obligations');
+    if (!r.ok) {
+      document.getElementById('obligationsList').innerHTML =
+        '<div class="empty">Not connected to HMRC yet — connect above to see what\'s due.</div>';
+      return;
+    }
+    const data = await r.json();
+    STATE.obligations = data.obligations || [];
+    renderObligations();
+    renderNextDeadlineTile();
+  } catch (e) {
+    document.getElementById('obligationsList').innerHTML =
+      '<div class="empty">Couldn\'t fetch obligations. Try again in a moment.</div>';
+  }
+}
+
+function renderObligations() {
+  const wrap = document.getElementById('obligationsList');
+  const rows = STATE.obligations;
+  if (!rows || rows.length === 0) {
+    wrap.innerHTML = '<div class="empty">No obligations right now. You\'re all caught up.</div>';
+    return;
+  }
+  wrap.innerHTML = '';
+  wrap.className = '';
+  rows.forEach((o, idx) => {
+    const div = document.createElement('div');
+    div.className = 'obligation';
+    const businessLabel = o.business_label || (o.business_type === 'property' ? 'Property — UK' : 'Self-employment');
+    const periodLabel = `${fmtDate(o.period_start)} → ${fmtDate(o.period_end)}`;
+    let btn = '';
+    if (o.status === 'filed') {
+      btn = '<span style="color: #1E8449; font-size: 0.85rem;">✓ Submitted</span>';
+    } else if (o.status === 'open' || o.status === 'upcoming' || o.status === 'overdue') {
+      btn = `<button class="btn" onclick="openSubmitDialog(${idx})">Submit</button>`;
+    }
+    div.innerHTML = `
+      <div>
+        <strong>${businessLabel}</strong>
+        <div class="meta">Period: ${periodLabel} · Due ${fmtDate(o.due)} <span class="pill ${o.status}">${o.human_due}</span></div>
+      </div>
+      <div></div>
+      <div>${btn}</div>
+    `;
+    wrap.appendChild(div);
+  });
+}
+
+function renderNextDeadlineTile() {
+  const tile = document.getElementById('tileDeadline');
+  const sub = document.getElementById('tileDeadlineSub');
+  const open = (STATE.obligations || []).filter(o => o.status === 'open' || o.status === 'upcoming' || o.status === 'overdue');
+  if (!open.length) {
+    tile.textContent = '—';
+    sub.textContent = 'No open obligations';
+    return;
+  }
+  open.sort((a, b) => a.days_until_due - b.days_until_due);
+  const next = open[0];
+  tile.textContent = next.human_due;
+  if (next.days_until_due < 0) tile.className = 'value danger';
+  else if (next.days_until_due <= 7) tile.className = 'value warn';
+  sub.textContent = `${next.business_label} · Due ${fmtDate(next.due)}`;
+}
+
+async function loadSubmissions() {
+  try {
+    const r = await fetch('/api/hmrc/submissions');
+    if (!r.ok) return;
+    const data = await r.json();
+    STATE.submissions = data.submissions || [];
+    renderSubmissions();
+  } catch (e) {}
+}
+
+function renderSubmissions() {
+  const wrap = document.getElementById('submissionsList');
+  const rows = STATE.submissions;
+  if (!rows || rows.length === 0) {
+    wrap.innerHTML = '<div class="empty">No submissions yet — when you press Submit above, the receipt lands here.</div>';
+    return;
+  }
+  wrap.innerHTML = '';
+  wrap.className = '';
+  rows.forEach(s => {
+    const div = document.createElement('div');
+    div.className = 'submission';
+    const periodPart = (s.period_start && s.period_end)
+      ? `${fmtDate(s.period_start)}–${fmtDate(s.period_end)}` : '';
+    div.innerHTML = `
+      <div>
+        <div><strong>${s.label}</strong> ${periodPart ? '<span class="meta">· ' + periodPart + '</span>' : ''}</div>
+        <div class="when">${fmtDateTime(s.created_at)}</div>
+      </div>
+      <div class="ref">${s.hmrc_reference ? 'Ref: ' + s.hmrc_reference : ''}</div>
+      <div class="${s.ok ? 'status-ok' : 'status-err'}">
+        ${s.ok ? '✓ ' + s.status_verb : '✗ HTTP ' + s.response_status}
+      </div>
+    `;
+    wrap.appendChild(div);
+  });
+}
+
+async function loadPenalty() {
+  try {
+    const r = await fetch('/api/hmrc/penalty-status');
+    if (!r.ok) return;
+    const data = await r.json();
+    STATE.penaltyStatus = data;
+    const tile = document.getElementById('tilePoints');
+    const sub = document.getElementById('tilePointsSub');
+    tile.textContent = `${data.points} / ${data.threshold}`;
+    if (data.points >= data.threshold) tile.className = 'value danger';
+    else if (data.points >= data.threshold - 1) tile.className = 'value warn';
+    sub.textContent = data.points >= data.threshold
+      ? `Next late filing = £${data.next_fine_gbp} fine`
+      : `${data.remaining} more late filings → £${data.next_fine_gbp} fine`;
+  } catch (e) {}
+}
+
+async function loadTaxForecast() {
+  try {
+    const r = await fetch('/api/tax-forecast');
+    if (!r.ok) return;
+    const data = await r.json();
+    const total = (data.combined && (data.combined.income_tax_due_gbp + data.combined.class4_ni_due_gbp)) || 0;
+    document.getElementById('tileTax').textContent = fmtGBP(total);
+    document.getElementById('tileTaxSub').textContent =
+      total > 0 ? `Tax year ${data.tax_year || ''}` : 'Below £12,570 personal allowance';
+  } catch (e) {}
+}
+
+// --- Submit dialog ---
+
+function openSubmitDialog(obligationIdx) {
+  const o = STATE.obligations[obligationIdx];
+  STATE.pendingAction = { obligation: o };
+  const dlg = document.getElementById('submitDialog');
+  document.getElementById('dlgTitle').textContent =
+    `Submit ${o.business_label} quarterly update`;
+  document.getElementById('dlgIntro').textContent =
+    `Period ${fmtDate(o.period_start)} to ${fmtDate(o.period_end)}, due by ${fmtDate(o.due)}.`;
+  document.getElementById('dlgWarning').textContent =
+    'Once submitted you cannot undo it — HMRC accept the figures immediately. Double-check the totals.';
+  document.getElementById('dlgResult').innerHTML = '';
+  document.getElementById('dlgConfirmBtn').disabled = false;
+  document.getElementById('dlgConfirmBtn').textContent = 'Submit to HMRC';
+
+  // Preview totals (the existing /preview endpoint dry-runs the payload).
+  document.getElementById('dlgTotals').innerHTML = '<div class="row"><span>Loading totals…</span></div>';
+  previewQuarter(o).then(preview => {
+    if (!preview) {
+      document.getElementById('dlgTotals').innerHTML =
+        '<div class="row"><em>Could not build a preview. Submitting anyway will use the current ledger.</em></div>';
+      return;
+    }
+    const payload = preview.payload || {};
+    const inc = payload.income || {};
+    const exp = payload.expenses || {};
+    const sum = (o2) => Object.values(o2 || {}).reduce((a, b) => a + (typeof b === 'number' ? b : 0), 0);
+    const income = sum(inc);
+    const expenses = sum(exp);
+    document.getElementById('dlgTotals').innerHTML = `
+      <div class="row"><span>Income (gross)</span><strong>${fmtGBP(income)}</strong></div>
+      <div class="row"><span>Expenses (gross)</span><strong>${fmtGBP(expenses)}</strong></div>
+      <div class="row"><span>Net for period</span><strong>${fmtGBP(income - expenses)}</strong></div>
+    `;
+  });
+
+  dlg.showModal();
+}
+
+async function previewQuarter(o) {
+  try {
+    const isProperty = o.business_type === 'property';
+    const endpoint = isProperty
+      ? '/api/hmrc/quarterly-updates/property/preview'
+      : '/api/hmrc/quarterly-updates/se/preview';
+    const r = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': getCsrf() },
+      body: JSON.stringify({
+        business_id: o.business_id,
+        period_start: o.period_start,
+        period_end: o.period_end,
+        rows: [],  // empty triggers server to pull from user's ledger
+      }),
+    });
+    if (!r.ok) return null;
+    return await r.json();
+  } catch (e) { return null; }
+}
+
+async function confirmSubmit() {
+  const o = STATE.pendingAction?.obligation;
+  if (!o) return;
+  const btn = document.getElementById('dlgConfirmBtn');
+  btn.disabled = true;
+  btn.textContent = 'Submitting…';
+
+  const isProperty = o.business_type === 'property';
+  const endpoint = isProperty
+    ? '/api/hmrc/quarterly-updates/property/submit'
+    : '/api/hmrc/quarterly-updates/se/submit';
+
+  try {
+    const r = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': getCsrf() },
+      body: JSON.stringify({
+        business_id: o.business_id,
+        period_start: o.period_start,
+        period_end: o.period_end,
+        rows: [],
+      }),
+    });
+    const data = await r.json();
+    if (r.ok) {
+      const ref = (data.hmrc_response && (data.hmrc_response.transactionReference || data.hmrc_response.submissionId)) || data.audit_id || '—';
+      document.getElementById('dlgResult').innerHTML = `
+        <div class="reference-box">
+          ✓ Submitted. HMRC reference: <strong>${ref}</strong>
+        </div>
+      `;
+      btn.textContent = 'Submitted ✓';
+      // Refresh history + obligations so the user sees the new row immediately
+      setTimeout(loadAll, 800);
+    } else {
+      document.getElementById('dlgResult').innerHTML = `
+        <div style="background:#FADBD8;color:#A93226;padding:0.6rem 1rem;border-radius:6px;">
+          ✗ ${data.detail || 'Submission failed.'}
+        </div>
+      `;
+      btn.disabled = false;
+      btn.textContent = 'Try again';
+    }
+  } catch (e) {
+    document.getElementById('dlgResult').innerHTML = `
+      <div style="background:#FADBD8;color:#A93226;padding:0.6rem 1rem;border-radius:6px;">
+        Network error. Try again.
+      </div>
+    `;
+    btn.disabled = false;
+    btn.textContent = 'Try again';
+  }
+}
+
+function closeDialog() {
+  document.getElementById('submitDialog').close();
+  STATE.pendingAction = null;
+}
+
+loadAll();
+// Refresh every 60s so submissions made elsewhere appear without a manual reload
+setInterval(loadAll, 60000);
+</script>
+</body>
+</html>
