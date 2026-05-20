@@ -266,6 +266,71 @@
         <div id="categoryTableWrap" class="loading">Loading…</div>
     </div>
 
+    <!-- Anomaly / missed-expense alerts -->
+    <div class="card" id="anomaliesCard" style="margin-bottom: 1.5rem; display: none;
+         background: #FEF9E7; border-left: 4px solid var(--warn);">
+        <h2 style="color: #B7950B;">Possible missing receipts this quarter</h2>
+        <div id="anomaliesList"></div>
+    </div>
+
+    <!-- Snap-and-send receipt: browser camera + email-in address -->
+    <div class="card" style="margin-bottom: 1.5rem;">
+        <h2>Snap-and-send a receipt</h2>
+        <div style="display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap;">
+            <label for="cameraInput" class="btn">📷 Take photo</label>
+            <input type="file" id="cameraInput" accept="image/*" capture="environment"
+                   style="display: none;" onchange="onReceiptCapture(event)">
+            <label for="bulkPhotoInput" class="btn secondary">📁 Upload from gallery</label>
+            <input type="file" id="bulkPhotoInput" accept="image/*,application/pdf"
+                   multiple style="display: none;" onchange="onBulkReceiptUpload(event)">
+            <div style="flex: 1; min-width: 240px; padding: 0.6rem 1rem;
+                        background: var(--bg); border-radius: 8px; font-size: 0.85rem;">
+                Or email receipts to:
+                <strong id="forwardingAddress" style="user-select: all;">—</strong>
+            </div>
+        </div>
+        <p id="snapStatus" style="font-size: 0.85rem; color: var(--muted); margin-top: 0.75rem;"></p>
+    </div>
+
+    <!-- Mileage tracker -->
+    <div class="card" style="margin-bottom: 1.5rem;">
+        <h2>Mileage tracker</h2>
+        <div id="mileageSummary" style="display:flex; gap:1rem; flex-wrap:wrap; margin-bottom:1rem;"></div>
+        <form id="mileageForm" onsubmit="onAddMileage(event)"
+              style="display:grid; grid-template-columns:auto auto 1fr 1fr auto auto; gap:0.5rem; align-items:end;">
+            <div>
+                <label style="font-size:0.72rem;color:var(--muted);text-transform:uppercase;">Date</label>
+                <input type="date" id="mileageDate" required
+                       style="padding:0.4rem;border:1px solid var(--border);border-radius:6px;width:130px;">
+            </div>
+            <div>
+                <label style="font-size:0.72rem;color:var(--muted);text-transform:uppercase;">Miles</label>
+                <input type="number" step="0.1" min="0.1" id="mileageMiles" required
+                       style="padding:0.4rem;border:1px solid var(--border);border-radius:6px;width:80px;">
+            </div>
+            <div>
+                <label style="font-size:0.72rem;color:var(--muted);text-transform:uppercase;">From</label>
+                <input type="text" id="mileageFrom" placeholder="Optional"
+                       style="padding:0.4rem;border:1px solid var(--border);border-radius:6px;width:100%;">
+            </div>
+            <div>
+                <label style="font-size:0.72rem;color:var(--muted);text-transform:uppercase;">To</label>
+                <input type="text" id="mileageTo" placeholder="Optional"
+                       style="padding:0.4rem;border:1px solid var(--border);border-radius:6px;width:100%;">
+            </div>
+            <div>
+                <label style="font-size:0.72rem;color:var(--muted);text-transform:uppercase;">Vehicle</label>
+                <select id="mileageVehicle" style="padding:0.4rem;border:1px solid var(--border);border-radius:6px;">
+                    <option value="car">Car</option>
+                    <option value="motorcycle">Motorcycle</option>
+                    <option value="bicycle">Bicycle</option>
+                </select>
+            </div>
+            <button type="submit" class="btn">Add</button>
+        </form>
+        <div id="mileageLogs" style="margin-top:1rem;"></div>
+    </div>
+
     <!-- Orphan receipts inbox (drag source) -->
     <div class="card" id="orphanCard" style="margin-bottom: 1.5rem; display: none;">
         <h2>Unmatched receipts <span id="orphanCount" style="font-weight:400;color:var(--muted);"></span></h2>
@@ -314,10 +379,13 @@ let SUMMARY = null;
 let FORECAST = null;
 
 async function loadAll() {
-    const [ledgerR, sumR, fcR] = await Promise.all([
+    const [ledgerR, sumR, fcR, anomR, fwdR, mileR] = await Promise.all([
         fetch('/api/ledger'),
         fetch('/api/audit-summary'),
         fetch('/api/tax-forecast'),
+        fetch('/api/anomalies'),
+        fetch('/api/receipts/forwarding-address'),
+        fetch('/api/mileage'),
     ]);
     if (!ledgerR.ok) {
         document.body.innerHTML = '<div style="padding:3rem;text-align:center;">Please log in to view the ledger.</div>';
@@ -326,11 +394,146 @@ async function loadAll() {
     LEDGER = await ledgerR.json();
     SUMMARY = await sumR.json();
     FORECAST = await fcR.json();
+    const anomalies = anomR.ok ? await anomR.json() : {anomalies:[]};
+    const fwd = fwdR.ok ? await fwdR.json() : {address: ''};
+    const mileage = mileR.ok ? await mileR.json() : {totals:{}, logs:[]};
     renderHero();
     renderForecast();
     renderCategories();
     renderOrphans();
     renderTransactions();
+    renderAnomalies(anomalies);
+    renderForwardingAddress(fwd);
+    renderMileage(mileage);
+}
+
+function renderAnomalies(anom) {
+    const card = document.getElementById('anomaliesCard');
+    const list = document.getElementById('anomaliesList');
+    if (!anom.anomalies || anom.anomalies.length === 0) {
+        card.style.display = 'none';
+        return;
+    }
+    card.style.display = '';
+    list.innerHTML = '';
+    anom.anomalies.forEach(a => {
+        const div = document.createElement('div');
+        div.style.cssText = 'padding: 0.75rem 0; border-bottom: 1px solid rgba(0,0,0,0.06);';
+        div.innerHTML = `<strong>${a.category.replace(/_/g,' ')}</strong> &mdash; ${a.message}`;
+        list.appendChild(div);
+    });
+}
+
+function renderForwardingAddress(fwd) {
+    document.getElementById('forwardingAddress').textContent = fwd.address || '—';
+}
+
+function renderMileage(m) {
+    const t = m.totals || {};
+    const sum = document.getElementById('mileageSummary');
+    sum.innerHTML = `
+        <div style="padding:0.6rem 1rem;background:var(--bg);border-radius:8px;">
+            <div style="font-size:0.72rem;color:var(--muted);text-transform:uppercase;">${m.tax_year || ''} car miles</div>
+            <div style="font-weight:600;">${(t.car_miles || 0).toLocaleString('en-GB')} miles</div>
+        </div>
+        <div style="padding:0.6rem 1rem;background:var(--bg);border-radius:8px;">
+            <div style="font-size:0.72rem;color:var(--muted);text-transform:uppercase;">10k allowance left</div>
+            <div style="font-weight:600;">${(t.band_1_remaining || 0).toLocaleString('en-GB')} miles</div>
+        </div>
+        <div style="padding:0.6rem 1rem;background:var(--accent);color:white;border-radius:8px;">
+            <div style="font-size:0.72rem;opacity:0.85;text-transform:uppercase;">Claimable</div>
+            <div style="font-weight:600;">${fmtGBP(t.total_claim_gbp || 0)}</div>
+        </div>
+    `;
+    const logs = m.logs || [];
+    const logsEl = document.getElementById('mileageLogs');
+    if (!logs.length) { logsEl.innerHTML = '<p style="color:var(--muted);font-size:0.85rem;">No journeys logged yet.</p>'; return; }
+    let html = '<table class="tx-table"><thead><tr><th>Date</th><th>From → To</th><th>Vehicle</th><th class="num">Miles</th><th class="num">Rate</th><th class="num">Claim</th><th></th></tr></thead><tbody>';
+    logs.forEach(l => {
+        html += `<tr>
+            <td>${l.date_iso}</td>
+            <td>${l.from_location || ''} ${l.to_location ? '→ ' + l.to_location : ''}</td>
+            <td>${l.vehicle}</td>
+            <td class="num">${l.miles}</td>
+            <td class="num">${(l.rate_avg * 100).toFixed(0)}p</td>
+            <td class="num">${fmtGBP(l.claim_gbp)}</td>
+            <td><a href="#" onclick="deleteMileage(${l.id}); return false;" style="color:var(--danger);font-size:0.8rem;">✕</a></td>
+        </tr>`;
+    });
+    html += '</tbody></table>';
+    logsEl.innerHTML = html;
+}
+
+async function onAddMileage(event) {
+    event.preventDefault();
+    const body = {
+        date_iso: document.getElementById('mileageDate').value,
+        miles: parseFloat(document.getElementById('mileageMiles').value),
+        from_location: document.getElementById('mileageFrom').value || null,
+        to_location: document.getElementById('mileageTo').value || null,
+        vehicle: document.getElementById('mileageVehicle').value,
+    };
+    const r = await fetch('/api/mileage', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': getCsrfToken() },
+        body: JSON.stringify(body),
+    });
+    if (r.ok) {
+        document.getElementById('mileageForm').reset();
+        await loadAll();
+    } else {
+        const data = await r.json().catch(() => ({}));
+        alert(data.detail || 'Failed to add mileage.');
+    }
+}
+
+async function deleteMileage(id) {
+    if (!confirm('Delete this mileage log?')) return;
+    const r = await fetch('/api/mileage/' + id, {
+        method: 'DELETE',
+        headers: { 'X-CSRF-Token': getCsrfToken() },
+    });
+    if (r.ok) loadAll();
+}
+
+async function onReceiptCapture(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    await uploadReceiptViaApi([file]);
+    event.target.value = '';
+}
+
+async function onBulkReceiptUpload(event) {
+    const files = Array.from(event.target.files || []);
+    if (!files.length) return;
+    await uploadReceiptViaApi(files);
+    event.target.value = '';
+}
+
+async function uploadReceiptViaApi(files) {
+    const status = document.getElementById('snapStatus');
+    status.textContent = `Uploading ${files.length} receipt${files.length>1?'s':''}…`;
+    let saved = 0;
+    for (const f of files) {
+        const b64 = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve((reader.result + '').split(',')[1]);
+            reader.onerror = reject;
+            reader.readAsDataURL(f);
+        });
+        const r = await fetch('/api/receipts/email-in', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                from: 'self-upload',
+                subject: 'Browser upload',
+                attachments: [{ filename: f.name, content_b64: b64 }],
+            }),
+        });
+        if (r.ok) saved += 1;
+    }
+    status.textContent = `Saved ${saved} of ${files.length}. They'll be auto-matched once parsed.`;
+    setTimeout(() => { status.textContent = ''; loadAll(); }, 2500);
 }
 
 function renderHero() {

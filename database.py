@@ -155,6 +155,21 @@ def init_db():
             used INTEGER DEFAULT 0,
             PRIMARY KEY (email, code)
         )""",
+        """CREATE TABLE IF NOT EXISTS mileage_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            date_iso TEXT NOT NULL,
+            from_location TEXT,
+            to_location TEXT,
+            miles REAL NOT NULL,
+            purpose TEXT,
+            vehicle TEXT DEFAULT 'car',  -- 'car'|'motorcycle'|'bicycle'
+            business_pct INTEGER DEFAULT 100,
+            -- HMRC rate is calculated at query time, never stored, so the
+            -- annual 10k threshold can re-bucket as the user adds more.
+            created_at REAL DEFAULT (strftime('%s','now')),
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )""",
         """CREATE TABLE IF NOT EXISTS password_reset_tokens (
             token TEXT PRIMARY KEY,
             user_id INTEGER NOT NULL,
@@ -392,6 +407,7 @@ def init_db():
         "CREATE INDEX IF NOT EXISTS idx_ledger_rc_hash ON ledger_receipts(content_hash)",
         "CREATE INDEX IF NOT EXISTS idx_ledger_links_tx ON ledger_links(transaction_id)",
         "CREATE INDEX IF NOT EXISTS idx_ledger_links_rc ON ledger_links(receipt_id)",
+        "CREATE INDEX IF NOT EXISTS idx_mileage_user_date ON mileage_logs(user_id, date_iso)",
     ]
     for stmt in stmts:
         _execute(stmt)
