@@ -557,6 +557,25 @@ function renderForecast() {
     document.getElementById('forecastNi').textContent = fmtGBP(FORECAST.combined.class_4_ni_due);
     const notes = document.getElementById('forecastNotes');
     notes.innerHTML = '';
+    // Show provisional uncategorised totals prominently — these are the
+    // figures the user can verify against their bank's own credit/debit
+    // totals (e.g. £10,699.61 in / £8,439.72 out).
+    const prov = FORECAST.provisional || {};
+    if ((prov.uncategorised_income || 0) > 0 || (prov.uncategorised_expenses || 0) > 0) {
+        const card = document.createElement('div');
+        card.style.cssText = 'background: #FEF9E7; border-left: 4px solid #F39C12;' +
+            'padding: 0.6rem 0.9rem; border-radius: 4px; margin: 0.5rem 0;' +
+            'font-size: 0.85rem; line-height: 1.5;';
+        card.innerHTML =
+            '<strong>Provisional figures.</strong> ' +
+            fmtGBP(prov.uncategorised_income) +
+            ' of credits and ' + fmtGBP(prov.uncategorised_expenses) +
+            ' of debits aren\'t categorised yet — counted as self-employment ' +
+            'until you confirm. Net: ' +
+            fmtGBP((prov.uncategorised_income || 0) - (prov.uncategorised_expenses || 0)) +
+            '.';
+        notes.appendChild(card);
+    }
     (FORECAST.notes || []).forEach(n => {
         const div = document.createElement('div');
         div.textContent = '• ' + n;
