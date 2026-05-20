@@ -129,6 +129,11 @@ def forecast_tax_due(user_id: int) -> dict:
 
     se = {"income": 0.0, "expenses": 0.0}
     prop = {"income": 0.0, "expenses": 0.0}
+    # Uncategorised bucket — counted as PROVISIONAL SE income/expenses so
+    # the user gets a useful "if-everything-were-business" forecast even
+    # before the categoriser runs. Surfaced separately in the response so
+    # the UI can show it as a caveat.
+    uncat = {"income": 0.0, "expenses": 0.0}
 
     for tx in txs:
         if tx.get("receipt_status") == "excluded":
@@ -160,6 +165,17 @@ def forecast_tax_due(user_id: int) -> dict:
             if tx.get("is_capital"):
                 continue
             prop["expenses"] += abs(amt) * bpct
+        elif not cat:
+            # Uncategorised — credit → provisional income, debit → provisional
+            # expense. Counted into the SE bucket on the conservative
+            # assumption that this is a self-employment account until the
+            # categoriser reclassifies. The user sees a clear caveat note.
+            if amt > 0:
+                uncat["income"] += amt * bpct
+                se["income"] += amt * bpct
+            elif amt < 0:
+                uncat["expenses"] += abs(amt) * bpct
+                se["expenses"] += abs(amt) * bpct
 
     se_profit = max(0.0, se["income"] - se["expenses"])
     prop_profit = max(0.0, prop["income"] - prop["expenses"])
@@ -182,7 +198,15 @@ def forecast_tax_due(user_id: int) -> dict:
             f"Profit is below the £{PERSONAL_ALLOWANCE:,.0f} personal allowance — "
             "no income tax due yet."
         )
-    if any(tx.get("hmrc_category") is None for tx in txs):
+    if uncat["income"] > 0 or uncat["expenses"] > 0:
+        notes.append(
+            f"£{uncat['income']:,.0f} of credits and £{uncat['expenses']:,.0f} of "
+            "debits are still uncategorised — they're counted provisionally as "
+            "self-employment income/expenses. Run the categoriser for an accurate forecast."
+        )
+    elif any(tx.get("hmrc_category") is None for tx in txs):
+        # Defensive — if uncat both 0 but there are categoriless txs (e.g.
+        # all zero-amount), still show the caveat.
         notes.append(
             "Some transactions are not yet categorised — actual tax may differ."
         )
@@ -208,6 +232,13 @@ def forecast_tax_due(user_id: int) -> dict:
             "income_tax_due": round(income_tax, 2),
             "class_4_ni_due": round(class_4_ni, 2),
             "total_due": round(income_tax + class_4_ni, 2),
+        },
+        "provisional": {
+            # Portion of the forecast that depends on uncategorised txs —
+            # the user can subtract this if their account is actually
+            # personal, or commit to it once the categoriser runs.
+            "uncategorised_income": round(uncat["income"], 2),
+            "uncategorised_expenses": round(uncat["expenses"], 2),
         },
         "notes": notes,
         "disclaimer": (
