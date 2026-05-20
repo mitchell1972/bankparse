@@ -969,13 +969,26 @@ async def api_email_in_receipt(request: Request):
     if not attachments:
         raise HTTPException(status_code=400, detail="No attachments.")
 
-    # We deliberately don't parse here — store as a queued upload row
-    # so the existing parse pipeline picks it up. For the test path we
-    # just acknowledge the email was received and the count.
+    # Process every attachment through the same pipeline as the in-app
+    # receipt upload button:
+    #   1. Decode base64 → bytes
+    #   2. Write to disk under UPLOAD_DIR
+    #   3. Run parse_receipt_ai to extract store/date/total/items/VAT
+    #   4. Persist to user_extracted_data + ingest_receipt_and_match
+    #      which writes ledger_receipts AND auto-links to a bank tx
+    #      on exact match.
     import base64
+    from database import save_extracted_data
+    from parsers.ai_parser import parse_receipt_ai
+    from services.ledger_ingest import ingest_receipt_and_match
+
     saved = 0
+    matched = 0
+    parse_errors: list[str] = []
+    match_summaries: list[dict] = []
+
     for att in attachments:
-        fname = att.get("filename") or "receipt.bin"
+        fname = Path(att.get("filename") or "receipt.bin").name
         b64 = att.get("content_b64") or ""
         try:
             payload = base64.b64decode(b64)
@@ -983,23 +996,65 @@ async def api_email_in_receipt(request: Request):
             continue
         if not payload:
             continue
-        # Persist with a marker so the dashboard knows it came in via email.
+
+        # 1. Write to disk so the AI parser can read it
+        job_id = str(uuid.uuid4())[:8]
+        upload_path = UPLOAD_DIR / f"emailin_{job_id}_{fname}"
         try:
-            from database import save_extracted_data
-            save_extracted_data(
-                user["id"], "receipt", f"emailin_{fname}",
-                [],
+            with open(upload_path, "wb") as f:
+                f.write(payload)
+        except OSError:
+            logger.exception("email-in: failed to write %s", upload_path)
+            parse_errors.append(fname)
+            continue
+
+        try:
+            # 2. AI parse
+            try:
+                parsed = await asyncio.to_thread(parse_receipt_ai, str(upload_path))
+            except Exception as e:
+                logger.exception("email-in: parse_receipt_ai failed for %s", fname)
+                parse_errors.append(f"{fname}: {type(e).__name__}")
+                continue
+
+            # 3. Persist + match
+            extracted_id = save_extracted_data(
+                user["id"], "receipt", fname,
+                parsed.get("items") or [],
                 source_size_bytes=len(payload),
             )
+            outcome = ingest_receipt_and_match(
+                user["id"],
+                extracted_id,
+                parsed,
+                file_path=str(upload_path),
+                source_filename=fname,
+                enable_ai=False,  # rules + strong matching on the hot path
+            )
             saved += 1
-        except Exception:
-            logger.exception("email-in save failed")
+            if outcome["match"]["strategy"] == "exact":
+                matched += 1
+            match_summaries.append({
+                "filename": fname,
+                "store": (parsed.get("summary") or {}).get("store_name"),
+                "total": (parsed.get("totals") or {}).get("total"),
+                "match": outcome["match"],
+            })
+        finally:
+            # Leave the file on disk — the matcher's defence sheet + accountant
+            # ZIP both reference it via ledger_receipts.file_path. We clean it
+            # up on receipt deletion, not here.
+            pass
 
+    token = _receipts_token_for(user)
     return JSONResponse({
         "status": "ok",
         "received": len(attachments),
         "saved": saved,
-        "forwarding_address": f"{user['id']}@receipts.bankscanai.com",
+        "auto_matched": matched,
+        "parse_errors": parse_errors,
+        "receipts": match_summaries,
+        "forwarding_address": f"{token}@receipts.bankscanai.com",
     })
 
 
