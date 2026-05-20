@@ -31,6 +31,7 @@ from openpyxl.styles import (
     Alignment, Border, Font, PatternFill, Side,
 )
 from openpyxl.utils import get_column_letter
+from openpyxl.worksheet.page import PageMargins
 
 from hmrc.schemas import categories as _cats
 
@@ -285,80 +286,386 @@ def _band_rows(ws, start_row: int, end_row: int, cols: int) -> None:
                 ws.cell(row=r, column=c).fill = BAND_FILL
 
 
+def _set_print_layout(ws, *, portrait: bool = True,
+                      fit_to_width: bool = True,
+                      title_rows: int = 4) -> None:
+    """Configure print-ready layout: A4 portrait, fit-to-width, sensible
+    margins, repeat header rows on each printed page. Practice firms
+    still print packs; making them look right when you File → Print is
+    the difference between "professional" and "tech-bro Excel dump"."""
+    ws.page_setup.paperSize = ws.PAPERSIZE_A4
+    ws.page_setup.orientation = (
+        ws.ORIENTATION_PORTRAIT if portrait else ws.ORIENTATION_LANDSCAPE
+    )
+    if fit_to_width:
+        ws.page_setup.fitToWidth = 1
+        ws.page_setup.fitToHeight = 0
+        ws.sheet_properties.pageSetUpPr.fitToPage = True
+    ws.page_margins = PageMargins(
+        left=0.5, right=0.5, top=0.5, bottom=0.5,
+        header=0.3, footer=0.3,
+    )
+    ws.print_options.horizontalCentered = True
+    if title_rows > 0:
+        ws.print_title_rows = f"1:{title_rows}"
+
+
 # ---------------------------------------------------------------------------
 # Sheet builders
 # ---------------------------------------------------------------------------
 
 
 def _write_cover(ws, *, user_email: str, period_label: str,
-                 client_name: str | None, summary: dict, generated_at: str) -> None:
+                 client_name: str | None, summary: dict, generated_at: str,
+                 period_is_filtered: bool) -> None:
+    """A4-print-ready cover page. Sections, in order:
+       • Practice header band
+       • Client / period block (left) + key totals block (right)
+       • Where to start
+       • Issues snapshot (count of action items)
+       • Sign-off block (Reviewed by / Date / Signature)
+       • PI-insurance-friendly disclaimer footer
+    """
     ws.title = "Cover"
     totals = summary.get("totals", {})
 
-    ws["A1"] = "BankScan AI — Accountant Pack"
-    ws["A1"].font = H1
+    # --- Header band ---
     ws.merge_cells("A1:D1")
+    ws["A1"] = "BankScan AI — Accountant Pack"
+    ws["A1"].font = Font(name="Calibri", bold=True, size=20, color="FFFFFF")
+    ws["A1"].fill = HEADER_FILL
+    ws["A1"].alignment = Alignment(horizontal="left", vertical="center", indent=1)
+    ws.row_dimensions[1].height = 32
 
-    ws["A2"] = "Prepared for accountant review. Not a tax return."
-    ws["A2"].font = MUTED
     ws.merge_cells("A2:D2")
+    ws["A2"] = (
+        f"Prepared for professional review · "
+        f"{'FILTERED' if period_is_filtered else 'ALL TIME'} · "
+        f"Generated {generated_at}"
+    )
+    ws["A2"].font = Font(name="Calibri", size=10, color="FFFFFF")
+    ws["A2"].fill = PatternFill("solid", start_color="2E86C1", end_color="2E86C1")
+    ws["A2"].alignment = Alignment(horizontal="left", vertical="center", indent=1)
+    ws.row_dimensions[2].height = 20
 
-    rows: list[tuple[str, str]] = [
+    # --- Client / Period block (left) ---
+    r = 4
+    ws.cell(row=r, column=1, value="Client").font = H2
+    r += 1
+    block_thin = Border(
+        left=THIN, right=THIN, top=THIN, bottom=THIN,
+    )
+    for label, value in [
         ("Client / business name", client_name or user_email),
         ("Account email", user_email),
         ("Period covered", period_label),
-        ("Generated", generated_at),
-        ("", ""),
-        ("Total income (gross)", f"£{totals.get('income', 0):,.2f}"),
-        ("Total expenses (gross)", f"£{totals.get('expenses', 0):,.2f}"),
-        ("VAT recorded", f"£{totals.get('vat_total', 0):,.2f}"),
-        ("Transactions in pack", str(totals.get("transactions_total", 0))),
-        ("Transactions backed by a receipt",
-         f"{totals.get('transactions_matched', 0)} of {totals.get('transactions_total', 0)}"
-         f" ({totals.get('audit_ready_pct', 0)}%)"),
-        ("Transactions missing a receipt", str(totals.get("transactions_missing", 0))),
-        ("Excluded (personal / owner draws)", str(totals.get("transactions_excluded", 0))),
-    ]
-    r = 4
-    for label, value in rows:
-        ws.cell(row=r, column=1, value=label).font = BODY_BOLD if label else BODY
-        ws.cell(row=r, column=2, value=value).font = BODY
+        ("Pack scope",
+         "Filtered to period" if period_is_filtered else "All transactions (no date filter)"),
+    ]:
+        c1 = ws.cell(row=r, column=1, value=label)
+        c1.font = BODY_BOLD
+        c1.border = block_thin
+        c1.fill = BAND_FILL
+        c2 = ws.cell(row=r, column=2, value=value)
+        c2.font = BODY
+        c2.border = block_thin
         r += 1
 
-    # Where to start
+    # --- Key totals block (right) ---
+    r_totals = 4
+    ws.cell(row=r_totals, column=3, value="Key totals").font = H2
+    r_totals += 1
+    for label, value in [
+        ("Income (gross)", float(totals.get("income", 0) or 0)),
+        ("Expenses (gross)", float(totals.get("expenses", 0) or 0)),
+        ("Net profit", float(
+            (totals.get("income", 0) or 0) - (totals.get("expenses", 0) or 0))),
+        ("VAT recorded", float(totals.get("vat_total", 0) or 0)),
+    ]:
+        c1 = ws.cell(row=r_totals, column=3, value=label)
+        c1.font = BODY_BOLD
+        c1.border = block_thin
+        c1.fill = BAND_FILL
+        c2 = ws.cell(row=r_totals, column=4, value=value)
+        c2.number_format = GBP_FMT
+        c2.font = BODY_BOLD
+        c2.border = block_thin
+        c2.alignment = Alignment(horizontal="right")
+        r_totals += 1
+
+    # --- Transaction counts row (full width) ---
+    r = max(r, r_totals) + 1
+    ws.cell(row=r, column=1, value="Coverage").font = H2
+    r += 1
+    coverage_rows = [
+        ("Transactions in pack", str(totals.get("transactions_total", 0))),
+        ("Backed by a receipt",
+         f"{totals.get('transactions_matched', 0)} "
+         f"({totals.get('audit_ready_pct', 0)}%)"),
+        ("Missing a receipt", str(totals.get("transactions_missing", 0))),
+        ("Excluded (personal / owner draws)",
+         str(totals.get("transactions_excluded", 0))),
+    ]
+    for label, value in coverage_rows:
+        c1 = ws.cell(row=r, column=1, value=label)
+        c1.font = BODY_BOLD
+        c1.border = block_thin
+        c1.fill = BAND_FILL
+        c2 = ws.cell(row=r, column=2, value=value)
+        c2.font = BODY
+        c2.border = block_thin
+        r += 1
+
+    # --- Where to start ---
     r += 1
     ws.cell(row=r, column=1, value="Where to start").font = H2
     r += 1
     instructions = [
-        "1. Open the 'Tax Return Boxes' sheet — every figure is mapped to its",
-        "   SA103S (short), SA103F (full), or SA105 (UK property) box number.",
-        "2. Spot-check the 'Missing Receipts' sheet — these are the gaps to",
-        "   chase before submission.",
-        "3. 'Reasoning Log' shows the AI's confidence and reason for each",
-        "   category decision. Override any you disagree with in the source",
-        "   app before re-exporting.",
-        "4. 'Receipt Inventory' lists every receipt in the pack — the",
-        "   receipts/ folder in this ZIP is grouped by the same category.",
-        "5. The 'summary.html' file is the Audit Confidence Certificate;",
-        "   open it in any browser and Print to PDF for the client file.",
+        "1. Open 'Action Items' — every transaction needing your decision in one place.",
+        "2. 'Tax Return Boxes' — totals mapped to SA103S / SA103F / SA105 box numbers.",
+        "3. 'Trial Balance' — debit / credit by nominal code; importable into",
+        "   CCH / TaxCalc / IRIS / Sage.",
+        "4. 'Missing Receipts' is the chase list before submission.",
+        "5. summary.html in the ZIP root is the Audit Confidence Certificate;",
+        "   open in any browser and Print to PDF for the client file.",
+        "6. receipts/ in the ZIP root is grouped by HMRC category for easy review.",
     ]
     for line in instructions:
         ws.cell(row=r, column=1, value=line).font = BODY
         ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=4)
         r += 1
 
-    # Disclaimer
+    # --- Sign-off block ---
     r += 1
-    ws.cell(row=r, column=1, value=(
-        "Generated by BankScan AI. Figures are AI-assisted and require "
-        "professional review. Bank statements and receipts attached for audit."
-    )).font = MUTED
-    ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=4)
+    ws.cell(row=r, column=1, value="Sign-off").font = H2
+    r += 1
+    for label in ["Reviewed by", "Position / role", "Date", "Signature"]:
+        c1 = ws.cell(row=r, column=1, value=label)
+        c1.font = BODY_BOLD
+        c1.border = block_thin
+        c1.fill = BAND_FILL
+        # Leave columns 2-4 blank for the accountant to fill in by hand
+        for col in (2, 3, 4):
+            ws.cell(row=r, column=col, value="").border = block_thin
+        ws.row_dimensions[r].height = 22
+        r += 1
 
-    ws.column_dimensions["A"].width = 38
-    ws.column_dimensions["B"].width = 38
-    ws.column_dimensions["C"].width = 12
-    ws.column_dimensions["D"].width = 12
+    # --- Disclaimer footer ---
+    r += 1
+    disclaimer = (
+        "AI-assisted draft for professional review. BankScan AI does NOT "
+        "provide accounting, tax, or legal advice. Figures require sign-off "
+        "by a qualified accountant or tax practitioner. The accompanying "
+        "receipts and manifest.json provide a tamper-evident audit trail."
+    )
+    ws.cell(row=r, column=1, value=disclaimer).font = MUTED
+    ws.cell(row=r, column=1).alignment = Alignment(wrap_text=True, vertical="top")
+    ws.merge_cells(start_row=r, start_column=1, end_row=r + 2, end_column=4)
+    ws.row_dimensions[r].height = 16
+    ws.row_dimensions[r + 1].height = 16
+    ws.row_dimensions[r + 2].height = 16
+
+    ws.column_dimensions["A"].width = 32
+    ws.column_dimensions["B"].width = 32
+    ws.column_dimensions["C"].width = 22
+    ws.column_dimensions["D"].width = 22
+
+    # Print as one page, A4 portrait.
+    _set_print_layout(ws, portrait=True, fit_to_width=True, title_rows=2)
+
+
+def _detect_issues(tx: dict, linked_receipts: list[dict]) -> list[tuple[str, str, str]]:
+    """For one transaction, return a list of (severity, issue, action)
+    tuples describing every reason this row needs an accountant's eye.
+
+    Severities: "high" (P0 audit risk), "med" (worth checking), "low" (FYI).
+    """
+    issues: list[tuple[str, str, str]] = []
+    amount = float(tx.get("amount") or 0)
+    abs_amount = abs(amount)
+    cat = tx.get("hmrc_category")
+    conf = tx.get("hmrc_category_confidence")
+    status = tx.get("receipt_status") or "missing"
+
+    # P0 — uncategorised at all
+    if not cat:
+        issues.append((
+            "high",
+            "No HMRC category assigned",
+            "Categorise in BankScan, then re-export.",
+        ))
+
+    # P0 — confidence below 50%
+    elif conf is not None and conf < 50:
+        issues.append((
+            "high",
+            f"Low confidence ({conf}%) on category {cat}",
+            "Verify the category matches the transaction.",
+        ))
+
+    # P1 — missing receipt on a large expense
+    if status not in ("matched", "excluded") and amount < 0 and abs_amount >= 100:
+        issues.append((
+            "med",
+            f"Expense £{abs_amount:.2f} has no receipt",
+            "Chase the receipt or mark as personal/excluded.",
+        ))
+
+    # P1 — sign mismatch: matched receipt on an income row
+    if linked_receipts and amount > 0:
+        issues.append((
+            "high",
+            "Income credit linked to an expense receipt",
+            "Unmatch the receipt — receipts only belong on expenses.",
+        ))
+
+    # P2 — VAT > 25% of gross (UK standard rate is 20%, so anything over
+    # 25% is almost always a parser slip)
+    vat = tx.get("vat_amount")
+    if vat is not None and abs_amount > 0 and (float(vat) / abs_amount) > 0.25:
+        issues.append((
+            "med",
+            f"VAT £{float(vat):.2f} is >25% of gross £{abs_amount:.2f}",
+            "Verify the VAT line on the receipt.",
+        ))
+
+    return issues
+
+
+def _write_action_items(ws, txs: list[dict],
+                        links_by_tx: dict[int, list[dict]],
+                        receipts_by_id: dict[int, dict]) -> None:
+    """The very first data sheet the accountant opens after the Cover.
+    One row per (transaction, issue) pair so a single transaction with
+    two problems shows on two rows."""
+    ws.title = "Action Items"
+
+    headers = [
+        "Severity", "Tx ID", "Date", "Description", "Amount (GBP)",
+        "HMRC category", "Issue", "Suggested action",
+    ]
+    for col, h in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=col, value=h)
+        cell.font = HEADER
+        cell.fill = HEADER_FILL
+
+    sev_fill = {
+        "high": PatternFill("solid", start_color="F5B7B1", end_color="F5B7B1"),
+        "med":  WARN_FILL,
+        "low":  PatternFill("solid", start_color="D5DBDB", end_color="D5DBDB"),
+    }
+    sev_rank = {"high": 0, "med": 1, "low": 2}
+
+    rows: list[dict] = []
+    for tx in txs:
+        linked_full = [
+            receipts_by_id.get(l["receipt_id"]) or {}
+            for l in links_by_tx.get(tx["id"], [])
+        ]
+        for severity, issue, action in _detect_issues(tx, linked_full):
+            rows.append({
+                "severity": severity, "tx": tx, "issue": issue, "action": action,
+            })
+
+    # Highest severity first, then by amount magnitude
+    rows.sort(key=lambda r: (
+        sev_rank.get(r["severity"], 9),
+        -abs(float(r["tx"].get("amount") or 0)),
+    ))
+
+    if not rows:
+        # No issues — give the accountant a clear "all green" message
+        ws.cell(row=2, column=1,
+                value="✓ No issues detected. Pack is ready for review.").font = INCOME_FONT
+        ws.merge_cells("A2:H2")
+    else:
+        for i, row in enumerate(rows, start=2):
+            tx = row["tx"]
+            ws.cell(row=i, column=1, value=row["severity"].upper()).font = BODY_BOLD
+            ws.cell(row=i, column=1).fill = sev_fill[row["severity"]]
+            ws.cell(row=i, column=2, value=tx["id"]).font = BODY
+            ws.cell(row=i, column=3, value=tx.get("date_iso") or "").font = BODY
+            ws.cell(row=i, column=4, value=tx.get("description") or "").font = BODY
+            amt_cell = ws.cell(row=i, column=5, value=float(tx.get("amount") or 0))
+            amt_cell.number_format = GBP_FMT
+            amt_cell.font = INCOME_FONT if float(tx.get("amount") or 0) > 0 else EXPENSE_FONT
+            ws.cell(row=i, column=6, value=tx.get("hmrc_category") or "—").font = BODY
+            ws.cell(row=i, column=7, value=row["issue"]).font = BODY
+            ws.cell(row=i, column=8, value=row["action"]).font = BODY
+
+        ws.auto_filter.ref = ws.dimensions
+
+    ws.freeze_panes = "A2"
+    _autosize(ws, max_w=50)
+
+
+def _write_trial_balance(ws, summary: dict) -> None:
+    """The format every UK practice tool imports: nominal code, description,
+    debit, credit, net. Built straight from the audit-summary buckets so it
+    reconciles to the Tax Return Boxes sheet pound-for-pound."""
+    ws.title = "Trial Balance"
+    headers = ["Nominal code", "Description", "Debit (GBP)", "Credit (GBP)", "Net (GBP)"]
+    for col, h in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=col, value=h)
+        cell.font = HEADER
+        cell.fill = HEADER_FILL
+
+    cats = summary.get("categories", [])
+    r = 2
+    total_debit = 0.0
+    total_credit = 0.0
+    for cat in sorted(
+        cats, key=lambda c: (not c.get("is_income"), c.get("category") or "")
+    ):
+        code = cat.get("category") or "uncategorised"
+        meta = category_meta(code)
+        amt = float(cat.get("total_gross_gbp") or 0)
+        if cat.get("is_income"):
+            debit, credit = 0.0, amt
+            total_credit += amt
+        else:
+            debit, credit = amt, 0.0
+            total_debit += amt
+        ws.cell(row=r, column=1, value=code).font = BODY
+        ws.cell(row=r, column=2, value=meta["label"]).font = BODY
+        if debit:
+            c = ws.cell(row=r, column=3, value=debit)
+            c.number_format = GBP_FMT
+            c.font = EXPENSE_FONT
+        if credit:
+            c = ws.cell(row=r, column=4, value=credit)
+            c.number_format = GBP_FMT
+            c.font = INCOME_FONT
+        net_cell = ws.cell(row=r, column=5, value=(credit - debit))
+        net_cell.number_format = GBP_FMT
+        net_cell.font = BODY
+        r += 1
+
+    # Totals row — must reconcile to the totals on the Cover sheet
+    r += 1
+    ws.cell(row=r, column=2, value="TOTALS").font = BODY_BOLD
+    d_total = ws.cell(row=r, column=3, value=total_debit)
+    d_total.number_format = GBP_FMT
+    d_total.font = BODY_BOLD
+    c_total = ws.cell(row=r, column=4, value=total_credit)
+    c_total.number_format = GBP_FMT
+    c_total.font = BODY_BOLD
+    net_total = ws.cell(row=r, column=5, value=(total_credit - total_debit))
+    net_total.number_format = GBP_FMT
+    net_total.font = BODY_BOLD
+
+    # Reconciliation note — accountants like a "this should equal that" line
+    r += 2
+    ws.cell(row=r, column=2, value=(
+        "The Net (credit − debit) column should match the Net profit on "
+        "the Cover sheet."
+    )).font = MUTED
+    ws.merge_cells(start_row=r, start_column=2, end_row=r, end_column=5)
+
+    ws.freeze_panes = "A2"
+    ws.auto_filter.ref = f"A1:E{r-2}"
+    _autosize(ws)
+    _set_print_layout(ws, portrait=True, fit_to_width=True, title_rows=1)
 
 
 def _write_boxes(ws, summary: dict) -> None:
@@ -468,6 +775,7 @@ def _write_boxes(ws, summary: dict) -> None:
 
     ws.freeze_panes = "A5"
     _autosize(ws)
+    _set_print_layout(ws, portrait=True, fit_to_width=True, title_rows=4)
 
 
 def _write_transactions(ws, txs: list[dict], links_by_tx: dict[int, list[dict]],
@@ -672,8 +980,22 @@ def build_accountant_workbook(
     links_by_tx: dict[int, list[dict]],
     links_by_rc: dict[int, list[dict]],
     generated_at: str | None = None,
+    period_is_filtered: bool = False,
 ) -> bytes:
-    """Build the multi-sheet Accountant Pack workbook and return bytes."""
+    """Build the multi-sheet Accountant Pack workbook and return bytes.
+
+    Sheet order is deliberate: ALL data the accountant must act on is
+    front-loaded.
+      1. Cover           — what this is, who it's for, sign-off
+      2. Action Items    — every row needing a decision, severity-sorted
+      3. Tax Return Boxes — totals ready to transcribe onto SA103/SA105
+      4. Trial Balance   — debit/credit per nominal for software import
+      5. Transactions    — the full ledger (filterable)
+      6. Missing Receipts
+      7. Receipt Inventory
+      8. VAT Register
+      9. Reasoning Log
+    """
     if generated_at is None:
         generated_at = _dt.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
 
@@ -684,8 +1006,11 @@ def build_accountant_workbook(
         wb.active,
         user_email=user_email, period_label=period_label,
         client_name=client_name, summary=summary, generated_at=generated_at,
+        period_is_filtered=period_is_filtered,
     )
+    _write_action_items(wb.create_sheet(), txs, links_by_tx, receipts_by_id)
     _write_boxes(wb.create_sheet(), summary=summary)
+    _write_trial_balance(wb.create_sheet(), summary=summary)
     _write_transactions(wb.create_sheet(), txs, links_by_tx, receipts_by_id)
     _write_missing(wb.create_sheet(), txs)
     _write_receipt_inventory(wb.create_sheet(), receipts, links_by_rc)

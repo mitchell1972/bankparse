@@ -45,8 +45,9 @@ import zipfile
 
 import database
 from services.accountant_xlsx import build_accountant_workbook, category_meta
-from services.audit_summary import summarise_audit_readiness
+from services.audit_summary import summarise_audit_readiness, summarise_from_rows
 from services.audit_certificate import build_certificate_html
+from services.tax_period import filter_rows_by_iso_date, parse_period_label
 
 
 _FILENAME_SAFE = re.compile(r"[^A-Za-z0-9._-]+")
@@ -128,15 +129,39 @@ def build_export_zip(
 ) -> bytes:
     """Compose the ZIP. Returns raw bytes — caller wraps in StreamingResponse.
 
-    ``client_name`` is shown on the Cover sheet + README; defaults to email."""
-    if period_label is None:
-        now = _dt.datetime.utcnow()
-        q = (now.month - 1) // 3 + 1
-        period_label = f"Q{q}-{now.year}"
+    ``period_label`` accepts:
+      - None / "" / "All time …" — no date filter
+      - "Q1 2026-27 (Apr-Jun)", "Q2 …", "Q3 …", "Q4 …" — UK MTD quarters
+      - "2026-27 tax year", "2025-26 tax year" — full UK tax years
+
+    Anything we don't recognise falls back to all-time (safer than
+    silently dropping rows).
+
+    ``client_name`` is shown on the Cover sheet + README; defaults to email.
+    """
+    # Empty/None means all-time. Don't manufacture a fake "current quarter"
+    # label — that's the bug that confused users into thinking the period
+    # dropdown did nothing, since the default came back as "Q2-2026" no
+    # matter what they picked.
+    period_label = (period_label or "").strip() or "All time"
+
+    period_bounds = parse_period_label(period_label)
+    period_is_filtered = period_bounds is not None
 
     generated_at = _dt.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
     txs = database.get_user_ledger_transactions(user_id, limit=20000)
     receipts = database.get_user_ledger_receipts(user_id, limit=20000)
+
+    # Filter by date BEFORE any aggregation. Otherwise the audit-summary
+    # totals on the Cover sheet would disagree with the Trial Balance and
+    # the accountant would lose trust in the pack.
+    if period_bounds is not None:
+        txs = filter_rows_by_iso_date(txs, bounds=period_bounds)
+        # Receipts: keep one if its own date_iso falls in range OR it's
+        # linked to a tx that's in range — that way matched receipts
+        # follow their transactions even when the receipt's own date is
+        # outside (card settlement lag).
+        in_period_tx_ids = {t["id"] for t in txs}
 
     links_rows = database._fetchall_dicts(
         "SELECT l.* FROM ledger_links l "
@@ -147,10 +172,27 @@ def build_export_zip(
     links_by_tx: dict[int, list[dict]] = {}
     links_by_rc: dict[int, list[dict]] = {}
     for link in links_rows:
+        # Drop links that point to filtered-out transactions
+        if period_bounds is not None and link["transaction_id"] not in in_period_tx_ids:
+            continue
         links_by_tx.setdefault(link["transaction_id"], []).append(link)
         links_by_rc.setdefault(link["receipt_id"], []).append(link)
 
-    summary = summarise_audit_readiness(user_id)
+    if period_bounds is not None:
+        receipts = [
+            r for r in receipts
+            if (r.get("date_iso") and period_bounds[0] <= r["date_iso"] <= period_bounds[1])
+            or r["id"] in links_by_rc
+        ]
+
+    # When a date filter is in effect, recompute the summary from the
+    # filtered txs so the Cover totals match the Transactions sheet
+    # pound-for-pound. Otherwise use the DB-wide summary (cheaper, and
+    # equivalent because no rows were excluded).
+    summary = (
+        summarise_from_rows(txs) if period_is_filtered
+        else summarise_audit_readiness(user_id)
+    )
 
     buf = io.BytesIO()
     file_hashes: dict[str, str] = {}
@@ -175,6 +217,7 @@ def build_export_zip(
             links_by_tx=links_by_tx,
             links_by_rc=links_by_rc,
             generated_at=generated_at,
+            period_is_filtered=period_is_filtered,
         )
         zf.writestr("Accountant_Pack.xlsx", xlsx_bytes)
         file_hashes["Accountant_Pack.xlsx"] = hashlib.sha256(xlsx_bytes).hexdigest()

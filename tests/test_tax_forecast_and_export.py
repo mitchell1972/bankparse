@@ -508,3 +508,244 @@ def test_tax_forecast_endpoint_returns_shape():
     assert "property" in body
     assert "combined" in body
     assert "tax_year" in body
+
+
+# ---------------------------------------------------------------------------
+# Accountant pack — Action Items sheet (priority sheet — first stop for the
+# practice firm after the Cover)
+# ---------------------------------------------------------------------------
+
+
+def test_action_items_sheet_shows_uncategorised_as_high_severity():
+    from services.accountant_export import build_export_zip
+    from openpyxl import load_workbook
+    uid = _seed_user("ai-uncat@example.com")
+    _add_tx(uid, hmrc_category=None, description="MYSTERY", amount=-50.0)
+    zip_bytes = build_export_zip(uid, "ai-uncat@example.com")
+    zf = zipfile.ZipFile(io.BytesIO(zip_bytes))
+    wb = load_workbook(io.BytesIO(zf.read("Accountant_Pack.xlsx")))
+    assert "Action Items" in wb.sheetnames
+    text = "\n".join(
+        " ".join(str(c.value or "") for c in row)
+        for row in wb["Action Items"].iter_rows()
+    )
+    assert "MYSTERY" in text
+    assert "HIGH" in text
+    assert "No HMRC category" in text
+
+
+def test_action_items_sheet_flags_low_confidence_categorisation():
+    from services.accountant_export import build_export_zip
+    from openpyxl import load_workbook
+    uid = _seed_user("ai-lowconf@example.com")
+    _add_tx(uid, hmrc_category="adminCosts",
+            hmrc_category_confidence=35,
+            description="STAPLES MAYBE", amount=-15.99)
+    zip_bytes = build_export_zip(uid, "ai-lowconf@example.com")
+    zf = zipfile.ZipFile(io.BytesIO(zip_bytes))
+    wb = load_workbook(io.BytesIO(zf.read("Accountant_Pack.xlsx")))
+    text = "\n".join(
+        " ".join(str(c.value or "") for c in row)
+        for row in wb["Action Items"].iter_rows()
+    )
+    assert "STAPLES MAYBE" in text
+    assert "Low confidence" in text
+
+
+def test_action_items_sheet_flags_large_expense_with_no_receipt():
+    from services.accountant_export import build_export_zip
+    from openpyxl import load_workbook
+    uid = _seed_user("ai-noreceipt@example.com")
+    _add_tx(uid, hmrc_category="adminCosts",
+            hmrc_category_confidence=90,
+            description="BIG SPEND", amount=-250.00)
+    zip_bytes = build_export_zip(uid, "ai-noreceipt@example.com")
+    zf = zipfile.ZipFile(io.BytesIO(zip_bytes))
+    wb = load_workbook(io.BytesIO(zf.read("Accountant_Pack.xlsx")))
+    text = "\n".join(
+        " ".join(str(c.value or "") for c in row)
+        for row in wb["Action Items"].iter_rows()
+    )
+    assert "BIG SPEND" in text
+    assert "no receipt" in text.lower()
+
+
+def test_action_items_sheet_says_all_clear_when_no_issues():
+    """The accountant should see a clear ✓ if everything's tidy — not a
+    misleading blank sheet."""
+    from services.accountant_export import build_export_zip
+    import database as _db
+    from openpyxl import load_workbook
+    uid = _seed_user("ai-clean@example.com")
+    # Categorised + high confidence + receipt-backed + small amount = no issues
+    tx = _add_tx(uid, hmrc_category="adminCosts",
+                 hmrc_category_confidence=95,
+                 description="CLEAN", amount=-9.99)
+    rc = _db.insert_ledger_receipt(
+        uid, extracted_data_id=None, file_path=None, source_filename="r.pdf",
+        store_name="Clean Co", date_iso=_dt.date.today().isoformat(),
+        total_amount=9.99, tax_amount=1.66,
+    )
+    _db.insert_ledger_link(transaction_id=tx, receipt_id=rc,
+                           match_strategy="exact", confidence=100)
+    zip_bytes = build_export_zip(uid, "ai-clean@example.com")
+    zf = zipfile.ZipFile(io.BytesIO(zip_bytes))
+    wb = load_workbook(io.BytesIO(zf.read("Accountant_Pack.xlsx")))
+    text = "\n".join(
+        " ".join(str(c.value or "") for c in row)
+        for row in wb["Action Items"].iter_rows()
+    )
+    assert "No issues detected" in text
+
+
+# ---------------------------------------------------------------------------
+# Trial Balance sheet — practice-tool import format
+# ---------------------------------------------------------------------------
+
+
+def test_trial_balance_sheet_has_correct_debit_credit_columns():
+    from services.accountant_export import build_export_zip
+    from openpyxl import load_workbook
+    uid = _seed_user("tb@example.com")
+    _add_tx(uid, hmrc_category="turnover",
+            description="CLIENT", amount=1000.00)
+    _add_tx(uid, hmrc_category="adminCosts",
+            description="OFFICE", amount=-150.00)
+    zip_bytes = build_export_zip(uid, "tb@example.com")
+    zf = zipfile.ZipFile(io.BytesIO(zip_bytes))
+    wb = load_workbook(io.BytesIO(zf.read("Accountant_Pack.xlsx")))
+    assert "Trial Balance" in wb.sheetnames
+    ws = wb["Trial Balance"]
+    rows = list(ws.iter_rows(values_only=True))
+    headers = rows[0]
+    assert headers == (
+        "Nominal code", "Description", "Debit (GBP)", "Credit (GBP)", "Net (GBP)",
+    )
+    # Build a lookup by nominal code
+    by_code = {r[0]: r for r in rows[1:] if r[0] and r[0] != "TOTALS"}
+    # turnover should be on the credit side
+    assert by_code["turnover"][3] == 1000.00
+    assert by_code["turnover"][2] in (0, None)
+    # adminCosts should be on the debit side
+    assert by_code["adminCosts"][2] == 150.00
+    assert by_code["adminCosts"][3] in (0, None)
+
+
+def test_trial_balance_totals_reconcile_to_cover():
+    """The TB totals row MUST match the Cover's Income/Expenses/Net so the
+    accountant's first sanity check passes. Tested with both income and
+    expense categories present."""
+    from services.accountant_export import build_export_zip
+    from openpyxl import load_workbook
+    uid = _seed_user("tb-recon@example.com")
+    _add_tx(uid, hmrc_category="turnover",
+            description="A", amount=2000.00)
+    _add_tx(uid, hmrc_category="turnover",
+            description="B", amount=1500.00)
+    _add_tx(uid, hmrc_category="adminCosts",
+            description="C", amount=-300.00)
+    zip_bytes = build_export_zip(uid, "tb-recon@example.com")
+    zf = zipfile.ZipFile(io.BytesIO(zip_bytes))
+    wb = load_workbook(io.BytesIO(zf.read("Accountant_Pack.xlsx")))
+    tb_rows = list(wb["Trial Balance"].iter_rows(values_only=True))
+    totals_row = next(r for r in tb_rows if r[1] == "TOTALS")
+    assert totals_row[2] == 300.00   # debit total = expenses
+    assert totals_row[3] == 3500.00  # credit total = income
+    assert totals_row[4] == 3200.00  # net = income - expenses
+
+
+# ---------------------------------------------------------------------------
+# Period filter — actually filters rows, not just labels the cover
+# ---------------------------------------------------------------------------
+
+
+def test_period_filter_drops_transactions_outside_q2_2026_27():
+    """Period dropdown set to Q2 2026-27 must exclude April + October rows."""
+    from services.accountant_export import build_export_zip
+    from openpyxl import load_workbook
+    uid = _seed_user("period@example.com")
+    _add_tx(uid, hmrc_category="adminCosts", date_iso="2026-04-15",
+            description="APR_PRE_Q2", amount=-10.0)
+    _add_tx(uid, hmrc_category="adminCosts", date_iso="2026-08-15",
+            description="AUG_IN_Q2", amount=-20.0)
+    _add_tx(uid, hmrc_category="adminCosts", date_iso="2026-10-20",
+            description="OCT_AFTER_Q2", amount=-30.0)
+    zip_bytes = build_export_zip(
+        uid, "period@example.com",
+        period_label="Q2 2026-27 (Jul-Sep)",
+    )
+    zf = zipfile.ZipFile(io.BytesIO(zip_bytes))
+    # Transactions CSV should only contain the in-period row
+    tx_csv = zf.read("data/transactions.csv").decode()
+    assert "AUG_IN_Q2" in tx_csv
+    assert "APR_PRE_Q2" not in tx_csv
+    assert "OCT_AFTER_Q2" not in tx_csv
+    # Cover marks the pack as filtered
+    wb = load_workbook(io.BytesIO(zf.read("Accountant_Pack.xlsx")))
+    cover_text = "\n".join(
+        " ".join(str(c.value or "") for c in row)
+        for row in wb["Cover"].iter_rows()
+    )
+    assert "FILTERED" in cover_text
+    assert "Filtered to period" in cover_text
+
+
+def test_period_filter_none_keeps_all_transactions():
+    """Empty period label → no filter, pack shows all-time."""
+    from services.accountant_export import build_export_zip
+    from openpyxl import load_workbook
+    uid = _seed_user("nofilter@example.com")
+    _add_tx(uid, hmrc_category="adminCosts", date_iso="2020-01-01",
+            description="OLD", amount=-5.0)
+    _add_tx(uid, hmrc_category="adminCosts", date_iso="2027-01-01",
+            description="FUTURE", amount=-7.0)
+    zip_bytes = build_export_zip(uid, "nofilter@example.com")
+    zf = zipfile.ZipFile(io.BytesIO(zip_bytes))
+    tx_csv = zf.read("data/transactions.csv").decode()
+    assert "OLD" in tx_csv
+    assert "FUTURE" in tx_csv
+    wb = load_workbook(io.BytesIO(zf.read("Accountant_Pack.xlsx")))
+    cover_text = "\n".join(
+        " ".join(str(c.value or "") for c in row)
+        for row in wb["Cover"].iter_rows()
+    )
+    assert "ALL TIME" in cover_text
+
+
+def test_period_filter_cover_totals_match_filtered_transactions():
+    """The Cover's headline totals must reconcile to the filtered tx set —
+    otherwise the accountant sees mismatched numbers and loses trust."""
+    from services.accountant_export import build_export_zip
+    from openpyxl import load_workbook
+    uid = _seed_user("recon@example.com")
+    # In period
+    _add_tx(uid, hmrc_category="turnover", date_iso="2026-08-15",
+            description="IN_INCOME", amount=1000.00)
+    _add_tx(uid, hmrc_category="adminCosts", date_iso="2026-08-16",
+            description="IN_EXPENSE", amount=-200.00)
+    # Out of period (must NOT count)
+    _add_tx(uid, hmrc_category="turnover", date_iso="2026-04-01",
+            description="OUT_INCOME", amount=9999.00)
+    zip_bytes = build_export_zip(
+        uid, "recon@example.com",
+        period_label="Q2 2026-27 (Jul-Sep)",
+    )
+    zf = zipfile.ZipFile(io.BytesIO(zip_bytes))
+    wb = load_workbook(io.BytesIO(zf.read("Accountant_Pack.xlsx")))
+    # Walk the Cover's right-hand totals block. Cell values are raw floats —
+    # the £ symbol is a number_format applied at render time.
+    cover = wb["Cover"]
+    totals_by_label: dict[str, float] = {}
+    for row in cover.iter_rows():
+        if len(row) < 4:
+            continue
+        label = row[2].value
+        val = row[3].value
+        if isinstance(label, str) and isinstance(val, (int, float)):
+            totals_by_label[label.strip()] = float(val)
+
+    assert totals_by_label.get("Income (gross)") == 1000.00, totals_by_label
+    assert totals_by_label.get("Expenses (gross)") == 200.00, totals_by_label
+    assert totals_by_label.get("Net profit") == 800.00, totals_by_label
+    # Out-of-period income must NOT inflate the totals
+    assert 9999.00 not in totals_by_label.values()

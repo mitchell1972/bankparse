@@ -21,16 +21,28 @@ from __future__ import annotations
 from typing import Iterable
 
 import database
+from hmrc.schemas import categories as _cats
 
 
+# Income-side category codes. Sources:
+#   - Canonical HMRC API names (hmrc.schemas.categories) — what
+#     ledger_transactions.hmrc_category actually stores in production.
+#   - Legacy `se_*` / `property_*` prefixed names that older code paths
+#     wrote. Kept for backward-compat with rows already in the DB.
+#   - The "uncategorised_income" sentinel — credits we haven't categorised
+#     yet, split out so they don't pollute the expense total.
 _INCOME_CATEGORIES = {
+    # Canonical
+    _cats.SE_INCOME,
+    _cats.SE_OTHER_INCOME,
+    _cats.PROP_INCOME_RENT,
+    _cats.PROP_INCOME_PREMIUMS,
+    # Legacy prefixed names — older code paths used these
     "se_turnover",
     "se_other_income",
     "property_rent_income",
     "property_other_income",
-    # Synthetic — credits we haven't categorised yet. Without this split,
-    # positive-amount transactions get lumped into "expenses" and inflate
-    # the total. Pinned by tests/test_audit_summary_sign_aware.py.
+    # Synthetic — credits we haven't categorised yet.
     "uncategorised_income",
 }
 
@@ -55,6 +67,20 @@ def _bucket_key(tx: dict) -> str:
     except (TypeError, ValueError):
         amt_f = 0.0
     return "uncategorised_income" if amt_f > 0 else "uncategorised"
+
+
+def summarise_from_rows(
+    txs: list[dict],
+    *,
+    include_excluded: bool = False,
+) -> dict:
+    """Same logic as ``summarise_audit_readiness`` but operates on a
+    pre-fetched / pre-filtered list of transactions. The accountant
+    export uses this so a quarterly pack's totals reconcile to its
+    Transactions sheet (otherwise the Cover would say all-time totals
+    while the data inside was filtered).
+    """
+    return _aggregate(txs, include_excluded=include_excluded)
 
 
 def summarise_audit_readiness(
@@ -96,7 +122,10 @@ def summarise_audit_readiness(
         }
     """
     txs = database.get_user_ledger_transactions(user_id, limit=10000)
+    return _aggregate(txs, include_excluded=include_excluded)
 
+
+def _aggregate(txs: list[dict], *, include_excluded: bool = False) -> dict:
     buckets: dict[str, dict] = {}
     for tx in txs:
         # Excluded transactions don't count in HMRC totals unless asked for.
