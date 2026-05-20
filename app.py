@@ -46,7 +46,12 @@ from database import (
     get_user_extracted_total_bytes,
     find_users_due_trial_reminder, mark_trial_reminder_sent,
     _fetchall_dicts,
+    list_user_accountant_pack_shares, revoke_accountant_pack_share,
 )
+# Module alias so endpoint code can reference `database.<helper>` without
+# adding every new helper to the top-level import block. Tests + intra-app
+# code both work.
+import database
 from otp import generate_otp, send_otp_email, send_trial_reminder_email
 from seo_pages import SEO_PAGES
 
@@ -899,6 +904,351 @@ async def api_accountant_export(
         media_type="application/zip",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+# ---------------------------------------------------------------------------
+# Send-to-accountant: shareable link + optional email invite
+# ---------------------------------------------------------------------------
+
+
+def _share_url(request: Request, token: str) -> str:
+    """Build the public share URL using the inbound request's scheme + host.
+    Behind Railway's edge so we trust X-Forwarded-Proto for HTTPS."""
+    base = str(request.base_url).rstrip("/")
+    return f"{base}/share/accountant-pack/{token}"
+
+
+@app.post("/api/accountant-export/share")
+@limiter.limit("10/minute")
+async def api_accountant_export_share(request: Request):
+    """Mint a shareable accountant-pack download link and (optionally)
+    email it to the accountant. The token is the auth — anyone holding
+    the URL can download until expiry (60 days default) or until the
+    user revokes it from /ledger.
+
+    Body:
+      {
+        "period": "Q2 2026-27 (Jul-Sep)" | null,
+        "client_name": "Mitoba Property Services" | null,
+        "accountant_email": "anna@cch-practice.co.uk" | null,
+        "accountant_name": "Anna Reeves" | null,
+        "send_email": true | false
+      }
+
+    Response:
+      {
+        "share_url": "https://bankscanai.com/share/accountant-pack/...",
+        "token": "...",
+        "expires_at": <epoch seconds>,
+        "email_sent": true | false
+      }
+    """
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required.")
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    period = (body.get("period") or "").strip() or None
+    client_name = (body.get("client_name") or "").strip() or None
+    accountant_email = (body.get("accountant_email") or "").strip() or None
+    accountant_name = (body.get("accountant_name") or "").strip() or None
+    send_email = bool(body.get("send_email"))
+
+    from services.accountant_share import create_share
+    share = create_share(
+        user_id=user["id"],
+        period_label=period,
+        client_name=client_name,
+        accountant_email=accountant_email,
+        accountant_name=accountant_name,
+    )
+    share_url = _share_url(request, share["token"])
+
+    email_sent = False
+    if send_email and accountant_email:
+        # Build a fresh summary just for the email body's "at a glance" —
+        # not the full ZIP yet, that gets built on download.
+        from services.audit_summary import summarise_audit_readiness
+        from services.tax_period import parse_period_label
+        from otp import send_accountant_pack_email
+        summary = summarise_audit_readiness(user["id"])
+        # Human-readable expiry — "9 July 2026" reads better than the epoch
+        import datetime as _dt
+        try:
+            exp = _dt.datetime.utcfromtimestamp(float(share["expires_at"]))
+            expires_human = "on " + exp.strftime("%-d %B %Y")
+        except Exception:
+            expires_human = None
+        email_sent = send_accountant_pack_email(
+            accountant_email=accountant_email,
+            accountant_name=accountant_name,
+            share_url=share_url,
+            client_name=client_name or user["email"],
+            period_label=period or "All time",
+            sender_email=user["email"],
+            totals=summary.get("totals", {}),
+            expires_human=expires_human,
+        )
+
+    return JSONResponse({
+        "status": "ok",
+        "share_url": share_url,
+        "token": share["token"],
+        "expires_at": share["expires_at"],
+        "email_sent": email_sent,
+    })
+
+
+@app.get("/api/accountant-export/shares")
+async def api_accountant_export_shares_list(request: Request):
+    """List the user's recent shares so the /ledger panel can show
+    "previously sent" with revoke buttons."""
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required.")
+    rows = database.list_user_accountant_pack_shares(user["id"], limit=20)
+    # Don't leak the raw token in the list — only return enough to identify
+    # and revoke. Full URL is only shown at create-time.
+    import time as _time
+    out = []
+    for r in rows:
+        out.append({
+            "id": r["id"],
+            "accountant_email": r.get("accountant_email"),
+            "accountant_name": r.get("accountant_name"),
+            "period_label": r.get("period_label"),
+            "client_name": r.get("client_name"),
+            "created_at": r.get("created_at"),
+            "expires_at": r.get("expires_at"),
+            "revoked_at": r.get("revoked_at"),
+            "download_count": r.get("download_count") or 0,
+            "last_downloaded_at": r.get("last_downloaded_at"),
+            "is_active": (
+                not r.get("revoked_at")
+                and float(r.get("expires_at") or 0) > _time.time()
+            ),
+            "token_tail": (r.get("token") or "")[-6:],
+        })
+    return JSONResponse({"shares": out})
+
+
+@app.post("/api/accountant-export/share/{share_id}/revoke")
+@limiter.limit("30/minute")
+async def api_accountant_export_share_revoke(share_id: int, request: Request):
+    """Revoke a previously-issued share. Idempotent — already-revoked
+    shares stay revoked."""
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required.")
+    ok = database.revoke_accountant_pack_share(user["id"], share_id)
+    if not ok:
+        # Already-revoked or not-yours — return 404 so we don't leak
+        # which IDs exist.
+        raise HTTPException(status_code=404, detail="Share not found.")
+    return JSONResponse({"status": "ok", "share_id": share_id})
+
+
+@app.get("/share/accountant-pack/{token}", response_class=HTMLResponse)
+async def share_accountant_pack_landing(token: str, request: Request):
+    """Public landing page for the accountant. Shows totals, expiry,
+    and a big Download button. Token IS the auth."""
+    from services.accountant_share import resolve_share
+    share = resolve_share(token)
+    if not share:
+        return HTMLResponse(
+            content=_share_invalid_html(),
+            status_code=404,
+        )
+    # Pull the underlying user for the "Sent by" line + summary
+    sender = database.get_user_by_id(int(share["user_id"]))
+    sender_email = sender["email"] if sender else "your client"
+
+    from services.audit_summary import summarise_audit_readiness
+    summary = summarise_audit_readiness(int(share["user_id"]))
+    totals = summary.get("totals", {})
+
+    import datetime as _dt
+    try:
+        exp = _dt.datetime.utcfromtimestamp(float(share["expires_at"]))
+        expires_human = exp.strftime("%-d %B %Y")
+    except Exception:
+        expires_human = "60 days from issue"
+
+    download_url = f"/share/accountant-pack/{token}/download"
+    html = _share_landing_html(
+        token=token,
+        share=share,
+        sender_email=sender_email,
+        totals=totals,
+        expires_human=expires_human,
+        download_url=download_url,
+    )
+    return HTMLResponse(html)
+
+
+@app.get("/share/accountant-pack/{token}/download")
+async def share_accountant_pack_download(token: str, request: Request):
+    """Public download endpoint. Returns the actual ZIP. No auth — the
+    token IS the auth. Bumps download_count + last_downloaded_at."""
+    from services.accountant_share import resolve_share, record_download
+    from services.accountant_export import build_export_zip
+    share = resolve_share(token)
+    if not share:
+        raise HTTPException(status_code=404, detail="Share is invalid, expired, or revoked.")
+
+    user = database.get_user_by_id(int(share["user_id"]))
+    if not user:
+        raise HTTPException(status_code=404, detail="Share owner not found.")
+
+    zip_bytes = build_export_zip(
+        user["id"], user["email"],
+        period_label=share.get("period_label"),
+        client_name=share.get("client_name"),
+    )
+    record_download(int(share["id"]))
+
+    safe_period = (share.get("period_label") or "current").replace(" ", "_").replace("/", "-")
+    safe_client = re.sub(r"[^A-Za-z0-9._-]+", "_",
+                          (share.get("client_name") or "")).strip("_")[:40]
+    name_part = f"{safe_client}_" if safe_client else ""
+    filename = f"BankScan_Accountant_Pack_{name_part}{safe_period}.zip"
+    return Response(
+        content=zip_bytes,
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+def _share_invalid_html() -> str:
+    """Friendly 404 for missing/expired/revoked share tokens."""
+    return """<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Pack unavailable — BankScan AI</title>
+<style>
+body { font-family: -apple-system, sans-serif; max-width: 480px; margin: 4rem auto;
+       padding: 2rem; color: #2C3E50; text-align: center; }
+h1 { color: #1B4F72; }
+.card { background: #FDFEFE; border: 1px solid #D5DBDB; border-radius: 8px;
+        padding: 2rem; margin-top: 1.5rem; }
+.muted { color: #566573; font-size: 0.9rem; margin-top: 1.5rem; }
+</style></head>
+<body>
+<h1>BankScan AI</h1>
+<div class="card">
+  <h2 style="color:#C0392B;">This link isn't valid.</h2>
+  <p>It may have expired, been revoked, or never existed in the first place.</p>
+  <p>Reach out to your client — they can re-issue a fresh link from the BankScan AI dashboard.</p>
+</div>
+<p class="muted">BankScan AI · accountant pack delivery</p>
+</body></html>"""
+
+
+def _share_landing_html(
+    *, token: str, share: dict, sender_email: str, totals: dict,
+    expires_human: str, download_url: str,
+) -> str:
+    """The page the accountant lands on. Shows totals up-front and a
+    big Download button. Designed to be openable without login, on any
+    device, including corporate sandbox browsers."""
+    client = share.get("client_name") or sender_email
+    period = share.get("period_label") or "All time"
+    income = float(totals.get("income", 0) or 0)
+    expenses = float(totals.get("expenses", 0) or 0)
+    net = income - expenses
+    audit_pct = totals.get("audit_ready_pct", 0)
+    tx_count = totals.get("transactions_total", 0)
+    missing = totals.get("transactions_missing", 0)
+
+    # Lightweight HTML escape for the strings we render
+    import html as _html
+    client_safe = _html.escape(client)
+    period_safe = _html.escape(period)
+    sender_safe = _html.escape(sender_email)
+
+    return f"""<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Accountant pack from {client_safe} — BankScan AI</title>
+<style>
+  body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+          max-width: 640px; margin: 2.5rem auto; padding: 0 1.25rem; color: #2C3E50;
+          background: #F8F9F9; }}
+  .card {{ background: #FFFFFF; border: 1px solid #E5E8E8; border-radius: 10px;
+           padding: 2rem 2.25rem; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }}
+  h1 {{ color: #1B4F72; font-size: 1.4rem; margin: 0 0 0.25rem; }}
+  .sub {{ color: #566573; margin: 0 0 1.5rem; font-size: 0.95rem; }}
+  .stats {{ display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem 1.5rem;
+            background: #F4F6F7; padding: 1rem 1.25rem; border-radius: 6px;
+            border-left: 4px solid #1B4F72; margin: 1rem 0 1.5rem; font-size: 0.95rem; }}
+  .stats .label {{ color: #566573; }}
+  .stats .val {{ text-align: right; font-weight: 600; }}
+  .stats .val.warn {{ color: #B7950B; }}
+  .cta {{ text-align: center; margin: 1.75rem 0 1rem; }}
+  .cta a {{ display: inline-block; padding: 0.95rem 2rem; background: #1B4F72;
+            color: #fff; text-decoration: none; border-radius: 6px;
+            font-weight: 600; font-size: 1.05rem; }}
+  .cta a:hover {{ background: #21618C; }}
+  .expiry {{ font-size: 0.85rem; color: #566573; margin-top: 0.7rem; }}
+  .contents {{ font-size: 0.9rem; color: #566573; }}
+  .contents li {{ margin-bottom: 0.25rem; }}
+  .disclaimer {{ font-size: 0.78rem; color: #95A5A6;
+                  border-top: 1px solid #EAEDED; padding-top: 1rem;
+                  margin-top: 1.5rem; }}
+  .reply {{ font-size: 0.9rem; color: #566573; margin-top: 1rem; }}
+  .reply a {{ color: #2874A6; }}
+</style></head><body>
+<div class="card">
+  <h1>Accountant pack — ready for review</h1>
+  <p class="sub">From <strong>{client_safe}</strong> · Period <strong>{period_safe}</strong></p>
+
+  <div class="stats">
+    <div class="label">Income (gross)</div>
+    <div class="val">£{income:,.2f}</div>
+    <div class="label">Expenses (gross)</div>
+    <div class="val">£{expenses:,.2f}</div>
+    <div class="label">Net</div>
+    <div class="val">£{net:,.2f}</div>
+    <div class="label">Transactions</div>
+    <div class="val">{tx_count}</div>
+    <div class="label">Receipt-backed</div>
+    <div class="val">{audit_pct}%</div>
+    <div class="label">Missing receipts</div>
+    <div class="val {'warn' if missing else ''}">{missing}</div>
+  </div>
+
+  <div class="cta">
+    <a href="{download_url}">Download pack (.zip)</a>
+    <div class="expiry">Link expires on {expires_human}. No login required.</div>
+  </div>
+
+  <div class="contents">
+    <strong>What's inside:</strong>
+    <ul>
+      <li><strong>Accountant_Pack.xlsx</strong> — Cover, Action Items, Tax Return Boxes
+          (SA103/SA105), Trial Balance, Transactions, Missing Receipts, Receipt
+          Inventory, VAT Register, Reasoning Log.</li>
+      <li><strong>receipts/</strong> — grouped by HMRC category, plus _orphan and
+          _missing-file sub-folders.</li>
+      <li><strong>data/</strong> — raw CSVs for CCH / IRIS / TaxCalc / Sage import.</li>
+      <li><strong>summary.html</strong> — Audit Confidence Certificate
+          (print-to-PDF in your browser).</li>
+      <li><strong>manifest.json</strong> — SHA-256 hashes for audit integrity.</li>
+    </ul>
+  </div>
+
+  <p class="reply">
+    Questions? Email <a href="mailto:{sender_safe}">{sender_safe}</a> — replies
+    go straight back to the client.
+  </p>
+
+  <p class="disclaimer">
+    AI-assisted draft. Requires sign-off by a qualified accountant or tax practitioner.
+    BankScan AI does not provide accounting or tax advice.
+  </p>
+</div>
+</body></html>"""
 
 
 # ---------------------------------------------------------------------------

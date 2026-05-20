@@ -385,8 +385,32 @@ def init_db():
             elapsed_ms INTEGER NOT NULL DEFAULT 0,
             created_at REAL NOT NULL
         )""",
+        # Shareable accountant-pack download links. Each row is one share
+        # the user generated. The token IS the auth — anyone with the link
+        # can download until it expires or the user revokes it. Tracks
+        # accountant_email + last_downloaded_at so the user can see if
+        # the accountant actually opened the pack.
+        """CREATE TABLE IF NOT EXISTS accountant_pack_shares (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            token TEXT NOT NULL UNIQUE,
+            accountant_email TEXT,
+            accountant_name TEXT,
+            period_label TEXT,
+            client_name TEXT,
+            created_at REAL NOT NULL,
+            expires_at REAL NOT NULL,
+            revoked_at REAL,
+            download_count INTEGER NOT NULL DEFAULT 0,
+            last_downloaded_at REAL,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+        )""",
         "CREATE INDEX IF NOT EXISTS idx_hmrc_categorisation_events_user_created "
         "ON hmrc_categorisation_events(user_id, created_at)",
+        "CREATE INDEX IF NOT EXISTS idx_accountant_shares_user "
+        "ON accountant_pack_shares(user_id)",
+        "CREATE INDEX IF NOT EXISTS idx_accountant_shares_token "
+        "ON accountant_pack_shares(token)",
         "CREATE INDEX IF NOT EXISTS idx_extracted_user_mode ON user_extracted_data(user_id, mode)",
         "CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)",
         "CREATE INDEX IF NOT EXISTS idx_users_stripe ON users(stripe_customer_id)",
@@ -1276,6 +1300,76 @@ def remove_ledger_link(transaction_id: int, receipt_id: int) -> None:
             "UPDATE ledger_receipts SET match_status = 'unmatched' WHERE id = ?",
             (receipt_id,),
         )
+
+
+def create_accountant_pack_share(
+    *,
+    user_id: int,
+    token: str,
+    period_label: str | None,
+    client_name: str | None,
+    accountant_email: str | None,
+    accountant_name: str | None,
+    expires_at: float,
+) -> int:
+    """Insert one accountant-pack share row. Returns the new id."""
+    import time as _time
+    _execute(
+        """INSERT INTO accountant_pack_shares
+        (user_id, token, accountant_email, accountant_name,
+         period_label, client_name, created_at, expires_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+        (user_id, token, accountant_email, accountant_name,
+         period_label, client_name, _time.time(), float(expires_at)),
+    )
+    row = _fetchone_dict(
+        "SELECT id FROM accountant_pack_shares WHERE token = ?",
+        (token,),
+    )
+    return int(row["id"])
+
+
+def get_accountant_pack_share_by_token(token: str) -> dict | None:
+    return _fetchone_dict(
+        "SELECT * FROM accountant_pack_shares WHERE token = ?",
+        (token,),
+    )
+
+
+def list_user_accountant_pack_shares(user_id: int, *, limit: int = 50) -> list[dict]:
+    """Most recent first. Used by the /ledger panel to show 'previously
+    sent' so the user can re-share or revoke."""
+    return _fetchall_dicts(
+        "SELECT * FROM accountant_pack_shares WHERE user_id = ? "
+        "ORDER BY created_at DESC LIMIT ?",
+        (user_id, int(limit)),
+    )
+
+
+def mark_accountant_pack_share_downloaded(share_id: int) -> None:
+    import time as _time
+    _execute(
+        "UPDATE accountant_pack_shares SET download_count = download_count + 1, "
+        "last_downloaded_at = ? WHERE id = ?",
+        (_time.time(), int(share_id)),
+    )
+
+
+def revoke_accountant_pack_share(user_id: int, share_id: int) -> bool:
+    """Owner-checked revoke. Returns True if a row was actually revoked."""
+    import time as _time
+    row = _fetchone_dict(
+        "SELECT id FROM accountant_pack_shares "
+        "WHERE id = ? AND user_id = ? AND revoked_at IS NULL",
+        (int(share_id), int(user_id)),
+    )
+    if not row:
+        return False
+    _execute(
+        "UPDATE accountant_pack_shares SET revoked_at = ? WHERE id = ?",
+        (_time.time(), int(share_id)),
+    )
+    return True
 
 
 def get_user_ledger_transactions(
