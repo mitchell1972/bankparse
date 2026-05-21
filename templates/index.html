@@ -2492,10 +2492,20 @@
                 badge.style.background = '#FEF3C7';
                 badge.style.color = '#92400E';
                 badge.textContent = data.connected ? 'Setup needed' : 'Demo';
+                // If we have a stashed NINO from a previous Mint and the
+                // user has now OAuthed but not saved a NINO, auto-run
+                // Discover so they don't have to retype it. Idempotent.
+                if (data.connected) {
+                    maybeAutoDiscoverFromStash();
+                }
             } else {
                 badge.style.background = '#D1FAE5';
                 badge.style.color = '#065F46';
                 badge.textContent = 'Live (HMRC)';
+                // We're in Live state — the stashed NINO is no longer
+                // needed; the server-side hmrc_connections row is the
+                // source of truth from here on.
+                try { localStorage.removeItem('bp_pending_nino'); } catch (e) {}
             }
             // Always show the NINO discover form while connected — gives the
             // user an escape hatch to search a different NINO (e.g. after
@@ -2569,6 +2579,84 @@
         sub.textContent = `${next.business_label}`;
         // Show the strip only when we actually have something useful.
         strip.style.display = 'grid';
+    }
+
+    // Auto-Discover after OAuth using the NINO we stashed at Mint time.
+    // Guard rails:
+    //   - only runs ONCE per stash (we clear after first attempt)
+    //   - no-ops if no stashed NINO
+    //   - no-ops if user isn't connected (loadHmrcDeadlines gates on that)
+    //   - silently falls back to manual flow if anything fails
+    let _autoDiscoverInFlight = false;
+    async function maybeAutoDiscoverFromStash() {
+        if (_autoDiscoverInFlight) return;
+        let stashed = '';
+        try { stashed = localStorage.getItem('bp_pending_nino') || ''; }
+        catch (e) { return; }
+        if (!stashed) return;
+        _autoDiscoverInFlight = true;
+        // Clear immediately so a refresh during the call doesn't retry.
+        try { localStorage.removeItem('bp_pending_nino'); } catch (e) {}
+
+        const banner = document.createElement('div');
+        banner.id = 'bpAutoDiscoverBanner';
+        banner.style.cssText = 'background:#EBF5FB; border:1px solid #AED6F1; color:#1B4F72; border-radius:6px; padding:0.7rem 0.9rem; margin:0.6rem 0; font-size:0.88rem;';
+        banner.innerHTML = `Setting up <code>${stashed}</code> with HMRC… one moment.`;
+        const dlPanel = document.getElementById('hmrcDeadlinesPanel');
+        if (dlPanel && dlPanel.parentNode) dlPanel.parentNode.insertBefore(banner, dlPanel);
+
+        try {
+            const csrf = (document.cookie.match(/bp_csrf=([^;]+)/) || [])[1] || '';
+            // 1) Try Discover. If HMRC has businesses against this NINO already,
+            //    we're done — flip straight to Live.
+            const dr = await fetch('/api/hmrc/connect-businesses', {
+                method: 'POST', credentials: 'include',
+                headers: { 'Content-Type': 'application/json',
+                           'X-CSRF-Token': decodeURIComponent(csrf) },
+                body: JSON.stringify({ nino: stashed }),
+            });
+            if (dr.ok) {
+                banner.innerHTML = `✓ Set up <code>${stashed}</code>. Reloading…`;
+                setTimeout(() => window.location.reload(), 600);
+                return;
+            }
+            const derr = await dr.json().catch(() => ({}));
+            // 2) HMRC returned 404 (no businesses yet for this NINO). Auto-run
+            //    Set-me-up to provision one SE + one property business.
+            if (dr.status === 404) {
+                banner.innerHTML = `NINO recognised — provisioning sandbox businesses…`;
+                const sr = await fetch('/api/hmrc/sandbox/setup-complete', {
+                    method: 'POST', credentials: 'include',
+                    headers: { 'Content-Type': 'application/json',
+                               'X-CSRF-Token': decodeURIComponent(csrf) },
+                    body: '{}',
+                });
+                if (sr.ok) {
+                    banner.innerHTML = `✓ Sandbox ready. Reloading…`;
+                    setTimeout(() => window.location.reload(), 600);
+                    return;
+                }
+                const serr = await sr.json().catch(() => ({}));
+                banner.style.background = '#FEE2E2';
+                banner.style.borderColor = '#FCA5A5';
+                banner.style.color = '#991B1B';
+                banner.innerHTML = `Couldn't auto-set-up: ${serr.detail || sr.status}. Use the NINO form below to finish manually.`;
+                return;
+            }
+            // 3) Anything else (409 OAuth mismatch, 400, etc.) — surface
+            //    the error and fall back to manual.
+            banner.style.background = '#FEE2E2';
+            banner.style.borderColor = '#FCA5A5';
+            banner.style.color = '#991B1B';
+            banner.innerHTML = `Couldn't auto-discover <code>${stashed}</code>: ${derr.detail || dr.status}. Use the NINO form below to finish manually.`;
+        } catch (e) {
+            banner.style.background = '#FEE2E2';
+            banner.style.borderColor = '#FCA5A5';
+            banner.style.color = '#991B1B';
+            banner.innerHTML = `Network error during auto-setup. Use the NINO form below to finish manually.`;
+        } finally {
+            _autoDiscoverInFlight = false;
+        }
     }
 
     async function loadHmrcHeadlineExtras() {
@@ -2857,6 +2945,14 @@
                     const data = await resp.json();
                     mintResult.style.display = 'block';
                     if (resp.ok) {
+                        // Stash the NINO so we can auto-Discover after the
+                        // user OAuths as this new test individual — saves
+                        // them from having to type the NINO again.
+                        try {
+                            if (data.nino) {
+                                localStorage.setItem('bp_pending_nino', data.nino);
+                            }
+                        } catch (e) { /* localStorage may be disabled */ }
                         // Pretty-print the credentials with copy buttons so
                         // the user can paste straight into the NINO field
                         // and the HMRC sandbox sign-in page.
