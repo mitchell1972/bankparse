@@ -100,6 +100,24 @@ async def hmrc_callback(request: Request):
     return response
 
 
+@router.post("/api/hmrc/disconnect")
+async def hmrc_disconnect(request: Request):
+    """Forget this user's stored HMRC tokens so they can re-OAuth as a
+    different Government Gateway user. Used by the sandbox flow when the
+    developer mints a new test individual and needs the OAuth identity
+    to match the new NINO. Also useful in production if tokens are
+    irrecoverably stale.
+
+    Wipes the entire `hmrc_connections` row (tokens, NINO, businesses) —
+    safe because re-OAuth + 'Discover my businesses' rebuilds it.
+    """
+    user = getattr(request.state, "user", None) or _get_user_via_app(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required.")
+    _tokens.revoke(user["id"])
+    return JSONResponse({"ok": True})
+
+
 def _get_user_via_app(request: Request) -> dict | None:
     """Best-effort fallback to read the logged-in user without a hard coupling."""
     try:

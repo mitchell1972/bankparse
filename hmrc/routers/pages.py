@@ -22,12 +22,21 @@ async def hmrc_connect_page(request: Request):
     if not user:
         return RedirectResponse(url="/login?next=/hmrc/connect", status_code=302)
 
-    connected = _tokens.get_tokens(user["id"]) is not None
+    info = _tokens.get_tokens(user["id"]) or {}
+    connected = bool(info.get("access_token"))
+    # Surfaced in the template so the user can see WHICH NINO their
+    # OAuth session is currently bound to — helps disambiguate when
+    # they've minted multiple sandbox test users.
+    nino = info.get("nino") or ""
+    import os as _os
+    is_sandbox = _os.environ.get("HMRC_ENV", "sandbox").lower() != "production"
     return templates.TemplateResponse(
         request,
         "hmrc/connect.html",
         {
             "connected": connected,
+            "nino": nino,
+            "is_sandbox": is_sandbox,
             "status": request.query_params.get("status", ""),
             "detail": request.query_params.get("detail", ""),
         },

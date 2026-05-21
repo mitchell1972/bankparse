@@ -79,14 +79,71 @@
         {% endif %}
 
         {% if connected %}
-            <p>HMRC connection is active for this account.</p>
+            <p>HMRC connection is active for this account{% if nino %} (NINO <code>{{ nino }}</code>){% endif %}.</p>
             <ul class="benefits">
                 <li>Submit quarterly self-employment summaries</li>
                 <li>Submit quarterly property summaries</li>
                 <li>End of Period Statement and Final Declaration</li>
                 <li>Auto-categorise transactions from your uploaded bank statements</li>
             </ul>
-            <a href="/" style="color: var(--primary-light);">Back to dashboard</a>
+
+            {% if is_sandbox %}
+            <div style="margin-top:1.2rem; padding:0.8rem; background:#FEF9E7; border:1px solid #F4D03F; border-radius:5px;">
+                <p style="margin:0 0 0.5rem 0; font-size:0.88rem; color:#7D6608;">
+                    <strong>Just minted a new sandbox test user?</strong>
+                    Disconnect and sign in again with the new Government Gateway credentials so HMRC binds your OAuth session to the new NINO.
+                </p>
+                <button type="button" id="hmrcDisconnectBtn"
+                        style="background:#B91C1C; color:#fff; border:0; padding:0.5rem 1rem; border-radius:4px; font-weight:600; cursor:pointer; font-size:0.85rem;">
+                    Disconnect &amp; sign in with different credentials →
+                </button>
+                <div id="hmrcDisconnectMsg" style="margin-top:0.5rem; font-size:0.82rem; display:none;"></div>
+            </div>
+            {% endif %}
+
+            <p style="margin-top:1rem;"><a href="/" style="color: var(--primary-light);">Back to dashboard</a></p>
+
+            <script>
+            (function(){
+                const btn = document.getElementById('hmrcDisconnectBtn');
+                const msg = document.getElementById('hmrcDisconnectMsg');
+                if (!btn) return;
+                btn.addEventListener('click', async () => {
+                    if (!confirm('Disconnect this HMRC session and sign in with different credentials? Your stored NINO and businesses will be cleared.')) return;
+                    btn.disabled = true;
+                    const original = btn.textContent;
+                    btn.textContent = 'Disconnecting…';
+                    try {
+                        const csrf = (document.cookie.match(/bp_csrf=([^;]+)/) || [])[1] || '';
+                        const r = await fetch('/api/hmrc/disconnect', {
+                            method: 'POST',
+                            credentials: 'include',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRF-Token': decodeURIComponent(csrf),
+                            },
+                            body: '{}',
+                        });
+                        if (r.ok) {
+                            // Send straight to HMRC's authorize URL so the user
+                            // signs in again with one click.
+                            window.location.href = '/api/hmrc/connect';
+                            return;
+                        }
+                        msg.style.display = 'block';
+                        msg.style.color = '#B91C1C';
+                        msg.textContent = `Couldn't disconnect (status ${r.status}). Try again.`;
+                    } catch (e) {
+                        msg.style.display = 'block';
+                        msg.style.color = '#B91C1C';
+                        msg.textContent = 'Network error. Try again.';
+                    } finally {
+                        btn.disabled = false;
+                        btn.textContent = original;
+                    }
+                });
+            })();
+            </script>
         {% else %}
             <ul class="benefits">
                 <li>Submit quarterly self-employment summaries</li>
