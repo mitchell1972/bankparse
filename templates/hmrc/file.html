@@ -242,6 +242,10 @@ async function loadObligations() {
     }
     const data = await r.json();
     STATE.obligations = data.obligations || [];
+    // Capture demo flag so renderObligations can disable Submit on fake
+    // fixtures (and explain WHY they're disabled).
+    STATE.demo = !!data.demo;
+    STATE.connected = !!data.connected;
     renderObligations();
     renderNextDeadlineTile();
   } catch (e) {
@@ -259,6 +263,27 @@ function renderObligations() {
   }
   wrap.innerHTML = '';
   wrap.className = '';
+
+  // Demo mode banner — these obligations are fixtures, not real HMRC data.
+  // Without this, the Submit button would call HMRC and fail with "no
+  // NINO saved" because the user hasn't completed setup yet.
+  if (STATE.demo) {
+    const banner = document.createElement('div');
+    banner.style.cssText = 'background:#FEF3C7; border:1px solid #F4D03F; color:#7D6608; border-radius:8px; padding:0.9rem 1rem; margin-bottom:1rem; font-size:0.9rem;';
+    const detail = STATE.connected
+      ? "You're connected to HMRC but haven't saved your NINO + businesses yet. The deadlines below are sample fixtures so you can see the UI. Go to the dashboard, enter your NINO, and click 'Discover my businesses' — real HMRC obligations will replace these."
+      : "You're not connected to HMRC yet. The deadlines below are sample fixtures so you can see the UI. Connect to HMRC and complete setup to file real returns.";
+    const cta = STATE.connected
+      ? '<a href="/" style="display:inline-block; margin-top:0.5rem; background:#1B4F72; color:#fff; padding:0.45rem 0.9rem; border-radius:6px; text-decoration:none; font-weight:600;">Go to dashboard to add your NINO →</a>'
+      : '<a href="/hmrc/connect" style="display:inline-block; margin-top:0.5rem; background:#1B4F72; color:#fff; padding:0.45rem 0.9rem; border-radius:6px; text-decoration:none; font-weight:600;">Connect to HMRC →</a>';
+    banner.innerHTML = `
+      <div style="font-weight:600; margin-bottom:0.3rem;">📋 These are sample obligations</div>
+      <div>${detail}</div>
+      ${cta}
+    `;
+    wrap.appendChild(banner);
+  }
+
   rows.forEach((o, idx) => {
     const div = document.createElement('div');
     div.className = 'obligation';
@@ -268,7 +293,13 @@ function renderObligations() {
     if (o.status === 'filed') {
       btn = '<span style="color: #1E8449; font-size: 0.85rem;">✓ Submitted</span>';
     } else if (o.status === 'open' || o.status === 'upcoming' || o.status === 'overdue') {
-      btn = `<button class="btn" onclick="openSubmitDialog(${idx})">Submit</button>`;
+      // In demo mode the Submit endpoint will fail (no NINO). Replace the
+      // button with a clear message so the user goes to setup first.
+      if (STATE.demo) {
+        btn = '<span style="color:#7D6608; font-size:0.82rem;">Set up your NINO to enable</span>';
+      } else {
+        btn = `<button class="btn" onclick="openSubmitDialog(${idx})">Submit</button>`;
+      }
     }
     div.innerHTML = `
       <div>

@@ -251,7 +251,8 @@ def _require_nino(user_id: int) -> str:
     nino = info.get("nino")
     if not nino:
         raise NinoNotConfiguredError(
-            "User has no NINO saved. Complete business setup "
-            "(/api/hmrc/connect-businesses) first."
+            "No NINO on file for this account. Open your dashboard, type "
+            "your National Insurance Number into the 'Your HMRC deadlines' "
+            "card, click 'Discover my businesses', then come back here."
         )
     return nino
