@@ -2644,11 +2644,9 @@
                 return;
             }
             // 3) Anything else (409 OAuth mismatch, 400, etc.) — surface
-            //    the error and fall back to manual.
-            banner.style.background = '#FEE2E2';
-            banner.style.borderColor = '#FCA5A5';
-            banner.style.color = '#991B1B';
-            banner.innerHTML = `Couldn't auto-discover <code>${stashed}</code>: ${derr.detail || dr.status}. Use the NINO form below to finish manually.`;
+            //    the error AND show the stashed credentials so the user
+            //    has a clear recovery path instead of being stuck.
+            renderOAuthMismatchRecovery(banner, stashed, derr.detail || `HMRC returned ${dr.status}`);
         } catch (e) {
             banner.style.background = '#FEE2E2';
             banner.style.borderColor = '#FCA5A5';
@@ -2656,6 +2654,86 @@
             banner.innerHTML = `Network error during auto-setup. Use the NINO form below to finish manually.`;
         } finally {
             _autoDiscoverInFlight = false;
+        }
+    }
+
+    function renderOAuthMismatchRecovery(banner, nino, detail) {
+        // Recover the full credential set we stashed at Mint time so the
+        // user can see WHICH GG userId + password to type on HMRC's
+        // sign-in page. Without this they're stuck guessing.
+        let creds = {};
+        try {
+            const raw = localStorage.getItem('bp_pending_creds');
+            if (raw) creds = JSON.parse(raw) || {};
+        } catch (e) {}
+        // Re-stash the NINO so the user can retry — we cleared it
+        // earlier as the in-flight guard, but they may need it again
+        // on the next OAuth round.
+        try { localStorage.setItem('bp_pending_nino', nino); } catch (e) {}
+
+        const safe = s => String(s == null ? '' : s).replace(/[<>&]/g,
+            c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
+        const row = (label, value) => value ? `
+            <div style="display:flex; gap:0.5rem; align-items:center; margin:0.2rem 0;">
+              <span style="min-width:120px; color:#7B7B7B; font-size:0.78rem;">${label}</span>
+              <code style="background:#fff; padding:0.15rem 0.4rem; border-radius:3px; border:1px solid #D5DBDB; font-size:0.85rem; user-select:all;">${safe(value)}</code>
+              <button type="button" onclick="navigator.clipboard.writeText('${safe(value)}'); this.textContent='✓'"
+                      style="background:none; border:0; color:#2874A6; cursor:pointer; font-size:0.78rem;">copy</button>
+            </div>` : '';
+
+        banner.style.background = '#FEF9E7';
+        banner.style.borderColor = '#F4D03F';
+        banner.style.color = '#7D6608';
+        banner.innerHTML = `
+            <div style="font-weight:600; margin-bottom:0.4rem; font-size:0.92rem;">
+              ⚠ HMRC OAuth signed you in as a different test user than NINO <code>${safe(nino)}</code>.
+            </div>
+            <div style="font-size:0.83rem; color:#566573; margin-bottom:0.6rem;">
+              ${safe(detail)}
+            </div>
+            ${creds.userId || creds.password ? `
+              <div style="background:#fff; border:1px solid #F4D03F; border-radius:5px; padding:0.6rem 0.8rem; margin-bottom:0.6rem;">
+                <div style="font-weight:600; font-size:0.82rem; color:#7D6608; margin-bottom:0.35rem;">
+                  Credentials from your most recent mint — sign in with EXACTLY these on HMRC's page:
+                </div>
+                ${row('NINO',        creds.nino || nino)}
+                ${row('GG userId',   creds.userId)}
+                ${row('GG password', creds.password)}
+              </div>` : `
+              <div style="background:#fff; border:1px solid #F4D03F; border-radius:5px; padding:0.6rem 0.8rem; margin-bottom:0.6rem; font-size:0.82rem; color:#566573;">
+                We don't have the original GG credentials for <code>${safe(nino)}</code> in this browser anymore. The easiest fix is to mint a fresh test user (button below) — that gives you a new NINO with matching GG creds in one shot.
+              </div>`}
+            <button id="bpOAuthMismatchReset" type="button"
+                    style="background:#B91C1C; color:#fff; border:0; padding:0.55rem 1rem; font-size:0.88rem; border-radius:6px; cursor:pointer; font-weight:600;">
+              Disconnect HMRC &amp; retry OAuth →
+            </button>
+        `;
+        const resetBtn = document.getElementById('bpOAuthMismatchReset');
+        if (resetBtn) {
+            resetBtn.addEventListener('click', async () => {
+                resetBtn.disabled = true;
+                resetBtn.textContent = 'Disconnecting…';
+                try {
+                    const csrf = (document.cookie.match(/bp_csrf=([^;]+)/) || [])[1] || '';
+                    const r = await fetch('/api/hmrc/disconnect', {
+                        method: 'POST', credentials: 'include',
+                        headers: { 'Content-Type': 'application/json',
+                                   'X-CSRF-Token': decodeURIComponent(csrf) },
+                        body: '{}',
+                    });
+                    if (r.ok) {
+                        // Redirect straight to OAuth so the user can paste
+                        // the GG creds shown above on HMRC's sign-in page.
+                        window.location.href = '/api/hmrc/connect';
+                        return;
+                    }
+                    resetBtn.disabled = false;
+                    resetBtn.textContent = `Disconnect failed (${r.status}). Try again.`;
+                } catch (e) {
+                    resetBtn.disabled = false;
+                    resetBtn.textContent = 'Network error — try again.';
+                }
+            });
         }
     }
 
@@ -2945,12 +3023,24 @@
                     const data = await resp.json();
                     mintResult.style.display = 'block';
                     if (resp.ok) {
-                        // Stash the NINO so we can auto-Discover after the
-                        // user OAuths as this new test individual — saves
-                        // them from having to type the NINO again.
+                        // Stash the FULL credential set so we can auto-Discover
+                        // after OAuth AND so we can recover the GG userId +
+                        // password if the user signed in with the wrong test
+                        // identity (the most common failure mode). Without
+                        // this, the green card was the only place the GG
+                        // creds were ever shown and dismissing it lost them.
                         try {
                             if (data.nino) {
                                 localStorage.setItem('bp_pending_nino', data.nino);
+                                localStorage.setItem('bp_pending_creds', JSON.stringify({
+                                    nino: data.nino,
+                                    userId: data.user_id || data.userId || '',
+                                    password: data.password || '',
+                                    mtdItId: data.mtd_it_id || data.mtdItId || '',
+                                    saUtr: data.sa_utr || data.saUtr || '',
+                                    userFullName: data.user_full_name || data.userFullName || '',
+                                    mintedAt: new Date().toISOString(),
+                                }));
                             }
                         } catch (e) { /* localStorage may be disabled */ }
                         // Pretty-print the credentials with copy buttons so
