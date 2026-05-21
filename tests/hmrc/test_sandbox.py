@@ -569,8 +569,11 @@ def test_setup_complete_translates_oauth_nino_mismatch_to_friendly_409():
     detail = r.json()["detail"]
     # The NINO must appear so the user can see which one HMRC rejected.
     assert "CX139207A" in detail
-    # The actionable next step must be present — clicking Connect again.
-    assert "Connect to HMRC" in detail
+    # Machine-detectable prefix lets the UI render a one-click recovery
+    # button (Disconnect & start over) without parsing free text.
+    assert "OAUTH_NINO_MISMATCH" in detail
+    # The actionable next step must be present — disconnect + reconnect.
+    assert "Disconnect" in detail
     # The opaque HMRC code MUST NOT leak through.
     assert "MATCHING_RESOURCE_NOT_FOUND" not in detail
     # We bailed on the first (SE) call; property must not be attempted.
