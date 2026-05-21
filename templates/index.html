@@ -1010,6 +1010,32 @@
                      Submits to /api/hmrc/connect-businesses which calls the
                      Business Details API and persists the discovered list. -->
                 <div id="hmrcSetupRow" style="display:none; margin-top:0.75rem; padding:0.75rem; background:#FEF3C7; border-radius:6px;">
+
+                    <!-- Sandbox-only — Mint a fresh test individual via
+                         HMRC's Create Test User API. Always-visible at
+                         the top of the setup row because it doesn't need
+                         a NINO or an HMRC connection (server-to-server
+                         token). Auto-hides itself on production builds
+                         when the endpoint returns 404. -->
+                    <div id="hmrcMintTestUserCard"
+                         style="display:none; background:#EBF5FB; border:1px solid #AED6F1; border-radius:6px; padding:0.7rem 0.9rem; margin-bottom:0.8rem;">
+                        <div style="font-weight:600; color:#1B4F72; margin-bottom:0.3rem;">
+                            🧪 Need a fresh sandbox NINO? Mint one in one click
+                        </div>
+                        <div style="font-size:0.82rem; color:#5D6D7E; margin-bottom:0.5rem;">
+                            Calls HMRC's Create Test User API. Returns a new
+                            NINO + Government Gateway userId + password.
+                            Use the NINO in the form below + the GG creds
+                            on the Connect-to-HMRC page.
+                        </div>
+                        <button id="hmrcMintTestUserBtn" type="button"
+                                style="background:#2E86C1; color:#fff; border:0; padding:0.5rem 1rem; font-size:0.88rem; border-radius:6px; cursor:pointer; font-weight:600;">
+                            Mint sandbox test user
+                        </button>
+                        <div id="hmrcMintTestUserResult"
+                             style="display:none; margin-top:0.6rem; font-size:0.85rem;"></div>
+                    </div>
+
                     <div style="font-size:0.88rem; color:#78350F; margin-bottom:0.5rem;">
                         Almost there. Enter the National Insurance Number on your HMRC account and we'll fetch your businesses automatically.
                     </div>
@@ -1024,37 +1050,10 @@
                     </form>
                     <div id="hmrcSetupMsg" style="display:none; margin-top:0.5rem; font-size:0.85rem;"></div>
 
-                    <!-- Sandbox-only escape hatch: the most common first-run
-                         failure is HMRC's 404 MATCHING_RESOURCE_NOT_FOUND
-                         because a fresh sandbox NINO has no businesses
-                         registered. These buttons hit our sandbox-only
-                         /api/hmrc/sandbox/create-test-business endpoint which
-                         provisions a real business at HMRC. Hidden in
-                         production builds. -->
+                    <!-- Sandbox helpers shown ONLY when HMRC says "no
+                         businesses against this NINO" — the buttons here
+                         need a NINO to be saved first. -->
                     <div id="hmrcSandboxHelpers" style="display:none; margin-top:0.75rem; padding-top:0.75rem; border-top:1px dashed #D1D5DB;">
-
-                        <!-- Mint a fresh sandbox test individual via HMRC's
-                             Create Test User API. Returns NINO + Government
-                             Gateway credentials + mtdItId so the user can
-                             OAuth + submit immediately. Sandbox-only. -->
-                        <div style="background:#EBF5FB; border:1px solid #AED6F1; border-radius:6px; padding:0.7rem 0.9rem; margin-bottom:0.8rem;">
-                            <div style="font-weight:600; color:#1B4F72; margin-bottom:0.3rem;">
-                                Need a fresh sandbox NINO? Mint one in one click
-                            </div>
-                            <div style="font-size:0.82rem; color:#5D6D7E; margin-bottom:0.5rem;">
-                                Calls HMRC's Create Test User API. Returns a new
-                                NINO + Government Gateway userId + password.
-                                Paste them into the form above + the HMRC connect
-                                page, then click 'Set me up with a complete
-                                sandbox' below.
-                            </div>
-                            <button id="hmrcMintTestUserBtn" type="button"
-                                    style="background:#2E86C1; color:#fff; border:0; padding:0.5rem 1rem; font-size:0.88rem; border-radius:6px; cursor:pointer; font-weight:600;">
-                                Mint sandbox test user
-                            </button>
-                            <div id="hmrcMintTestUserResult"
-                                 style="display:none; margin-top:0.6rem; font-size:0.85rem;"></div>
-                        </div>
 
                         <div style="font-size:0.82rem; color:#78350F; margin-bottom:0.4rem;">
                             Already have a NINO with no businesses against it?
@@ -2503,6 +2502,28 @@
         } catch (e) {}
     }
 
+    // Reveal the Mint sandbox test-user card if this deploy IS sandbox.
+    // Probe by issuing an unauthed POST: production returns 404 (route
+    // doesn't exist), sandbox returns 401/403 (auth/CSRF gate). Anything
+    // that isn't 404 means the endpoint is registered → show the card.
+    async function maybeShowMintTestUserCard() {
+        const card = document.getElementById('hmrcMintTestUserCard');
+        if (!card) return;
+        try {
+            const r = await fetch('/api/hmrc/sandbox/create-test-user', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: '{}',
+            });
+            if (r.status !== 404) {
+                card.style.display = 'block';
+            }
+        } catch (e) {
+            // Network glitch — leave the card hidden, the user can still
+            // use the static fallback (entering NINO manually).
+        }
+    }
+
     function escapeHtml(s) {
         return String(s == null ? '' : s)
             .replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
@@ -2769,11 +2790,13 @@
             wireHmrcSetupForm();
             loadHmrcDeadlines();
             loadHmrcHeadlineExtras();
+            maybeShowMintTestUserCard();
         });
     } else {
         wireHmrcSetupForm();
         loadHmrcDeadlines();
         loadHmrcHeadlineExtras();
+        maybeShowMintTestUserCard();
     }
 
     // ---------------------------------------------------------------
