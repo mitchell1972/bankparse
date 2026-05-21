@@ -85,11 +85,19 @@ async def build_se_payload(
     Reuses the existing categorisation pipeline (override → cache → AI →
     rule), so totals match what the user sees on the dashboard exactly.
 
+    If `rows` is empty (the typical submit path — the dashboard's submit
+    button sends `rows: []` to say "use what's on file"), this falls
+    back to the user's persisted ledger transactions filtered by the
+    period. Without this fallback every submit produced £0.00 totals.
+
     Async because categorisation calls Claude. In test we patch
     `hmrc.services.categorisation.resolve` so no network happens.
     """
     from ..schemas.categorise import CategoriseRequest
 
+    rows = rows or _load_period_rows_from_ledger(
+        user_id=user_id, period_start=period_start, period_end=period_end,
+    )
     cat_req = CategoriseRequest(business_type="se", rows=rows or [])
     cat_resp, _metrics = await _categorisation.resolve(cat_req, user_id=user_id)
 
@@ -174,9 +182,16 @@ def submit_se_quarter(
 async def build_property_payload(
     *, rows: list[dict], period_start: str, period_end: str, user_id: int,
 ) -> tuple[PropertyPeriodSummary, dict[str, float], int, int]:
-    """Mirror of build_se_payload for UK property."""
+    """Mirror of build_se_payload for UK property.
+
+    Empty rows falls back to the user's persisted ledger filtered by the
+    period — same reason as the SE variant.
+    """
     from ..schemas.categorise import CategoriseRequest
 
+    rows = rows or _load_period_rows_from_ledger(
+        user_id=user_id, period_start=period_start, period_end=period_end,
+    )
     cat_req = CategoriseRequest(business_type="property", rows=rows or [])
     cat_resp, _metrics = await _categorisation.resolve(cat_req, user_id=user_id)
 
@@ -256,3 +271,36 @@ def _require_nino(user_id: int) -> str:
             "card, click 'Discover my businesses', then come back here."
         )
     return nino
+
+
+def _load_period_rows_from_ledger(
+    *, user_id: int, period_start: str, period_end: str,
+) -> list[dict]:
+    """Fallback row source for the submit path: pull every persisted
+    ledger transaction that falls inside [period_start, period_end] and
+    return them in the dict shape `CategoriseRequest` expects.
+
+    Before this existed, the file.html submit button sent `rows: []`
+    intending the server to look them up — but build_*_payload simply
+    treated empty as 'nothing to submit' and built a £0.00 payload.
+
+    Filters out transactions with no usable date (legacy rows from
+    before the ledger had `date_iso`).
+    """
+    from database import get_user_ledger_transactions
+    out: list[dict] = []
+    for r in get_user_ledger_transactions(user_id, limit=10000):
+        d = (r.get("date_iso") or "")
+        if not d or d < period_start or d > period_end:
+            continue
+        try:
+            amount = float(r.get("amount") or 0)
+        except (TypeError, ValueError):
+            continue
+        out.append({
+            "description": r.get("description") or "",
+            "reference": r.get("reference") or None,
+            "amount": amount,
+            "date": d,
+        })
+    return out
