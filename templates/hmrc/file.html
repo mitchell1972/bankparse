@@ -232,6 +232,55 @@ async function loadAll() {
   ]);
 }
 
+// When a Set-me-up or Submit call fails with OAUTH_NINO_MISMATCH (HMRC
+// has the NINO but the OAuth session belongs to a different test user),
+// render a one-click 'Disconnect & start over' button right inside the
+// error panel so the user doesn't have to bounce through /hmrc/connect
+// and a 'Disconnect' button manually.
+function renderOauthMismatchRecovery(panel, detail) {
+  // Strip the machine sentinel from the user-visible text.
+  const userText = String(detail || '').replace(/^OAUTH_NINO_MISMATCH:\s*/, '');
+  panel.style.background = '#FEF3C7';
+  panel.style.border = '1px solid #F4D03F';
+  panel.style.color = '#7D6608';
+  panel.style.borderRadius = '6px';
+  panel.style.padding = '0.7rem 0.9rem';
+  panel.style.marginTop = '0.6rem';
+  panel.innerHTML = `
+    <div style="font-weight:600; margin-bottom:0.4rem;">⚠ OAuth identity doesn't match this NINO</div>
+    <div style="font-size:0.85rem; margin-bottom:0.55rem;">${userText.replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]))}</div>
+    <button type="button" id="hmrcFileDisconnectStartOver"
+            style="background:#B91C1C; color:#fff; border:0; padding:0.5rem 1rem; border-radius:6px; font-weight:600; cursor:pointer; font-size:0.88rem;">
+      Disconnect HMRC &amp; start over →
+    </button>
+  `;
+  const btn = document.getElementById('hmrcFileDisconnectStartOver');
+  if (btn) {
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      btn.textContent = 'Disconnecting…';
+      try {
+        const r = await fetch('/api/hmrc/disconnect', {
+          method: 'POST', credentials: 'include',
+          headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': getCsrf() },
+          body: '{}',
+        });
+        if (r.ok) {
+          // Send them to the dashboard where they can mint a fresh
+          // test user + re-OAuth in the streamlined PR #76 flow.
+          window.location.href = '/';
+          return;
+        }
+        btn.disabled = false;
+        btn.textContent = `Disconnect failed (${r.status}). Try again.`;
+      } catch (e) {
+        btn.disabled = false;
+        btn.textContent = 'Network error — try again.';
+      }
+    });
+  }
+}
+
 async function loadObligations() {
   try {
     const r = await fetch('/api/hmrc/obligations');
@@ -339,9 +388,17 @@ function renderObligations() {
             return;
           }
           const serr = await sr.json().catch(() => ({}));
+          const detail = serr.detail || `Couldn't provision (status ${sr.status})`;
           setupMsg.style.display = 'block';
-          setupMsg.style.color = '#B91C1C';
-          setupMsg.textContent = serr.detail || `Couldn't provision (status ${sr.status}). Sign in with different credentials instead.`;
+          // OAUTH_NINO_MISMATCH sentinel → render a one-click 'Disconnect
+          // & start over' button so the user can recover from this page
+          // instead of bouncing through /hmrc/connect.
+          if (/OAUTH_NINO_MISMATCH/.test(detail)) {
+            renderOauthMismatchRecovery(setupMsg, detail);
+          } else {
+            setupMsg.style.color = '#B91C1C';
+            setupMsg.textContent = detail + '. Sign in with different credentials instead.';
+          }
           setupBtn.disabled = false;
           setupBtn.textContent = '🚀 Set me up with a complete sandbox';
         } catch (e) {

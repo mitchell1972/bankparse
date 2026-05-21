@@ -2658,6 +2658,9 @@
     }
 
     function renderOAuthMismatchRecovery(banner, nino, detail) {
+        // Strip the machine sentinel from any text we're about to show
+        // the user. Otherwise 'OAUTH_NINO_MISMATCH:' leaks into the UI.
+        detail = String(detail || '').replace(/^OAUTH_NINO_MISMATCH:\s*/, '');
         // Recover the full credential set we stashed at Mint time so the
         // user can see WHICH GG userId + password to type on HMRC's
         // sign-in page. Without this they're stuck guessing.
@@ -2666,10 +2669,12 @@
             const raw = localStorage.getItem('bp_pending_creds');
             if (raw) creds = JSON.parse(raw) || {};
         } catch (e) {}
-        // Re-stash the NINO so the user can retry — we cleared it
-        // earlier as the in-flight guard, but they may need it again
-        // on the next OAuth round.
-        try { localStorage.setItem('bp_pending_nino', nino); } catch (e) {}
+        // Do NOT re-stash the NINO. The previous behaviour caused an
+        // auto-retry loop every page reload — same NINO, same wrong
+        // OAuth identity, same MATCHING_RESOURCE_NOT_FOUND. Recovery
+        // only happens on explicit user action (the Disconnect button
+        // below, which clears stale tokens and routes to a fresh
+        // OAuth round with the correct GG creds).
 
         const safe = s => String(s == null ? '' : s).replace(/[<>&]/g,
             c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
@@ -2972,7 +2977,7 @@
                         // click instead of hunting for the link in plain text.
                         const safe = String(detail).replace(/[<>&]/g,
                             c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
-                        if (resp.status === 409 && /Connect to HMRC/.test(detail)) {
+                        if (resp.status === 409 && (/OAUTH_NINO_MISMATCH/.test(detail) || /Connect to HMRC/.test(detail))) {
                             sandboxMsg.innerHTML = `
                                 <div>${safe}</div>
                                 <div style="margin-top:0.6rem;">

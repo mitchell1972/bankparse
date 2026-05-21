@@ -251,12 +251,19 @@ def setup_complete_sandbox(*, user_id: int, request_obj) -> dict:
             # HMRC code into a clear next step instead of passing it
             # through raw.
             if _is_nino_oauth_mismatch(exc):
+                # Page-agnostic message + a sentinel substring the UI
+                # can detect on either /hmrc/file or the dashboard to
+                # render a 'Disconnect & start over' recovery button.
                 raise ValueError(
-                    f"HMRC doesn't recognise NINO {nino} with your current "
-                    "HMRC sign-in — you're still signed in as a different "
-                    "test user. Click 'Connect to HMRC' below and sign in "
-                    "with the Government Gateway userId + password from the "
-                    "green test-user card above, then click this button again."
+                    f"OAUTH_NINO_MISMATCH: HMRC doesn't recognise NINO "
+                    f"{nino} with your current HMRC sign-in — your OAuth "
+                    "session is for a different test user. To fix this, "
+                    "disconnect from HMRC (red Disconnect button on the "
+                    "Connect-to-HMRC page) and sign in again with the "
+                    "Government Gateway userId + password that matches "
+                    "this NINO. If you don't have those credentials, "
+                    "mint a fresh test user on the dashboard and OAuth "
+                    "as that new identity."
                 ) from exc
             # Annotate the error with WHICH business type failed so the
             # endpoint surfaces something diagnostic to the dashboard.
