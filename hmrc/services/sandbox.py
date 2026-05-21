@@ -245,6 +245,19 @@ def setup_complete_sandbox(*, user_id: int, request_obj) -> dict:
                 trading_name=default_name,
             )
         except _client.HmrcApiError as exc:
+            # MATCHING_RESOURCE_NOT_FOUND on create-business almost always
+            # means the OAuth session is still tied to a PREVIOUS test
+            # user, not the NINO we just minted. Translate the opaque
+            # HMRC code into a clear next step instead of passing it
+            # through raw.
+            if _is_nino_oauth_mismatch(exc):
+                raise ValueError(
+                    f"HMRC doesn't recognise NINO {nino} with your current "
+                    "HMRC sign-in — you're still signed in as a different "
+                    "test user. Click 'Connect to HMRC' below and sign in "
+                    "with the Government Gateway userId + password from the "
+                    "green test-user card above, then click this button again."
+                ) from exc
             # Annotate the error with WHICH business type failed so the
             # endpoint surfaces something diagnostic to the dashboard.
             raise _client.HmrcApiError(
@@ -278,3 +291,22 @@ def setup_complete_sandbox(*, user_id: int, request_obj) -> dict:
         _tokens.save_nino_and_businesses(user_id, nino, existing)
 
     return {"created": created, "already_existed": already, "nino": nino}
+
+
+def _is_nino_oauth_mismatch(exc: _client.HmrcApiError) -> bool:
+    """True if HMRC's response means the OAuth session is for a different
+    NINO than the one we're trying to mutate.
+
+    HMRC returns 404 MATCHING_RESOURCE_NOT_FOUND in two cases:
+      1. NINO has no businesses yet (we already handle this on Discover).
+      2. OAuth identity doesn't match the NINO in the URL.
+
+    On create-test-business the second case is the only one that can fire
+    — the endpoint doesn't lookup-by-NINO, it CREATES against the NINO in
+    the URL, which HMRC validates against the OAuth token's individual.
+    """
+    if exc.status_code != 404:
+        return False
+    body = exc.body or {}
+    code = body.get("code") if isinstance(body, dict) else ""
+    return (code or "").upper() == "MATCHING_RESOURCE_NOT_FOUND"

@@ -2693,8 +2693,26 @@
                         }, 600);
                     } else {
                         sandboxMsg.style.color = '#B91C1C';
-                        sandboxMsg.textContent = data.detail
+                        const detail = data.detail
                             || `Couldn't set up the sandbox (status ${resp.status}).`;
+                        // If the server told us the OAuth identity doesn't
+                        // match the stored NINO (friendly 409), render a
+                        // big Connect button so the user can fix it in one
+                        // click instead of hunting for the link in plain text.
+                        const safe = String(detail).replace(/[<>&]/g,
+                            c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
+                        if (resp.status === 409 && /Connect to HMRC/.test(detail)) {
+                            sandboxMsg.innerHTML = `
+                                <div>${safe}</div>
+                                <div style="margin-top:0.6rem;">
+                                  <a href="/hmrc/connect"
+                                     style="display:inline-block; background:#2874A6; color:#fff; padding:0.5rem 1rem; border-radius:4px; text-decoration:none; font-weight:600; font-size:0.85rem;">
+                                    Connect to HMRC →
+                                  </a>
+                                </div>`;
+                        } else {
+                            sandboxMsg.textContent = detail;
+                        }
                     }
                 } catch (e) {
                     sandboxMsg.style.display = 'block';
@@ -2758,12 +2776,23 @@
                               ${row('GG password',           data.password, null)}
                               ${row('mtdItId',               data.mtd_it_id || data.mtdItId, null)}
                               ${row('UTR (SA)',              data.sa_utr || data.saUtr, null)}
-                              <div style="margin-top:0.55rem; font-size:0.78rem; color:#566573;">
-                                <strong>Next:</strong> fill the NINO field above (or click 'fill NINO field'),
-                                then go to <a href="/hmrc/connect" style="color:#2874A6;">Connect to HMRC</a>
-                                and sign in with the GG userId + password above.
-                                After that, come back here and click
-                                <em>'Set me up with a complete sandbox'</em>.
+                              <div style="margin-top:0.8rem; padding:0.7rem; background:#FEF9E7; border:1px solid #F4D03F; border-radius:5px;">
+                                <div style="font-weight:600; color:#7D6608; font-size:0.85rem; margin-bottom:0.3rem;">
+                                  ⚠ Required next step — reconnect to HMRC
+                                </div>
+                                <div style="font-size:0.78rem; color:#566573; margin-bottom:0.55rem;">
+                                  Your OAuth session is still tied to a previous test user.
+                                  Sign in again with the credentials above so HMRC recognises
+                                  the new NINO.
+                                </div>
+                                <a href="/hmrc/connect"
+                                   style="display:inline-block; background:#2874A6; color:#fff; padding:0.5rem 1rem; border-radius:4px; text-decoration:none; font-weight:600; font-size:0.85rem;">
+                                  Connect to HMRC →
+                                </a>
+                                <div style="margin-top:0.55rem; font-size:0.75rem; color:#7B7B7B;">
+                                  After connecting, come back and click
+                                  <em>'Set me up with a complete sandbox'</em>.
+                                </div>
                               </div>
                             </div>
                         `;
