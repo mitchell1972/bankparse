@@ -39,6 +39,16 @@ logger = logging.getLogger("bankparse.hmrc.business_details")
 _API_VERSION = "application/vnd.hmrc.1.0+json"
 
 
+def persist_nino_only(user_id: int, nino: str) -> None:
+    """Save the NINO with an EMPTY business list (preserving any
+    businesses already stored). Used when HMRC returns
+    MATCHING_RESOURCE_NOT_FOUND on Business Details — the user has
+    stated a NINO and downstream sandbox-bootstrap endpoints need it."""
+    from ..repositories import tokens as _tokens
+    existing = (_tokens.get_tokens(user_id) or {}).get("businesses") or []
+    _tokens.save_nino_and_businesses(user_id, nino, existing)
+
+
 def fetch_for_nino(*, user_id: int, nino: str, request_obj) -> list[UiBusiness]:
     """Call HMRC and return the user's businesses in our UI shape.
 
