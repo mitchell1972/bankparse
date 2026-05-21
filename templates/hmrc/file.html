@@ -246,6 +246,11 @@ async function loadObligations() {
     // fixtures (and explain WHY they're disabled).
     STATE.demo = !!data.demo;
     STATE.connected = !!data.connected;
+    // NINO surfaces the "we have a NINO but no businesses" state —
+    // looks identical to "no NINO" via `demo` alone, but the recovery
+    // path is different (Set me up with a complete sandbox, not type
+    // a NINO).
+    STATE.nino = data.nino || '';
     renderObligations();
     renderNextDeadlineTile();
   } catch (e) {
@@ -265,23 +270,89 @@ function renderObligations() {
   wrap.className = '';
 
   // Demo mode banner — these obligations are fixtures, not real HMRC data.
-  // Without this, the Submit button would call HMRC and fail with "no
-  // NINO saved" because the user hasn't completed setup yet.
+  // Three distinct states need different recovery flows:
+  //   1. Not connected → Connect to HMRC
+  //   2. Connected, NO NINO saved → enter NINO on dashboard
+  //   3. Connected, NINO saved, no businesses → either provision sandbox
+  //      businesses OR sign in with the correct GG identity for this NINO
+  // Without state #3, users got stuck in a loop because /hmrc/connect
+  // said 'active' (tokens + NINO present) but /hmrc/file showed demo
+  // (businesses missing).
   if (STATE.demo) {
     const banner = document.createElement('div');
     banner.style.cssText = 'background:#FEF3C7; border:1px solid #F4D03F; color:#7D6608; border-radius:8px; padding:0.9rem 1rem; margin-bottom:1rem; font-size:0.9rem;';
-    const detail = STATE.connected
-      ? "You're connected to HMRC but haven't saved your NINO + businesses yet. The deadlines below are sample fixtures so you can see the UI. Go to the dashboard, enter your NINO, and click 'Discover my businesses' — real HMRC obligations will replace these."
-      : "You're not connected to HMRC yet. The deadlines below are sample fixtures so you can see the UI. Connect to HMRC and complete setup to file real returns.";
-    const cta = STATE.connected
-      ? '<a href="/" style="display:inline-block; margin-top:0.5rem; background:#1B4F72; color:#fff; padding:0.45rem 0.9rem; border-radius:6px; text-decoration:none; font-weight:600;">Go to dashboard to add your NINO →</a>'
-      : '<a href="/hmrc/connect" style="display:inline-block; margin-top:0.5rem; background:#1B4F72; color:#fff; padding:0.45rem 0.9rem; border-radius:6px; text-decoration:none; font-weight:600;">Connect to HMRC →</a>';
+    const safeNino = String(STATE.nino || '').replace(/[<>&]/g,
+      c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
+
+    let detail, cta;
+    if (!STATE.connected) {
+      detail = "You're not connected to HMRC yet. The deadlines below are sample fixtures so you can see the UI. Connect to HMRC and complete setup to file real returns.";
+      cta = '<a href="/hmrc/connect" style="display:inline-block; margin-top:0.5rem; background:#1B4F72; color:#fff; padding:0.45rem 0.9rem; border-radius:6px; text-decoration:none; font-weight:600;">Connect to HMRC →</a>';
+    } else if (!STATE.nino) {
+      detail = "You're connected to HMRC but haven't saved your NINO yet. Go to the dashboard, type your NINO into the 'Your HMRC deadlines' card, and click 'Discover my businesses'.";
+      cta = '<a href="/" style="display:inline-block; margin-top:0.5rem; background:#1B4F72; color:#fff; padding:0.45rem 0.9rem; border-radius:6px; text-decoration:none; font-weight:600;">Go to dashboard to add your NINO →</a>';
+    } else {
+      // STATE #3 — the one Mitchell got stuck in.
+      detail = `Your NINO <code>${safeNino}</code> is saved but HMRC didn't return any businesses for it. Either your OAuth session is for a different test user, OR HMRC hasn't seeded this sandbox NINO with businesses yet. The one-click button below provisions one self-employment + one property business under this NINO so you can submit immediately.`;
+      cta = `
+        <div style="display:flex; gap:0.5rem; flex-wrap:wrap; margin-top:0.5rem;">
+          <button type="button" id="hmrcFileSetupAllBtn"
+                  style="background:#1B4F72; color:#fff; border:0; padding:0.5rem 1rem; border-radius:6px; font-weight:600; cursor:pointer; font-size:0.88rem;">
+            🚀 Set me up with a complete sandbox
+          </button>
+          <a href="/hmrc/connect"
+             style="display:inline-block; background:#fff; color:#1B4F72; border:1px solid #1B4F72; padding:0.5rem 1rem; border-radius:6px; text-decoration:none; font-weight:600; font-size:0.88rem;">
+            Or sign in with different credentials →
+          </a>
+        </div>
+        <div id="hmrcFileSetupAllMsg" style="display:none; margin-top:0.5rem; font-size:0.85rem;"></div>
+      `;
+    }
+
     banner.innerHTML = `
       <div style="font-weight:600; margin-bottom:0.3rem;">📋 These are sample obligations</div>
       <div>${detail}</div>
       ${cta}
     `;
     wrap.appendChild(banner);
+
+    // Wire up the inline Set-me-up button if it was rendered.
+    const setupBtn = document.getElementById('hmrcFileSetupAllBtn');
+    const setupMsg = document.getElementById('hmrcFileSetupAllMsg');
+    if (setupBtn) {
+      setupBtn.addEventListener('click', async () => {
+        setupBtn.disabled = true;
+        setupBtn.textContent = 'Provisioning… (talking to HMRC)';
+        try {
+          const csrf = (document.cookie.match(/bp_csrf=([^;]+)/) || [])[1] || '';
+          const sr = await fetch('/api/hmrc/sandbox/setup-complete', {
+            method: 'POST', credentials: 'include',
+            headers: { 'Content-Type': 'application/json',
+                       'X-CSRF-Token': decodeURIComponent(csrf) },
+            body: '{}',
+          });
+          if (sr.ok) {
+            setupMsg.style.display = 'block';
+            setupMsg.style.color = '#065F46';
+            setupMsg.textContent = '✓ Sandbox set up. Reloading…';
+            setTimeout(() => window.location.reload(), 600);
+            return;
+          }
+          const serr = await sr.json().catch(() => ({}));
+          setupMsg.style.display = 'block';
+          setupMsg.style.color = '#B91C1C';
+          setupMsg.textContent = serr.detail || `Couldn't provision (status ${sr.status}). Sign in with different credentials instead.`;
+          setupBtn.disabled = false;
+          setupBtn.textContent = '🚀 Set me up with a complete sandbox';
+        } catch (e) {
+          setupMsg.style.display = 'block';
+          setupMsg.style.color = '#B91C1C';
+          setupMsg.textContent = 'Network error talking to HMRC. Try again.';
+          setupBtn.disabled = false;
+          setupBtn.textContent = '🚀 Set me up with a complete sandbox';
+        }
+      });
+    }
   }
 
   rows.forEach((o, idx) => {

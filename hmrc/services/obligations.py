@@ -68,7 +68,7 @@ def fetch_for_user(*, user_id: int, request_obj) -> ObligationsResponse:
     if is_demo_mode() or not connected or not nino or not businesses:
         rows = _demo_obligations()
         return ObligationsResponse(
-            connected=connected, demo=True, obligations=rows,
+            connected=connected, demo=True, obligations=rows, nino=nino,
         )
 
     rows: list[UiObligation] = []
@@ -88,6 +88,7 @@ def fetch_for_user(*, user_id: int, request_obj) -> ObligationsResponse:
 
     return ObligationsResponse(
         connected=True, demo=False, obligations=_sort_rows(rows), error=err,
+        nino=nino,
     )
 
 

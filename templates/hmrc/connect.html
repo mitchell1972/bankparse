@@ -79,7 +79,13 @@
         {% endif %}
 
         {% if connected %}
+            {% if nino and not has_businesses %}
+            <p style="color:#7D6608; background:#FEF9E7; border:1px solid #F4D03F; border-radius:6px; padding:0.6rem 0.8rem;">
+              ⚠ <strong>Setup incomplete.</strong> Tokens are saved against NINO <code>{{ nino }}</code> but HMRC didn't return any businesses for it. Either your OAuth session is for a different test user, or this NINO has no businesses registered. Use the <a href="/hmrc/file" style="color:#7D6608; font-weight:600;">File-with-HMRC page</a> to provision sandbox businesses in one click, or disconnect below and sign in with the matching Government Gateway credentials.
+            </p>
+            {% else %}
             <p>HMRC connection is active for this account{% if nino %} (NINO <code>{{ nino }}</code>){% endif %}.</p>
+            {% endif %}
             <ul class="benefits">
                 <li>Submit quarterly self-employment summaries</li>
                 <li>Submit quarterly property summaries</li>
