@@ -28,6 +28,10 @@ async def hmrc_connect_page(request: Request):
     # OAuth session is currently bound to — helps disambiguate when
     # they've minted multiple sandbox test users.
     nino = info.get("nino") or ""
+    # Distinguish "fully set up" (tokens + NINO + at least one business)
+    # from "tokens + NINO saved but no businesses discovered". Without
+    # this the page said 'active' even when the user couldn't submit.
+    has_businesses = bool(info.get("businesses"))
     import os as _os
     is_sandbox = _os.environ.get("HMRC_ENV", "sandbox").lower() != "production"
     return templates.TemplateResponse(
@@ -36,6 +40,7 @@ async def hmrc_connect_page(request: Request):
         {
             "connected": connected,
             "nino": nino,
+            "has_businesses": has_businesses,
             "is_sandbox": is_sandbox,
             "status": request.query_params.get("status", ""),
             "detail": request.query_params.get("detail", ""),

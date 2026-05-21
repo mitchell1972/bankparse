@@ -67,3 +67,8 @@ class ObligationsResponse(BaseModel):
     demo: bool = False        # using a static fixture (no real HMRC call)
     obligations: list[UiObligation] = Field(default_factory=list)
     error: str | None = None  # human-friendly error if we couldn't fetch
+    # Surface the saved NINO when there is one so the dashboard / file
+    # page can distinguish "connected, no NINO" from "connected, NINO X
+    # but no businesses found" — the two states look the same in `demo`
+    # but require different recovery flows.
+    nino: str | None = None
