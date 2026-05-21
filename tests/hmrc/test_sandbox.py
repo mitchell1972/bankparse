@@ -351,3 +351,191 @@ def test_connect_businesses_404_maps_to_sandbox_hint():
     detail = r.json()["detail"]
     # Sandbox build (HMRC_ENV=sandbox via fixture) — should mention the helper.
     assert "Create sandbox test business" in detail
+
+
+# ---------------------------------------------------------------------------
+# POST /api/hmrc/sandbox/setup-complete — one-click bootstrap
+# ---------------------------------------------------------------------------
+
+
+def _se_resp():
+    return MagicMock(
+        status_code=201,
+        json={"businessId": "XAIS00000999100"},
+        headers={}, audit_id="audit-setup-se",
+    )
+
+
+def _prop_resp():
+    return MagicMock(
+        status_code=201,
+        json={"businessId": "XPIS00000999200"},
+        headers={}, audit_id="audit-setup-prop",
+    )
+
+
+def test_setup_complete_endpoint_returns_404_in_production(monkeypatch):
+    """The one-click setup must also be gated to sandbox only."""
+    monkeypatch.setenv("HMRC_ENV", "production")
+    client, csrf, _ = _client_with_user()
+    r = client.post(
+        "/api/hmrc/sandbox/setup-complete",
+        json={}, headers={"X-CSRF-Token": csrf},
+    )
+    assert r.status_code == 404
+
+
+def test_setup_complete_endpoint_requires_authentication():
+    from app import app
+    client = TestClient(app, raise_server_exceptions=False)
+    with client:
+        csrf = _seed_csrf(client)
+        r = client.post(
+            "/api/hmrc/sandbox/setup-complete",
+            json={}, headers={"X-CSRF-Token": csrf},
+        )
+    assert r.status_code == 401
+
+
+def test_setup_complete_endpoint_requires_nino_saved_first():
+    """Without a NINO the user hasn't done step 1 — return 409 with a
+    plain-English nudge to enter the NINO first."""
+    client, csrf, user = _client_with_user()
+    from hmrc.repositories import tokens as _tokens
+    _tokens.save_tokens(
+        user_id=user["id"], access_token="x", refresh_token="y",
+        expires_in_seconds=14400, scope="",
+    )
+    r = client.post(
+        "/api/hmrc/sandbox/setup-complete",
+        json={}, headers={"X-CSRF-Token": csrf},
+    )
+    assert r.status_code == 409
+    assert "NINO" in r.json()["detail"]
+
+
+def test_setup_complete_creates_both_businesses_in_one_call():
+    """Happy path: empty NINO → creates SE + property, persists both."""
+    client, csrf, user = _client_with_user()
+    _connect_with_nino(user["id"])
+
+    # First HMRC call returns SE business, second returns property
+    with patch(
+        "hmrc.services.sandbox._client.request",
+        side_effect=[_se_resp(), _prop_resp()],
+    ) as mock_call:
+        r = client.post(
+            "/api/hmrc/sandbox/setup-complete",
+            json={}, headers={"X-CSRF-Token": csrf},
+        )
+
+    assert r.status_code == 200, r.text
+    body = r.json()
+    created_types = {b["type_of_business"] for b in body["created"]}
+    assert created_types == {"self-employment", "property"}
+    assert body["already_existed"] == []
+    assert body["nino"] == "CX139207A"
+
+    # Both HMRC calls were issued
+    assert mock_call.call_count == 2
+    # Wire types: first call SE, second call uk-property
+    calls = mock_call.call_args_list
+    assert calls[0].kwargs["json_body"]["typeOfBusiness"] == "self-employment"
+    assert calls[1].kwargs["json_body"]["typeOfBusiness"] == "uk-property"
+
+    # Persisted on the user's connection
+    from hmrc.repositories import tokens as _tokens
+    info = _tokens.get_tokens(user["id"])
+    ids = [b["business_id"] for b in info["businesses"]]
+    assert "XAIS00000999100" in ids
+    assert "XPIS00000999200" in ids
+
+
+def test_setup_complete_skips_business_types_that_already_exist():
+    """If the user already has a SE business, the setup-complete endpoint
+    only creates the missing property one. Avoids duplicate-trading-name
+    400s from HMRC."""
+    client, csrf, user = _client_with_user()
+    _connect_with_nino(user["id"])
+
+    # Pre-seed an existing SE business
+    from hmrc.repositories import tokens as _tokens
+    _tokens.save_nino_and_businesses(user["id"], "CX139207A", [{
+        "business_id": "XAIS00000999050",
+        "type_of_business": "self-employment",
+        "label": "Existing SE",
+    }])
+
+    with patch(
+        "hmrc.services.sandbox._client.request",
+        return_value=_prop_resp(),
+    ) as mock_call:
+        r = client.post(
+            "/api/hmrc/sandbox/setup-complete",
+            json={}, headers={"X-CSRF-Token": csrf},
+        )
+
+    assert r.status_code == 200
+    body = r.json()
+    # Only property got created
+    assert len(body["created"]) == 1
+    assert body["created"][0]["type_of_business"] == "property"
+    # SE shows up in already_existed
+    assert len(body["already_existed"]) == 1
+    assert body["already_existed"][0]["business_id"] == "XAIS00000999050"
+    # Exactly one HMRC POST (the property one), NOT two
+    assert mock_call.call_count == 1
+    assert mock_call.call_args.kwargs["json_body"]["typeOfBusiness"] == "uk-property"
+
+
+def test_setup_complete_is_idempotent_when_both_already_exist():
+    """If both already exist, the endpoint touches HMRC zero times and
+    returns a clean 'nothing to do' response."""
+    client, csrf, user = _client_with_user()
+    _connect_with_nino(user["id"])
+
+    from hmrc.repositories import tokens as _tokens
+    _tokens.save_nino_and_businesses(user["id"], "CX139207A", [
+        {"business_id": "XAIS999001", "type_of_business": "self-employment",
+         "label": "Existing SE"},
+        {"business_id": "XPIS999002", "type_of_business": "property",
+         "label": "Existing prop"},
+    ])
+
+    with patch(
+        "hmrc.services.sandbox._client.request",
+    ) as mock_call:
+        r = client.post(
+            "/api/hmrc/sandbox/setup-complete",
+            json={}, headers={"X-CSRF-Token": csrf},
+        )
+
+    assert r.status_code == 200
+    body = r.json()
+    assert body["created"] == []
+    assert len(body["already_existed"]) == 2
+    # No HMRC traffic at all
+    assert mock_call.call_count == 0
+
+
+def test_setup_complete_surfaces_hmrc_error_on_first_business():
+    """If HMRC rejects the SE create, the property create must NOT run —
+    we don't half-finish the setup."""
+    client, csrf, user = _client_with_user()
+    _connect_with_nino(user["id"])
+
+    from hmrc.services import client as _hmrc_client
+    err = _hmrc_client.HmrcApiError(status_code=400, body="bad request")
+
+    with patch(
+        "hmrc.services.sandbox._client.request",
+        side_effect=err,
+    ) as mock_call:
+        r = client.post(
+            "/api/hmrc/sandbox/setup-complete",
+            json={}, headers={"X-CSRF-Token": csrf},
+        )
+    assert r.status_code == 400
+    assert "self-employment" in r.json()["detail"]
+    # Stopped after the failed SE call — property was NOT attempted
+    assert mock_call.call_count == 1
