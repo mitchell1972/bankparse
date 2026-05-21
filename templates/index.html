@@ -1033,16 +1033,22 @@
                          production builds. -->
                     <div id="hmrcSandboxHelpers" style="display:none; margin-top:0.75rem; padding-top:0.75rem; border-top:1px dashed #D1D5DB;">
                         <div style="font-size:0.82rem; color:#78350F; margin-bottom:0.4rem;">
-                            Sandbox only — no businesses on your NINO yet? Create one:
+                            Sandbox only — no businesses on your NINO yet? Set up a full test
+                            account in one click (creates one self-employment + one property
+                            business and refreshes the deadlines panel):
                         </div>
-                        <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
+                        <button id="hmrcSandboxSetupAll" type="button"
+                                style="background:#1B4F72; color:#fff; border:0; padding:0.55rem 1rem; font-size:0.9rem; border-radius:6px; cursor:pointer; font-weight:600; width:100%;">
+                            🚀 Set me up with a complete sandbox (one click)
+                        </button>
+                        <div style="display:flex; gap:0.5rem; flex-wrap:wrap; margin-top:0.6rem;">
                             <button id="hmrcSandboxCreateSe" type="button"
                                     style="background:#FFFFFF; color:#1B4F72; border:1px solid #1B4F72; padding:0.4rem 0.8rem; font-size:0.85rem; border-radius:6px; cursor:pointer;">
-                                + Sandbox self-employment business
+                                + Self-employment only
                             </button>
                             <button id="hmrcSandboxCreateProp" type="button"
                                     style="background:#FFFFFF; color:#1B4F72; border:1px solid #1B4F72; padding:0.4rem 0.8rem; font-size:0.85rem; border-radius:6px; cursor:pointer;">
-                                + Sandbox property business
+                                + Property only
                             </button>
                         </div>
                         <div id="hmrcSandboxMsg" style="display:none; margin-top:0.4rem; font-size:0.82rem;"></div>
@@ -2592,6 +2598,68 @@
         };
         wireSandbox('hmrcSandboxCreateSe', 'self-employment', 'self-employment business');
         wireSandbox('hmrcSandboxCreateProp', 'property', 'property business');
+
+        // One-click "complete sandbox" — creates BOTH a SE and a property
+        // test business in sequence and refreshes the deadlines panel.
+        const setupBtn = document.getElementById('hmrcSandboxSetupAll');
+        const sandboxMsg = document.getElementById('hmrcSandboxMsg');
+        if (setupBtn && setupBtn.dataset.wired !== '1') {
+            setupBtn.dataset.wired = '1';
+            setupBtn.addEventListener('click', async () => {
+                if (setupBtn.disabled) return;
+                setupBtn.disabled = true;
+                const original = setupBtn.textContent;
+                setupBtn.textContent = 'Setting up… (talking to HMRC sandbox)';
+                sandboxMsg.style.display = 'none';
+                try {
+                    const csrf = (document.cookie.match(/bp_csrf=([^;]+)/) || [])[1] || '';
+                    const resp = await fetch('/api/hmrc/sandbox/setup-complete', {
+                        method: 'POST',
+                        credentials: 'include',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-Token': decodeURIComponent(csrf),
+                        },
+                        body: '{}',
+                    });
+                    const data = await resp.json();
+                    sandboxMsg.style.display = 'block';
+                    if (resp.ok) {
+                        sandboxMsg.style.color = '#065F46';
+                        const createdNames = (data.created || [])
+                            .map(b => `${b.label} (${b.business_id})`).join(', ');
+                        const existedNames = (data.already_existed || [])
+                            .map(b => `${b.label} (${b.business_id})`).join(', ');
+                        const parts = [];
+                        if (createdNames) parts.push(`✓ Created: ${createdNames}`);
+                        if (existedNames) parts.push(`Already existed: ${existedNames}`);
+                        if (!parts.length) parts.push('Nothing to do — already set up.');
+                        sandboxMsg.innerHTML =
+                            parts.join('<br>')
+                            + '<br>Refreshing deadlines…';
+                        await loadHmrcDeadlines();
+                        // Then a final cheerful confirmation
+                        setTimeout(() => {
+                            sandboxMsg.innerHTML +=
+                                '<br><strong>Done.</strong> Open <a href="/hmrc/file" '
+                                + 'style="color:#065F46; text-decoration:underline;">'
+                                + 'File with HMRC</a> to try a quarterly update.';
+                        }, 600);
+                    } else {
+                        sandboxMsg.style.color = '#B91C1C';
+                        sandboxMsg.textContent = data.detail
+                            || `Couldn't set up the sandbox (status ${resp.status}).`;
+                    }
+                } catch (e) {
+                    sandboxMsg.style.display = 'block';
+                    sandboxMsg.style.color = '#B91C1C';
+                    sandboxMsg.textContent = 'Network error talking to HMRC. Try again.';
+                } finally {
+                    setupBtn.disabled = false;
+                    setupBtn.textContent = original;
+                }
+            });
+        }
     }
 
     // Kick off in the background — does not block the rest of the page.

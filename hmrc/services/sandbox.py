@@ -115,3 +115,88 @@ def _tax_year_end(d: date) -> date:
     """5 April that closes the tax year `_tax_year_start(d)` began."""
     start = _tax_year_start(d)
     return date(start.year + 1, 4, 5)
+
+
+# ---------------------------------------------------------------------------
+# Bulk bootstrap — one-click "create both SE + property" for a fresh NINO.
+# Used by the dashboard's "Set me up with a complete sandbox" button.
+# ---------------------------------------------------------------------------
+
+
+WANTED_BUSINESS_TYPES: tuple[tuple[str, str], ...] = (
+    ("self-employment", "Sandbox sole trader"),
+    ("property",        "Sandbox property"),
+)
+
+
+def setup_complete_sandbox(*, user_id: int, request_obj) -> dict:
+    """Idempotent. Creates whichever of (SE, property) businesses the user
+    doesn't already have. Returns a structured response listing what was
+    newly created vs what already existed, plus the user's NINO.
+
+    Raises:
+      ValueError       — if the user hasn't entered + saved their NINO.
+      HmrcApiError     — from underlying HMRC client on a non-2xx.
+    """
+    info = _tokens.get_tokens(user_id) or {}
+    nino = info.get("nino")
+    if not nino:
+        raise ValueError(
+            "Enter your sandbox NINO in the dashboard and click "
+            "'Discover my businesses' once before using this setup."
+        )
+
+    existing = list(info.get("businesses") or [])
+    existing_types = {(b.get("type_of_business") or "").lower() for b in existing}
+
+    created: list[dict] = []
+    already: list[dict] = []
+
+    for type_of_business, default_name in WANTED_BUSINESS_TYPES:
+        if type_of_business in existing_types:
+            for b in existing:
+                if (b.get("type_of_business") or "").lower() == type_of_business:
+                    already.append(b)
+                    break
+            continue
+
+        try:
+            result = create_test_business(
+                user_id=user_id, request_obj=request_obj,
+                type_of_business=type_of_business,
+                trading_name=default_name,
+            )
+        except _client.HmrcApiError as exc:
+            # Annotate the error with WHICH business type failed so the
+            # endpoint surfaces something diagnostic to the dashboard.
+            raise _client.HmrcApiError(
+                status_code=exc.status_code,
+                body=f"creating the {type_of_business} business: {exc.body}",
+            ) from exc
+        biz_id = (
+            result.get("businessId")
+            or (result.get("business") or {}).get("businessId")
+        )
+        if not biz_id:
+            # HMRC accepted the call but the shape's unexpected — surface
+            # the raw response so the caller can show it to the dev.
+            raise _client.HmrcApiError(
+                status_code=0,
+                body=f"HMRC accepted the {type_of_business} create but "
+                     f"returned no businessId. Raw: {result}",
+            )
+
+        new_business = {
+            "business_id": biz_id,
+            "type_of_business": type_of_business,
+            "label": default_name,
+        }
+        existing.append(new_business)
+        existing_types.add(type_of_business)
+        created.append(new_business)
+
+    # One persistence flush at the end regardless of how many we created.
+    if created:
+        _tokens.save_nino_and_businesses(user_id, nino, existing)
+
+    return {"created": created, "already_existed": already, "nino": nino}

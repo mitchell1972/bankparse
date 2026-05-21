@@ -139,3 +139,48 @@ async def create_test_business(request: Request) -> CreateTestBusinessResponse:
 
 def _default_label(type_of_business: str) -> str:
     return "Sandbox property" if type_of_business == "property" else "Sandbox sole trader"
+
+
+# Endpoint — POST /api/hmrc/sandbox/setup-complete
+# Thin HTTP adapter; orchestration in services.sandbox.setup_complete_sandbox.
+
+
+class SetupCompleteResponse(BaseModel):
+    status: Literal["ok"] = "ok"
+    created: list[UiBusiness] = Field(default_factory=list)
+    already_existed: list[UiBusiness] = Field(default_factory=list)
+    nino: str | None = None
+
+
+@router.post(
+    "/api/hmrc/sandbox/setup-complete",
+    response_model=SetupCompleteResponse,
+)
+async def setup_complete(request: Request) -> SetupCompleteResponse:
+    """One-click sandbox bootstrap. Creates whichever of (SE, property)
+    test businesses the user doesn't already have. Idempotent."""
+    _refuse_in_production()
+    user = _user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required.")
+    try:
+        result = _sandbox.setup_complete_sandbox(
+            user_id=user["id"], request_obj=request,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    except _client.HmrcNotConnectedError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    except _client.HmrcApiError as exc:
+        raise HTTPException(
+            status_code=502 if exc.status_code == 0 else 400,
+            detail=(
+                f"HMRC returned {exc.status_code} during sandbox setup: "
+                f"{exc.body}"
+            ),
+        )
+    return SetupCompleteResponse(
+        created=[UiBusiness(**b) for b in result["created"]],
+        already_existed=[UiBusiness(**b) for b in result["already_existed"]],
+        nino=result["nino"],
+    )
