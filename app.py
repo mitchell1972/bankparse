@@ -4187,6 +4187,14 @@ BLOG_POSTS = {
         "template": "blog/ecommerce-bank-statement-conversion.html",
         "keywords": "ecommerce bank statement conversion UK, Amazon seller bank statement to Excel, Shopify statement converter, eBay payout statement Excel, marketplace seller bookkeeping, PayPal statement to Xero, Stripe statement conversion UK, ecommerce accounting automation",
     },
+    "tax-season-bank-statement-conversion": {
+        "title": "Bank Statement Conversion for Tax Season — Complete UK Guide (2026)",
+        "description": "Dreading the January 31 Self Assessment deadline? Complete guide to handling bank statement conversion during tax season. Covers SA deadlines, VAT quarter-ends, year-end client onboarding, and how to avoid last-minute panic when clients deliver 18 months of statements on January 28th.",
+        "date": "2026-05-21",
+        "author": "BankScan AI Team",
+        "template": "blog/tax-season-bank-statement-conversion.html",
+        "keywords": "tax season bank statement conversion UK, Self Assessment bank statement preparation, year-end bank statement processing, January tax deadline bank statements, VAT quarter-end statement conversion, convert bank statements for tax return, bookkeeper tax season automation UK",
+    },
 }
 
 
