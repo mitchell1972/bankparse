@@ -1803,6 +1803,31 @@
     loadUsage();
     loadAccumulatedData();
 
+    // Hoist the HMRC deadlines panel (which contains the NINO discover
+    // form + Mint Test User button + Set me up with a complete sandbox)
+    // out of the single-statement results card so it stays visible in
+    // BOTH single AND bulk modes. Idempotent.
+    hoistHmrcDeadlinesPanel();
+    function hoistHmrcDeadlinesPanel() {
+        const panel = document.getElementById('hmrcDeadlinesPanel');
+        const anchor = document.getElementById('statementResults');
+        if (!panel || !anchor || !anchor.parentNode) return;
+        if (panel.parentNode === anchor.parentNode && panel.nextSibling === anchor) return;
+        // Wrap in a card so it stands alone above both result panels.
+        const wrap = document.createElement('div');
+        wrap.id = 'hmrcDeadlinesPanelWrap';
+        wrap.style.cssText = 'background:#fff; border-radius:12px; box-shadow:0 8px 24px rgba(0,0,0,0.04); padding:1.25rem 1.5rem; margin:1rem 0;';
+        anchor.parentNode.insertBefore(wrap, anchor);
+        wrap.appendChild(panel);
+        // The original panel had a 0.75rem top margin that looked right
+        // inside the card. Now that it's the only child of a wrapper,
+        // remove that top margin so it doesn't double up.
+        panel.style.marginTop = '0';
+        panel.style.border = '0';
+        panel.style.background = 'transparent';
+        panel.style.padding = '0';
+    }
+
     const fileInput = document.getElementById('fileInput');
     const fileInfo = document.getElementById('fileInfo');
     const fileName = document.getElementById('fileName');
