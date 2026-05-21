@@ -133,10 +133,20 @@ def _all_other(rows: list[dict], business_type: str, reason: str) -> list[_mappi
 
 
 def _build_prompt(rows: list[dict], business_type: str, categories: tuple[str, ...]) -> str:
-    rows_text = "\n".join(
-        f"  {i+1}. \"{(r.get('description') or '').strip()[:80]}\" amount={r.get('amount')}"
-        for i, r in enumerate(rows)
-    )
+    # Each transaction line carries up to two signals:
+    #   - description: the merchant / payee
+    #   - reference:   the customer-supplied memo / invoice / "RENT FEB" line
+    # The reference is often FAR more diagnostic than the merchant —
+    # "FPI Acme Ltd" + reference "INV-2026-001" is unambiguous turnover.
+    rows_text_lines: list[str] = []
+    for i, r in enumerate(rows):
+        desc = (r.get("description") or "").strip()[:80]
+        ref = (r.get("reference") or "").strip()[:80] if r.get("reference") else ""
+        line = f"  {i+1}. \"{desc}\" amount={r.get('amount')}"
+        if ref:
+            line += f" reference=\"{ref}\""
+        rows_text_lines.append(line)
+    rows_text = "\n".join(rows_text_lines)
     biz_label = "UK property income" if business_type == "property" else "self-employment (sole trader)"
     return (
         f"You are classifying UK bank transactions for {biz_label} HMRC MTD ITSA "
@@ -146,6 +156,16 @@ def _build_prompt(rows: list[dict], business_type: str, categories: tuple[str, .
         + "\n\nRules:\n"
         "  - Positive amounts are money INTO the account (likely income).\n"
         "  - Negative amounts are money OUT (likely expense).\n"
+        "  - The `reference` field (when present) is a STRONG signal. It's\n"
+        "    the customer-supplied memo: invoice numbers, rent periods,\n"
+        "    'WAGES JOHN SMITH', 'HMRC SELF ASSESSMENT', etc. Use it to\n"
+        "    disambiguate vague merchants. e.g. payee 'Acme Ltd' + reference\n"
+        "    'INV-2026-001' -> turnover (definite); payee 'Acme Ltd' alone\n"
+        "    -> low-confidence guess.\n"
+        "  - 'HMRC' references (Self Assessment, PAYE, VAT, Corporation Tax)\n"
+        "    are TAX PAYMENTS, not deductible expenses — use 'other' for\n"
+        "    self-employment with reasoning explaining it's a tax liability\n"
+        "    settlement, not a business expense.\n"
         "  - UK parking merchants (NCP, MiPermit, RingGo, JustPark) -> travelCosts.\n"
         "  - Restaurants/cafes -> businessEntertainmentCosts (HMRC restricts this).\n"
         "  - Software subs (AWS, OpenAI, Notion) -> adminCosts.\n"

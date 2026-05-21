@@ -855,9 +855,18 @@ function renderTransactions() {
             );
         }).join('');
         const cat = (tx.hmrc_category || '—').replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+        // Render the customer-supplied reference as a small grey line under
+        // the merchant description when present. Helps the user understand
+        // why a category was chosen — and lets them spot parser mistakes.
+        const refSafe = tx.reference
+            ? String(tx.reference).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+            : '';
+        const refHtml = refSafe
+            ? `<div style="color:var(--muted);font-size:0.74rem;margin-top:0.1rem;">Ref: ${refSafe}</div>`
+            : '';
         html += `<tr class="tx-row ${rowCls}" data-tx-id="${tx.id}">
             <td>${tx.date_iso || '—'}</td>
-            <td>${tx.description || '—'}</td>
+            <td>${tx.description || '—'}${refHtml}</td>
             <td class="num">${fmtNeg(tx.amount)}</td>
             <td>${cat}</td>
             <td><span class="status-pill ${statusLabel}">${statusLabel}</span></td>

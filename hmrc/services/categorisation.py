@@ -206,6 +206,7 @@ async def resolve(
                 r = rows_in[i]
                 cl = _classify_with_rules(
                     (r.description or "").strip(), r.amount, business_type,
+                    reference=(r.reference or None) if hasattr(r, "reference") else None,
                 )
                 resolved[i] = _Resolved(
                     index=i,
@@ -322,6 +323,7 @@ async def _run_ai_batches(
                     (r.get("description") or "").strip(),
                     float(r.get("amount") or 0),
                     business_type,
+                    reference=(r.get("reference") or None),
                 ))
         else:
             out.extend(result)
@@ -330,8 +332,9 @@ async def _run_ai_batches(
 
 def _classify_with_rules(
     desc: str, amount: float, business_type: str,
+    reference: str | None = None,
 ) -> _mapping.Classification:
     """Regex-rule classifier. Used when AI is off OR an AI batch raised."""
     if business_type == "property":
-        return _mapping.classify_property(desc, amount)
-    return _mapping.classify_self_employment(desc, amount)
+        return _mapping.classify_property(desc, amount, reference=reference)
+    return _mapping.classify_self_employment(desc, amount, reference=reference)

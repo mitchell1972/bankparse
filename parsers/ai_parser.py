@@ -163,7 +163,8 @@ Return ONLY valid JSON in this exact format (no markdown, no explanation):
   "transactions": [
     {
       "date": "YYYY-MM-DD",
-      "description": "Transaction description",
+      "description": "Merchant / payee name",
+      "reference": "Customer-supplied reference or memo, or null",
       "amount": -10.00,
       "balance": null,
       "type": "debit"
@@ -173,7 +174,8 @@ Return ONLY valid JSON in this exact format (no markdown, no explanation):
 
 Rules:
 - DATE CARRYING: Many layouts show the date only on the first transaction of each day; subsequent rows have a blank date cell. Carry the most recent date forward until a new one appears.
-- MULTI-LINE DESCRIPTIONS: A single transaction often spans 2-7 lines (merchant name, reference, international currency conversion + non-sterling fee, etc.). Merge them into ONE clean description, and combine any separate "FX fee" / "non-sterling fee" line into the parent transaction's amount.
+- DESCRIPTION vs REFERENCE: The "description" is the MERCHANT or PAYEE name (e.g. "TESCO STORES", "AMAZON UK", "JOHN SMITH", "HMRC"). The "reference" is the customer-supplied memo / purpose / invoice number that often appears as a separate line (e.g. "INV-2024-001", "RENT FEB 32 HIGH ST", "WAGES JOHN SMITH", "SELF ASSESSMENT 9999999999K", "BACS REF: ABC123"). When you see both, put the merchant in description and the memo in reference. If only one line of detail is shown, put it in description and set reference=null. The reference is a strong tax-categorisation signal — extracting it separately is important.
+- MULTI-LINE DESCRIPTIONS: A single transaction often spans 2-7 lines (merchant name, reference, international currency conversion + non-sterling fee, etc.). The MERCHANT/payee goes in `description`; the customer-supplied REFERENCE/memo goes in `reference`; FX conversion + non-sterling fee lines are combined into the parent transaction's amount (not split into a separate transaction).
 - AMOUNTS: Negative for money OUT (debits / withdrawals / purchases / fees), positive for money IN (credits / deposits / payments received). type="debit" or "credit" correspondingly.
 - Include ALL transactions, even small ones and those with partially obscured amounts.
 - Dates MUST be YYYY-MM-DD. Parse any format ("22 Dec 25", "12/22/2025", "22/12/2025", "2025-12-22") using the statement period + bank country to disambiguate MM/DD vs DD/MM.
@@ -184,10 +186,13 @@ Rules:
 
 STATEMENT_PROMPT_STRICT = """You MUST return ONLY valid JSON. No markdown, no backticks, no explanation.
 
-Extract ALL transactions from this bank statement page (any bank, any country). Carry dates forward across blank rows. Merge multi-line descriptions. Skip opening/closing/brought-forward balance rows and header / footer text. Negative for money out, positive for money in. Dates YYYY-MM-DD. Determine currency from the statement.
+Extract ALL transactions from this bank statement page (any bank, any country). Carry dates forward across blank rows. Split MERCHANT/payee from the customer-supplied REFERENCE/memo:
+  - `description` = the merchant / payee name
+  - `reference` = the memo / invoice / "RENT FEB" / "INV-001" / "WAGES" style line, or null
+Skip opening/closing/brought-forward balance rows and header / footer text. Negative for money out, positive for money in. Dates YYYY-MM-DD. Determine currency from the statement.
 
 Return this exact JSON structure:
-{"bank_name":"...","account_holder":"...","statement_period":"...","currency":"GBP","transactions":[{"date":"YYYY-MM-DD","description":"...","amount":-10.00,"balance":null,"type":"debit"}]}"""
+{"bank_name":"...","account_holder":"...","statement_period":"...","currency":"GBP","transactions":[{"date":"YYYY-MM-DD","description":"...","reference":null,"amount":-10.00,"balance":null,"type":"debit"}]}"""
 
 
 STATEMENT_TEXT_PROMPT = """You are a universal bank statement parser. Below is the TEXT extracted from every page of a bank statement PDF. Extract EVERY transaction as JSON.
@@ -202,8 +207,8 @@ CRITICAL RULES that apply to every statement format:
                VIS TESCO           20.24   <- also 22 Dec 25
      23 Dec 25 DD ELECTRIC         40.00   <- new date starts here
 
-2. MULTI-LINE DESCRIPTIONS: A single transaction often spans 2-7 text lines. Merge them into ONE clean description (single spaces, no line breaks). Common cases across all banks:
-   - A merchant name wrapped to a second line
+2. MULTI-LINE DESCRIPTIONS: A single transaction often spans 2-7 text lines. The MERCHANT or payee goes in `description`; the customer-supplied REFERENCE / memo / invoice id goes in a SEPARATE `reference` field (string or null). Common cases across all banks:
+   - A merchant name wrapped to a second line — keep both in description
    - International / foreign-currency transactions that include the original amount, exchange rate, visa/mastercard rate, and a separate "non-sterling" / "foreign transaction" / "FX" fee. Combine them into ONE transaction whose amount is the TOTAL in the account currency (including the fee). Example:
        VIS INT'L 0014799223
        OPENROUTER, INC
@@ -212,9 +217,21 @@ CRITICAL RULES that apply to every statement format:
        Visa Rate       11.85
        DR Non-Sterling
        Transaction Fee  0.32
-     becomes ONE transaction: description "VIS INT'L OPENROUTER, INC OPENROUTER.AI USD 15.83 @ 1.3358 Non-Sterling Fee", amount -(11.85 + 0.32) = -12.17
-   - Bill-pay / ACH / standing-order transactions where the payee name, reference, and amount are on separate lines
-   - Check/cheque transactions that show the check number on one line and the amount on the next
+     becomes ONE transaction: description "VIS INT'L OPENROUTER, INC OPENROUTER.AI", amount -(11.85 + 0.32) = -12.17, reference null
+   - Bill-pay / ACH / standing-order transactions where the payee name and a separate reference/memo line appear together. Example:
+       BP James Plumbing Ltd
+       Invoice 0042 boiler service
+     becomes description "James Plumbing Ltd", reference "Invoice 0042 boiler service".
+   - Standing orders / direct debits with a labelled REF: pull that out as reference. Example:
+       DD British Gas
+       REF: 1234567/GAS Q1
+     becomes description "British Gas", reference "1234567/GAS Q1".
+   - Inbound payments to a sole trader: the payer name is description, what they wrote in the bank-transfer memo goes in reference. Example:
+       FPI Acme Engineering Ltd
+       INV-2026-001
+     becomes description "Acme Engineering Ltd", reference "INV-2026-001".
+   - Check/cheque transactions: the cheque number is the reference (description = "CHEQUE" or the payee if known).
+   - If only ONE line of detail exists, put it in description and set reference=null. Never invent a reference.
 
 3. DEBIT vs CREDIT (money OUT vs money IN): Figure this out from the column layout in front of you:
    - Columns labelled "Paid out" / "Debit" / "Withdrawals" / "Money Out" / "Debits" / "Charges" / "-" = NEGATIVE amount, type="debit"
@@ -251,7 +268,7 @@ Return ONLY valid JSON, no markdown, no explanation, no preamble:
   "statement_period": "Date range in natural language",
   "currency": "3-letter ISO code (GBP, USD, EUR, CAD, AUD, INR, ...) inferred from the statement",
   "transactions": [
-    {"date": "YYYY-MM-DD", "description": "Merged clean description", "amount": -10.00, "balance": null, "type": "debit"}
+    {"date": "YYYY-MM-DD", "description": "Merchant or payee", "reference": "Customer memo/invoice or null", "amount": -10.00, "balance": null, "type": "debit"}
   ]
 }
 
@@ -260,10 +277,10 @@ Be THOROUGH. A typical monthly statement has 30-150 transactions — extract eve
 
 STATEMENT_TEXT_PROMPT_STRICT = """You MUST return ONLY valid JSON. No markdown, no backticks, no explanation, no preamble.
 
-Extract EVERY transaction from this bank statement text (any bank, any country). Carry the date forward to rows that do not show a date. Merge multi-line descriptions into a single clean string. Skip header/footer/summary rows and "BALANCE BROUGHT FORWARD" / "CARRIED FORWARD" / opening/closing balance rows. Negative amount for money OUT, positive for money IN. Dates MUST be YYYY-MM-DD.
+Extract EVERY transaction from this bank statement text (any bank, any country). Carry the date forward to rows that do not show a date. Each transaction has a merchant/payee (`description`) and an optional customer-supplied memo/invoice/REF (`reference`) — put them in separate fields. Skip header/footer/summary rows and "BALANCE BROUGHT FORWARD" / "CARRIED FORWARD" / opening/closing balance rows. Negative amount for money OUT, positive for money IN. Dates MUST be YYYY-MM-DD.
 
 Return this exact JSON structure:
-{"bank_name":"...","account_holder":"...","statement_period":"...","currency":"GBP","transactions":[{"date":"YYYY-MM-DD","description":"...","amount":-10.00,"balance":null,"type":"debit"}]}"""
+{"bank_name":"...","account_holder":"...","statement_period":"...","currency":"GBP","transactions":[{"date":"YYYY-MM-DD","description":"...","reference":null,"amount":-10.00,"balance":null,"type":"debit"}]}"""
 
 
 # ---------------------------------------------------------------------------

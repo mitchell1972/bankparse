@@ -33,6 +33,13 @@ class TransactionIn(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     description: str = Field("", description="Raw bank-statement description.")
+    reference: str | None = Field(
+        None,
+        description=(
+            "Customer-supplied memo / invoice / 'RENT FEB' line extracted "
+            "from the bank statement. Strong tax-categorisation signal."
+        ),
+    )
     amount: float = Field(0.0, description="Signed amount: positive = credit, negative = debit.")
 
 
@@ -55,6 +62,7 @@ class TransactionOut(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     description: str = ""
+    reference: str | None = None
     amount: float = 0.0
     hmrc: HmrcClassification
 

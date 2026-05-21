@@ -137,6 +137,76 @@ def _is_likely_owner_transfer(description: str, user_full_name: str | None) -> b
 # of broad keyword catches.
 # ---------------------------------------------------------------------------
 
+# Reference-only rules — fire ONLY when the strong signal appears in the
+# customer-supplied reference (memo / invoice id / "RENT FEB" line), not
+# in the merchant name. These get a confidence boost because a memo
+# saying "INV-2026-001" is much more diagnostic than the same string
+# buried inside a merchant description. Each rule is (pattern, category,
+# is_income, confidence, why).
+_SE_REFERENCE_RULES: list[tuple[re.Pattern[str], str, bool, float, str]] = [
+    # ----- invoice numbers → turnover (when also a credit) -----
+    # NB. no trailing \b — references like "INV-2026-001" end on a digit
+    # which has no boundary against the preceding digit, so requiring a
+    # word boundary at the end would silently fail to match every typical
+    # invoice number.
+    (re.compile(r"\b(inv[-_\s/]?\d|invoice[-_\s]?\d|invoice\s+no|"
+                r"inv\s*[#:]\s*\d|sales\s+inv|customer\s+inv|client\s+inv)", re.I),
+     SE_INCOME, True, 0.92,
+     "Reference contains an invoice number — typical sales receipt"),
+
+    # ----- staff payroll references -----
+    (re.compile(r"\b(payroll|wages?|salary|net\s+pay|paye|"
+                r"month\s+end\s+pay)\b", re.I),
+     SE_EXPENSE_STAFF, False, 0.88,
+     "Reference looks like a wages / payroll line"),
+
+    # ----- HMRC self-assessment / PAYE / VAT / corp tax payments
+    # These are NOT deductible business expenses — they're a tax
+    # liability settlement. Route to "other" with explicit reasoning so
+    # the user can flag-and-exclude on review.
+    (re.compile(r"\b(hmrc|hmrc\s+nps|self[-\s]?assessment|"
+                r"sa\s+payment|paye\s+tax|class\s*[12]\s*ni|"
+                r"vat\s+(return|payment|q[1-4])|"
+                r"corporation\s+tax|ct600)\b", re.I),
+     SE_EXPENSE_OTHER, False, 0.85,
+     "Reference identifies an HMRC tax payment — not a business expense; "
+     "review and mark personal/excluded if appropriate"),
+
+    # ----- standing-order rent payments (sole-trader paying business rent) -----
+    (re.compile(r"\b(rent\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|q[1-4]|month)|"
+                r"rent\s+payment|monthly\s+rent|business\s+rent)\b", re.I),
+     SE_EXPENSE_PREMISES, False, 0.90,
+     "Reference describes a rent payment — premises running cost"),
+
+    # ----- utility account references -----
+    (re.compile(r"\b(elec(t(ric(ity)?)?)?\s+(account|bill|q[1-4])|"
+                r"gas\s+(account|bill|q[1-4])|"
+                r"water\s+(account|bill|rates))\b", re.I),
+     SE_EXPENSE_PREMISES, False, 0.85,
+     "Reference identifies a utility bill"),
+
+    # ----- subcontractor CIS deductions -----
+    (re.compile(r"\b(cis\s+(?:payment|deduction)|"
+                r"contractor\s+payment|subbie\s+pay)\b", re.I),
+     SE_EXPENSE_CIS, False, 0.92,
+     "Reference describes a CIS subcontractor payment"),
+
+    # ----- ad-platform references -----
+    (re.compile(r"\b(google\s+ads|facebook\s+ads|meta\s+ads|"
+                r"linkedin\s+campaign|tiktok\s+campaign|"
+                r"adwords\s+account)\b", re.I),
+     SE_EXPENSE_ADVERTISING, False, 0.92,
+     "Reference identifies a paid-ads platform charge"),
+
+    # ----- professional-services invoice patterns -----
+    (re.compile(r"\b(accountancy\s+fee|legal\s+fee|"
+                r"professional\s+services|consultancy\s+fee|"
+                r"audit\s+fee|tax\s+advice)\b", re.I),
+     SE_EXPENSE_PROFESSIONAL, False, 0.90,
+     "Reference describes a professional-services fee"),
+]
+
+
 _SE_RULES: list[tuple[re.Pattern[str], str, bool, float, str]] = [
     # ----- income -----
     (re.compile(r"\b(stripe|paypal|gocardless|sumup|square|takepayments|zettle|tide payments)\b", re.I),
@@ -254,6 +324,7 @@ def classify_self_employment(
     description: str,
     amount: float,
     user_full_name: str | None = None,
+    reference: str | None = None,
 ) -> Classification:
     """Map one bank transaction to a self-employment HMRC category.
 
@@ -264,8 +335,18 @@ def classify_self_employment(
     `user_full_name` (optional) lets us spot transfers to/from the user's
     own accounts and exclude them from category totals — these are owner
     draws, not taxable events.
+
+    `reference` (optional) is the customer-supplied memo / invoice id
+    extracted by the parser. When present it gets two boosts:
+      1. A set of reference-only rules fire first (e.g. "INV-2026-001"
+         → turnover with 0.92 confidence) — these are strictly more
+         diagnostic than merchant-name matches.
+      2. The merchant-name rules also scan the reference text, so a
+         vague description like "FPI Acme Ltd" with reference "Plumbing
+         invoice 0042" still hits the repairs rule.
     """
     desc = (description or "").strip()
+    ref = (reference or "").strip()
     is_credit = amount > 0
 
     # Own-name transfer? Exclude before any other rule. We can't know
@@ -279,13 +360,37 @@ def classify_self_employment(
             reasoning=f"Looks like a transfer to/from your own account ('{desc[:40]}…') — excluded from tax totals",
         )
 
+    # Reference-only rules first — strongest signal we have.
+    if ref:
+        for pat, cat, is_income_rule, conf, why in _SE_REFERENCE_RULES:
+            if pat.search(ref):
+                if is_income_rule != is_credit:
+                    # Direction mismatch — still trust the bank sign but
+                    # downgrade. e.g. "wages" reference on a CREDIT is
+                    # almost certainly the user RECEIVING a wage from
+                    # employment (not a self-employment expense).
+                    return Classification(
+                        SE_INCOME if is_credit else SE_EXPENSE_OTHER,
+                        confidence=0.40,
+                        is_income=is_credit,
+                        reasoning=(
+                            f"Reference '{ref[:40]}' suggests {why}, but the "
+                            f"transaction is a {'credit' if is_credit else 'debit'} — "
+                            f"flagged for review."
+                        ),
+                    )
+                return Classification(cat, conf, is_income_rule, why)
+
     # Strip the bank-statement prefix ('BP', 'DD', 'CR', etc.) before matching
     # rules. Without this, descriptions like 'BP James Okeh Gift' wrongly hit
     # the 'BP' fuel rule. Keep the original for reasoning text.
     stripped = _strip_prefix_for_matching(desc).strip()
+    # Merchant rules scan description + reference. Reference is appended
+    # after a space so word-boundary matches still work cleanly.
+    combined = (stripped + " " + ref).strip() if ref else stripped
 
     for pat, cat, is_income_rule, conf, why in _SE_RULES:
-        if pat.search(stripped):
+        if pat.search(combined):
             # If rule says income but bank says debit (or vice versa), trust
             # the bank direction and downgrade confidence.
             if is_income_rule != is_credit:
@@ -295,6 +400,10 @@ def classify_self_employment(
                     is_income=is_credit,
                     reasoning=f"Direction mismatch — {why}, but transaction is a {'credit' if is_credit else 'debit'}",
                 )
+            # When the merchant name itself didn't match but the rule
+            # fired off the reference, surface that in the reasoning.
+            if ref and pat.search(ref) and not pat.search(stripped):
+                why = f"{why} (matched on reference '{ref[:40]}')"
             return Classification(cat, conf, is_income_rule, why)
 
     # No rule matched. If the stripped description looks like just a person's
@@ -323,6 +432,47 @@ def classify_self_employment(
 # ---------------------------------------------------------------------------
 # UK property rules
 # ---------------------------------------------------------------------------
+
+# Reference-only rules for UK property. References are the killer signal
+# for landlords: "RENT FEB 32 HIGH ST", "DEPOSIT 14 OAK LANE", "BOILER
+# SERVICE FLAT 3" tell us category + property in one shot.
+_PROPERTY_REFERENCE_RULES: list[tuple[re.Pattern[str], str, bool, float, str]] = [
+    # --- rent received from tenant (very common pattern) ---
+    (re.compile(r"\b(rent\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|q[1-4]|month|week)|"
+                r"monthly\s+rent|weekly\s+rent|tenant\s+rent|"
+                r"rent\s+for|rent\s+\d|"
+                r"rental\s+income)\b", re.I),
+     PROP_INCOME_RENT, True, 0.95,
+     "Reference describes a rent payment"),
+
+    # --- tenant deposit (NOT taxable income — held in protection scheme) ---
+    (re.compile(r"\b(deposit\s+(?:scheme|protection|held|"
+                r"received|tenant)|"
+                r"dps\s+ref|tds\s+ref|mydeposits)\b", re.I),
+     PROP_INCOME_OTHER, True, 0.55,
+     "Reference suggests a tenant deposit — review; deposits aren't taxable income"),
+
+    # --- property repairs / boiler / heating refs ---
+    (re.compile(r"\b(boiler|heating|plumbing|electric|"
+                r"repair\s+(?:flat|unit|property)|"
+                r"property\s+repair|maintenance\s+(?:flat|unit|property))\b", re.I),
+     PROP_EXPENSE_REPAIRS, False, 0.92,
+     "Reference describes a property repair"),
+
+    # --- letting-agent / management fees ---
+    (re.compile(r"\b(letting\s+(?:fee|agent)|"
+                r"management\s+fee|agency\s+fee|"
+                r"rightmove\s+listing|zoopla\s+listing)\b", re.I),
+     PROP_EXPENSE_SERVICES, False, 0.92,
+     "Reference describes a letting-agent fee"),
+
+    # --- mortgage interest -> residential financial cost -----
+    (re.compile(r"\b(btl\s+mortgage|buy[-\s]?to[-\s]?let|"
+                r"residential\s+mortgage)\b", re.I),
+     PROP_EXPENSE_RESIDENTIAL_FINANCIAL, False, 0.92,
+     "Reference identifies a BTL/residential mortgage payment"),
+]
+
 
 _PROPERTY_RULES: list[tuple[re.Pattern[str], str, bool, float, str]] = [
     # --- rent income ---
@@ -368,9 +518,18 @@ def classify_property(
     description: str,
     amount: float,
     user_full_name: str | None = None,
+    reference: str | None = None,
 ) -> Classification:
-    """Map one bank transaction to a UK property HMRC category."""
+    """Map one bank transaction to a UK property HMRC category.
+
+    See ``classify_self_employment`` for the role of ``reference`` —
+    same idea: reference-only rules fire first, then merchant rules
+    scan description+reference. Critical for landlords because the
+    description on inbound rent payments is often just the tenant's
+    name (which our merchant rules can't categorise) but the reference
+    "RENT FEB 32 OAK LANE" is unambiguous."""
     desc = (description or "").strip()
+    ref = (reference or "").strip()
     is_credit = amount > 0
 
     if _is_likely_owner_transfer(desc, user_full_name):
@@ -381,10 +540,28 @@ def classify_property(
             reasoning=f"Looks like a transfer to/from your own account ('{desc[:40]}…') — excluded from tax totals",
         )
 
+    # Reference-only rules first (the killer signal for landlords).
+    if ref:
+        for pat, cat, is_income_rule, conf, why in _PROPERTY_REFERENCE_RULES:
+            if pat.search(ref):
+                if is_income_rule != is_credit:
+                    return Classification(
+                        PROP_INCOME_OTHER if is_credit else PROP_EXPENSE_OTHER,
+                        confidence=0.40,
+                        is_income=is_credit,
+                        reasoning=(
+                            f"Reference '{ref[:40]}' suggests {why}, but the "
+                            f"transaction is a {'credit' if is_credit else 'debit'} — "
+                            f"flagged for review."
+                        ),
+                    )
+                return Classification(cat, conf, is_income_rule, why)
+
     stripped = _strip_prefix_for_matching(desc).strip()
+    combined = (stripped + " " + ref).strip() if ref else stripped
 
     for pat, cat, is_income_rule, conf, why in _PROPERTY_RULES:
-        if pat.search(stripped):
+        if pat.search(combined):
             if is_income_rule != is_credit:
                 return Classification(
                     PROP_INCOME_OTHER if is_credit else PROP_EXPENSE_OTHER,
@@ -392,6 +569,8 @@ def classify_property(
                     is_income=is_credit,
                     reasoning=f"Direction mismatch — {why}, but transaction is a {'credit' if is_credit else 'debit'}",
                 )
+            if ref and pat.search(ref) and not pat.search(stripped):
+                why = f"{why} (matched on reference '{ref[:40]}')"
             return Classification(cat, conf, is_income_rule, why)
 
     if _looks_like_personal_name(stripped):
@@ -440,7 +619,12 @@ def _aggregate(
     flagged: list[dict] = []
     excluded: list[dict] = []
     for r in rows:
-        c = classify_fn(r.get("description", ""), float(r.get("amount") or 0), user_full_name)
+        c = classify_fn(
+            r.get("description", ""),
+            float(r.get("amount") or 0),
+            user_full_name,
+            reference=(r.get("reference") or None),
+        )
         if c.category == EXCLUDE_OWNER_TRANSFER:
             excluded.append({"row": r, "classification": c.__dict__})
             continue

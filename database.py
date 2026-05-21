@@ -231,6 +231,7 @@ def init_db():
             extracted_data_id INTEGER,        -- FK back to user_extracted_data (the parent batch)
             date_iso TEXT,                    -- YYYY-MM-DD
             description TEXT,
+            reference TEXT,                   -- customer-supplied memo / invoice / "RENT FEB" line
             amount REAL NOT NULL,             -- negative = money out, positive = money in
             currency TEXT DEFAULT 'GBP',
             balance REAL,
@@ -463,6 +464,15 @@ def init_db():
             _execute(f"ALTER TABLE hmrc_connections ADD COLUMN {col} {col_def}")
         except Exception:
             pass  # already added
+
+    # Migrate: add the `reference` column on ledger_transactions. The bank
+    # statement parser now emits a separate `reference` (the customer-
+    # supplied memo / invoice id / "RENT FEB" line). Strong tax-categorisation
+    # signal that previously got merged into `description` and lost.
+    try:
+        _execute("ALTER TABLE ledger_transactions ADD COLUMN reference TEXT DEFAULT NULL")
+    except Exception:
+        pass  # already added
 
     # Migrate: add columns if missing (existing databases)
     for col, col_def in [
@@ -1187,16 +1197,24 @@ def insert_ledger_transaction(
     hmrc_category: str | None = None,
     hmrc_category_confidence: int | None = None,
     hmrc_category_reason: str | None = None,
+    reference: str | None = None,
 ) -> int:
-    """Insert one transaction. Returns the new row id."""
+    """Insert one transaction. Returns the new row id.
+
+    ``reference`` is the customer-supplied memo / invoice line extracted by
+    the parser; it's a separate field from ``description`` so the
+    categoriser can weight it specifically. The content_hash deliberately
+    excludes reference so re-parsing the same statement doesn't create
+    duplicates if the parser shifts text between the two fields.
+    """
     content_hash = _hash_transaction(date_iso, description, amount)
     return _execute_insert(
         """INSERT INTO ledger_transactions
-        (user_id, extracted_data_id, date_iso, description, amount, currency,
+        (user_id, extracted_data_id, date_iso, description, reference, amount, currency,
          balance, transaction_type, hmrc_category, hmrc_category_confidence,
          hmrc_category_reason, content_hash)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        (user_id, extracted_data_id, date_iso, description, float(amount),
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (user_id, extracted_data_id, date_iso, description, reference, float(amount),
          currency, balance, transaction_type,
          hmrc_category, hmrc_category_confidence, hmrc_category_reason,
          content_hash),
