@@ -23,18 +23,26 @@ def ingest_statement_rows(
     rows: list[dict],
 ) -> list[int]:
     """Take the per-row output of parse_statement_ai and write structured
-    ledger_transactions. Returns the list of new transaction ids."""
+    ledger_transactions. Returns the list of new transaction ids.
+
+    Picks up the parser's new ``reference`` field if present — that's the
+    customer-supplied memo / invoice line we now extract separately. Both
+    ``reference`` and ``ref`` are accepted as aliases for back-compat.
+    """
     new_ids: list[int] = []
     for row in rows or []:
         try:
             amount = float(row.get("amount") or 0)
         except (TypeError, ValueError):
             continue
+        ref_raw = row.get("reference") or row.get("ref")
+        ref = (str(ref_raw).strip() or None) if ref_raw else None
         tx_id = database.insert_ledger_transaction(
             user_id,
             extracted_data_id=extracted_data_id,
             date_iso=row.get("date") or row.get("date_iso"),
             description=row.get("description") or row.get("desc"),
+            reference=ref,
             amount=amount,
             currency=row.get("currency") or "GBP",
             balance=row.get("balance"),
@@ -74,10 +82,12 @@ async def auto_categorise_user_transactions(
         return 0
 
     # Build the request payload — preserve the tx id so we can match the
-    # response back to the ledger row.
+    # response back to the ledger row. ``reference`` flows through so
+    # the categoriser can lean on the customer-supplied memo.
     rows_in = [
         TransactionIn(
             description=tx.get("description") or "",
+            reference=tx.get("reference") or None,
             amount=float(tx.get("amount") or 0),
             date=tx.get("date_iso"),
             id=tx["id"],
@@ -289,6 +299,7 @@ def build_unified_ledger(user_id: int) -> dict:
             "id": tx["id"],
             "date_iso": tx["date_iso"],
             "description": tx["description"],
+            "reference": tx.get("reference"),
             "amount": tx["amount"],
             "currency": tx["currency"],
             "hmrc_category": tx["hmrc_category"],
