@@ -539,3 +539,39 @@ def test_setup_complete_surfaces_hmrc_error_on_first_business():
     assert "self-employment" in r.json()["detail"]
     # Stopped after the failed SE call — property was NOT attempted
     assert mock_call.call_count == 1
+
+
+def test_setup_complete_translates_oauth_nino_mismatch_to_friendly_409():
+    """If HMRC returns 404 MATCHING_RESOURCE_NOT_FOUND on create-business,
+    the OAuth session is tied to a DIFFERENT test user than the stored
+    NINO. Surface a 409 with reconnect instructions rather than parroting
+    HMRC's opaque code."""
+    client, csrf, user = _client_with_user()
+    _connect_with_nino(user["id"])
+
+    from hmrc.services import client as _hmrc_client
+    err = _hmrc_client.HmrcApiError(
+        status_code=404,
+        body={"code": "MATCHING_RESOURCE_NOT_FOUND",
+              "message": "The remote endpoint has indicated that no resource can be found for the supplied details."},
+    )
+
+    with patch(
+        "hmrc.services.sandbox._client.request",
+        side_effect=err,
+    ) as mock_call:
+        r = client.post(
+            "/api/hmrc/sandbox/setup-complete",
+            json={}, headers={"X-CSRF-Token": csrf},
+        )
+
+    assert r.status_code == 409, r.json()
+    detail = r.json()["detail"]
+    # The NINO must appear so the user can see which one HMRC rejected.
+    assert "CX139207A" in detail
+    # The actionable next step must be present — clicking Connect again.
+    assert "Connect to HMRC" in detail
+    # The opaque HMRC code MUST NOT leak through.
+    assert "MATCHING_RESOURCE_NOT_FOUND" not in detail
+    # We bailed on the first (SE) call; property must not be attempted.
+    assert mock_call.call_count == 1
