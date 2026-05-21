@@ -1032,10 +1032,35 @@
                          provisions a real business at HMRC. Hidden in
                          production builds. -->
                     <div id="hmrcSandboxHelpers" style="display:none; margin-top:0.75rem; padding-top:0.75rem; border-top:1px dashed #D1D5DB;">
+
+                        <!-- Mint a fresh sandbox test individual via HMRC's
+                             Create Test User API. Returns NINO + Government
+                             Gateway credentials + mtdItId so the user can
+                             OAuth + submit immediately. Sandbox-only. -->
+                        <div style="background:#EBF5FB; border:1px solid #AED6F1; border-radius:6px; padding:0.7rem 0.9rem; margin-bottom:0.8rem;">
+                            <div style="font-weight:600; color:#1B4F72; margin-bottom:0.3rem;">
+                                Need a fresh sandbox NINO? Mint one in one click
+                            </div>
+                            <div style="font-size:0.82rem; color:#5D6D7E; margin-bottom:0.5rem;">
+                                Calls HMRC's Create Test User API. Returns a new
+                                NINO + Government Gateway userId + password.
+                                Paste them into the form above + the HMRC connect
+                                page, then click 'Set me up with a complete
+                                sandbox' below.
+                            </div>
+                            <button id="hmrcMintTestUserBtn" type="button"
+                                    style="background:#2E86C1; color:#fff; border:0; padding:0.5rem 1rem; font-size:0.88rem; border-radius:6px; cursor:pointer; font-weight:600;">
+                                Mint sandbox test user
+                            </button>
+                            <div id="hmrcMintTestUserResult"
+                                 style="display:none; margin-top:0.6rem; font-size:0.85rem;"></div>
+                        </div>
+
                         <div style="font-size:0.82rem; color:#78350F; margin-bottom:0.4rem;">
-                            Sandbox only — no businesses on your NINO yet? Set up a full test
-                            account in one click (creates one self-employment + one property
-                            business and refreshes the deadlines panel):
+                            Already have a NINO with no businesses against it?
+                            Set up a full sandbox in one click (creates one
+                            self-employment + one property business and
+                            refreshes the deadlines panel):
                         </div>
                         <button id="hmrcSandboxSetupAll" type="button"
                                 style="background:#1B4F72; color:#fff; border:0; padding:0.55rem 1rem; font-size:0.9rem; border-radius:6px; cursor:pointer; font-weight:600; width:100%;">
@@ -2657,6 +2682,82 @@
                 } finally {
                     setupBtn.disabled = false;
                     setupBtn.textContent = original;
+                }
+            });
+        }
+
+        // Mint a fresh sandbox test individual via HMRC's Create Test User
+        // API. The endpoint uses a server-to-server (application) token so
+        // no per-user OAuth is needed — anyone with a session can mint one.
+        const mintBtn = document.getElementById('hmrcMintTestUserBtn');
+        const mintResult = document.getElementById('hmrcMintTestUserResult');
+        if (mintBtn && mintBtn.dataset.wired !== '1') {
+            mintBtn.dataset.wired = '1';
+            mintBtn.addEventListener('click', async () => {
+                if (mintBtn.disabled) return;
+                mintBtn.disabled = true;
+                const original = mintBtn.textContent;
+                mintBtn.textContent = 'Minting… (talking to HMRC)';
+                mintResult.style.display = 'none';
+                try {
+                    const csrf = (document.cookie.match(/bp_csrf=([^;]+)/) || [])[1] || '';
+                    const resp = await fetch('/api/hmrc/sandbox/create-test-user', {
+                        method: 'POST',
+                        credentials: 'include',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-Token': decodeURIComponent(csrf),
+                        },
+                        body: '{}',
+                    });
+                    const data = await resp.json();
+                    mintResult.style.display = 'block';
+                    if (resp.ok) {
+                        // Pretty-print the credentials with copy buttons so
+                        // the user can paste straight into the NINO field
+                        // and the HMRC sandbox sign-in page.
+                        const safe = s => String(s || '').replace(/[<>&]/g,
+                            c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
+                        const row = (label, value, fillId) => value ? `
+                            <div style="display:flex; gap:0.5rem; align-items:center; margin:0.25rem 0;">
+                              <span style="min-width:130px; color:#566573; font-size:0.78rem;">${label}</span>
+                              <code style="background:#fff; padding:0.15rem 0.4rem; border-radius:3px; border:1px solid #D5DBDB; font-size:0.85rem; user-select:all;">${safe(value)}</code>
+                              <button type="button" onclick="navigator.clipboard.writeText('${safe(value)}'); this.textContent='✓'"
+                                      style="background:none; border:0; color:#2874A6; cursor:pointer; font-size:0.78rem;">copy</button>
+                              ${fillId ? `<button type="button" onclick="document.getElementById('${fillId}').value='${safe(value)}'; this.textContent='filled'"
+                                      style="background:none; border:0; color:#1E8449; cursor:pointer; font-size:0.78rem;">fill NINO field</button>` : ''}
+                            </div>` : '';
+
+                        mintResult.style.color = '#1B4F72';
+                        mintResult.innerHTML = `
+                            <div style="background:#fff; border:1px solid #AED6F1; border-radius:6px; padding:0.7rem 0.9rem;">
+                              <div style="font-weight:600; margin-bottom:0.4rem;">✓ Sandbox test user minted</div>
+                              ${row('NINO',                  data.nino, 'hmrcSetupNino')}
+                              ${row('GG userId',             data.user_id || data.userId, null)}
+                              ${row('GG password',           data.password, null)}
+                              ${row('mtdItId',               data.mtd_it_id || data.mtdItId, null)}
+                              ${row('UTR (SA)',              data.sa_utr || data.saUtr, null)}
+                              <div style="margin-top:0.55rem; font-size:0.78rem; color:#566573;">
+                                <strong>Next:</strong> fill the NINO field above (or click 'fill NINO field'),
+                                then go to <a href="/hmrc/connect" style="color:#2874A6;">Connect to HMRC</a>
+                                and sign in with the GG userId + password above.
+                                After that, come back here and click
+                                <em>'Set me up with a complete sandbox'</em>.
+                              </div>
+                            </div>
+                        `;
+                    } else {
+                        mintResult.style.color = '#B91C1C';
+                        mintResult.textContent = data.detail
+                            || `Couldn't mint a test user (status ${resp.status}).`;
+                    }
+                } catch (e) {
+                    mintResult.style.display = 'block';
+                    mintResult.style.color = '#B91C1C';
+                    mintResult.textContent = 'Network error talking to HMRC.';
+                } finally {
+                    mintBtn.disabled = false;
+                    mintBtn.textContent = original;
                 }
             });
         }

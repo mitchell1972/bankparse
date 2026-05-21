@@ -34,6 +34,7 @@ import logging
 import os
 from datetime import date
 
+from .. import config as _cfg
 from ..repositories import tokens as _tokens
 from . import client as _client
 
@@ -127,6 +128,83 @@ WANTED_BUSINESS_TYPES: tuple[tuple[str, str], ...] = (
     ("self-employment", "Sandbox sole trader"),
     ("property",        "Sandbox property"),
 )
+
+
+def fetch_application_token() -> str:
+    """Get a server-to-server (application-restricted) access token from
+    HMRC sandbox via the client_credentials grant.
+
+    Used for endpoints that authenticate as the *application*, not as a
+    specific user — most notably Create Test User. Returns the raw
+    bearer token string; the caller is expected to put it on a single
+    Authorization header.
+    """
+    import httpx
+    payload = {
+        "grant_type": "client_credentials",
+        "client_id": _cfg.HMRC_CLIENT_ID,
+        "client_secret": _cfg.HMRC_CLIENT_SECRET,
+        "scope": "hello",  # required by HMRC's token endpoint
+    }
+    url = f"{_cfg.HMRC_BASE_URL}{_cfg.OAUTH_TOKEN_PATH}"
+    with httpx.Client(timeout=30.0) as client:
+        resp = client.post(url, data=payload)
+    if resp.status_code >= 400:
+        raise _client.HmrcApiError(
+            status_code=resp.status_code,
+            body=f"client_credentials token request failed: {resp.text[:300]}",
+        )
+    data = resp.json()
+    token = data.get("access_token")
+    if not token:
+        raise _client.HmrcApiError(
+            status_code=0,
+            body=f"HMRC token endpoint returned no access_token: {data}",
+        )
+    return str(token)
+
+
+# Service names HMRC's Create Test User accepts. We subscribe the new user
+# to every MTD ITSA-adjacent service so they can OAuth + submit immediately
+# without HMRC support having to add anything by hand.
+_TEST_USER_MTD_SERVICES = (
+    "national-insurance",
+    "self-assessment",
+    "mtd-income-tax",
+    # Property + self-employment APIs read from these subscriptions:
+    # "agent-services",  # only useful if the test user IS an agent
+)
+
+
+def create_test_individual() -> dict:
+    """Mint a fresh HMRC sandbox test individual.
+
+    Returns the raw HMRC response which carries the new user's NINO,
+    Government Gateway userId + password, sa_utr, mtdItId, group identifier,
+    full name and address. The dashboard surfaces these in a copy-able
+    card so the user can plug them into the dashboard NINO field and
+    OAuth with the GG creds.
+
+    Sandbox-only (HMRC's create-test-user API does not exist in
+    production). Caller MUST gate on is_sandbox().
+    """
+    import httpx
+    token = fetch_application_token()
+    url = f"{_cfg.HMRC_BASE_URL}/create-test-user/individuals"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/vnd.hmrc.1.0+json",
+        "Content-Type": "application/json",
+    }
+    body = {"serviceNames": list(_TEST_USER_MTD_SERVICES)}
+    with httpx.Client(timeout=30.0) as client:
+        resp = client.post(url, headers=headers, json=body)
+    if resp.status_code >= 400:
+        raise _client.HmrcApiError(
+            status_code=resp.status_code,
+            body=f"create-test-user/individuals failed: {resp.text[:500]}",
+        )
+    return resp.json()
 
 
 def setup_complete_sandbox(*, user_id: int, request_obj) -> dict:
