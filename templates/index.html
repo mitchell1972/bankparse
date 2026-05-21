@@ -1036,7 +1036,7 @@
                              style="display:none; margin-top:0.6rem; font-size:0.85rem;"></div>
                     </div>
 
-                    <div style="font-size:0.88rem; color:#78350F; margin-bottom:0.5rem;">
+                    <div id="hmrcSetupPrompt" style="font-size:0.88rem; color:#78350F; margin-bottom:0.5rem;">
                         Almost there. Enter the National Insurance Number on your HMRC account and we'll fetch your businesses automatically.
                     </div>
                     <form id="hmrcSetupForm" style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
@@ -2467,15 +2467,27 @@
                 badge.style.background = '#FEF3C7';
                 badge.style.color = '#92400E';
                 badge.textContent = data.connected ? 'Setup needed' : 'Demo';
-                // Show the inline NINO form only when connected to HMRC but
-                // we don't have business IDs yet. Otherwise the panel works
-                // fine on the demo fixture for new visitors.
-                if (setupRow) setupRow.style.display = data.connected ? 'block' : 'none';
             } else {
                 badge.style.background = '#D1FAE5';
                 badge.style.color = '#065F46';
                 badge.textContent = 'Live (HMRC)';
-                if (setupRow) setupRow.style.display = 'none';
+            }
+            // Always show the NINO discover form while connected — gives the
+            // user an escape hatch to search a different NINO (e.g. after
+            // minting a fresh sandbox test individual) instead of being
+            // stuck with whichever NINO they first entered.
+            if (setupRow) setupRow.style.display = data.connected ? 'block' : 'none';
+            // When already in Live state, soften the prompt so the form
+            // reads as "switch / re-search" rather than first-time setup.
+            const setupPrompt = document.getElementById('hmrcSetupPrompt');
+            const setupBtn = document.getElementById('hmrcSetupBtn');
+            if (setupPrompt) {
+                setupPrompt.textContent = data.demo
+                    ? "Almost there. Enter the National Insurance Number on your HMRC account and we'll fetch your businesses automatically."
+                    : "Want to search a different NINO? Entering one here replaces your currently-active NINO and re-fetches the businesses HMRC has on file.";
+            }
+            if (setupBtn) {
+                setupBtn.textContent = data.demo ? 'Discover my businesses' : 'Search a different NINO';
             }
             if (data.error) {
                 errEl.textContent = data.error;
