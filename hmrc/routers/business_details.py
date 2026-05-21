@@ -77,10 +77,12 @@ async def connect_businesses(request: Request) -> ConnectBusinessesResponse:
             user_id=user["id"], nino=nino, request_obj=request,
         )
     except _client.HmrcApiError as exc:
-        # Pass HMRC's status through so the UI can render a useful hint.
-        # Special-case MATCHING_RESOURCE_NOT_FOUND — the single most common
-        # first-run failure on the sandbox: a fresh test individual has no
-        # businesses against the NINO yet. Surface a concrete next step.
+        # 404 = no businesses on this NINO yet. Persist the NINO anyway
+        # so the sandbox-setup follow-up call has it; without this the
+        # user gets bounced with "Need a NINO before we can create a
+        # test business" even though they just typed one.
+        if exc.status_code == 404:
+            _bd_service.persist_nino_only(user["id"], nino)
         raise HTTPException(
             status_code=_status_for_hmrc(exc),
             detail=_friendly_detail_for_hmrc(exc),
@@ -92,12 +94,14 @@ async def connect_businesses(request: Request) -> ConnectBusinessesResponse:
         )
 
     if not businesses:
+        # Empty list path — same fix as the 404 branch: persist NINO.
+        _bd_service.persist_nino_only(user["id"], nino)
         raise HTTPException(
             status_code=404,
             detail=(
                 "HMRC has no MTD ITSA businesses registered for that NINO. "
-                "Register at least one self-employment or property business in "
-                "your HMRC account before connecting."
+                "Click 'Set me up with a complete sandbox' to provision one, "
+                "or register a business in your HMRC account before connecting."
             ),
         )
 

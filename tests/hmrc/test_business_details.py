@@ -311,3 +311,140 @@ def test_connect_businesses_surfaces_hmrc_error_to_user():
         )
     assert r.status_code == 400
     assert "403" in r.json()["detail"]
+
+
+# ---------------------------------------------------------------------------
+# Regression: when Discover returns 404 or empty list, we must STILL
+# persist the NINO so the sandbox-setup follow-up endpoint can find it.
+# Without this fix the user got "Need a NINO before we can create a test
+# business" even though they just typed one.
+# ---------------------------------------------------------------------------
+
+
+def test_404_response_still_persists_the_nino():
+    """HMRC's MATCHING_RESOURCE_NOT_FOUND must save the NINO + empty
+    business list so /api/hmrc/sandbox/setup-complete can read it."""
+    from hmrc.services.client import HmrcApiError
+    from hmrc.repositories import tokens as _tokens
+    client, csrf, user = _client_with_user()
+    _connect_oauth(user["id"])
+
+    # Sanity: nothing stored yet
+    assert (_tokens.get_tokens(user["id"]) or {}).get("nino") is None
+
+    with patch(
+        "hmrc.services.business_details._client.request",
+        side_effect=HmrcApiError(404,
+                                 {"code": "MATCHING_RESOURCE_NOT_FOUND",
+                                  "message": "no businesses"}),
+    ):
+        r = client.post(
+            "/api/hmrc/connect-businesses",
+            json={"nino": "GT787697B"},
+            headers={"X-CSRF-Token": csrf},
+        )
+
+    # User-facing 404 with the friendly hint is preserved
+    assert r.status_code == 404
+    # And the NINO IS persisted now
+    info = _tokens.get_tokens(user["id"])
+    assert info["nino"] == "GT787697B"
+    assert info["businesses"] == []  # empty list, but NINO is saved
+
+
+def test_empty_businesses_response_still_persists_the_nino():
+    """HMRC returning an explicit empty list (rather than 404) — same fix."""
+    from hmrc.repositories import tokens as _tokens
+    client, csrf, user = _client_with_user()
+    _connect_oauth(user["id"])
+
+    mock_resp = MagicMock(
+        status_code=200, json={"listOfBusinesses": []},
+        headers={}, audit_id="audit-empty-2",
+    )
+    with patch(
+        "hmrc.services.business_details._client.request",
+        return_value=mock_resp,
+    ):
+        r = client.post(
+            "/api/hmrc/connect-businesses",
+            json={"nino": "GT787697B"},
+            headers={"X-CSRF-Token": csrf},
+        )
+
+    assert r.status_code == 404
+    info = _tokens.get_tokens(user["id"])
+    assert info["nino"] == "GT787697B"
+
+
+def test_404_persistence_does_not_clobber_existing_businesses():
+    """If the user re-runs Discover after partially setting up, the
+    existing business list must NOT be wiped out by the 404 branch."""
+    from hmrc.services.client import HmrcApiError
+    from hmrc.repositories import tokens as _tokens
+    client, csrf, user = _client_with_user()
+    _connect_oauth(user["id"])
+
+    # Pre-seed an existing business (e.g. they ran setup-complete before)
+    _tokens.save_nino_and_businesses(user["id"], "GT787697B", [{
+        "business_id": "XAIS999001",
+        "type_of_business": "self-employment",
+        "label": "Pre-existing",
+    }])
+
+    with patch(
+        "hmrc.services.business_details._client.request",
+        side_effect=HmrcApiError(404, {"code": "MATCHING_RESOURCE_NOT_FOUND"}),
+    ):
+        r = client.post(
+            "/api/hmrc/connect-businesses",
+            json={"nino": "GT787697B"},
+            headers={"X-CSRF-Token": csrf},
+        )
+    assert r.status_code == 404
+    # Existing business survives
+    info = _tokens.get_tokens(user["id"])
+    assert len(info["businesses"]) == 1
+    assert info["businesses"][0]["business_id"] == "XAIS999001"
+
+
+def test_setup_complete_works_after_discover_returned_404():
+    """End-to-end: typing a NINO + clicking Discover (gets 404) + then
+    clicking 'Set me up with a complete sandbox' must succeed."""
+    from hmrc.services.client import HmrcApiError
+    from hmrc.repositories import tokens as _tokens
+    client, csrf, user = _client_with_user()
+    _connect_oauth(user["id"])
+
+    # Step 1: Discover returns 404 (no businesses yet)
+    with patch(
+        "hmrc.services.business_details._client.request",
+        side_effect=HmrcApiError(404, {"code": "MATCHING_RESOURCE_NOT_FOUND"}),
+    ):
+        r1 = client.post(
+            "/api/hmrc/connect-businesses",
+            json={"nino": "GT787697B"},
+            headers={"X-CSRF-Token": csrf},
+        )
+    assert r1.status_code == 404
+
+    # Step 2: Setup-complete must NOT bounce on "no NINO" — the previous
+    # call persisted it. Mock HMRC's create-business response.
+    se_resp = MagicMock(status_code=201,
+                        json={"businessId": "XAIS00000999100"},
+                        headers={}, audit_id="audit-se")
+    prop_resp = MagicMock(status_code=201,
+                          json={"businessId": "XPIS00000999200"},
+                          headers={}, audit_id="audit-prop")
+    with patch(
+        "hmrc.services.sandbox._client.request",
+        side_effect=[se_resp, prop_resp],
+    ):
+        r2 = client.post(
+            "/api/hmrc/sandbox/setup-complete",
+            json={}, headers={"X-CSRF-Token": csrf},
+        )
+    assert r2.status_code == 200, r2.text
+    body = r2.json()
+    assert body["nino"] == "GT787697B"
+    assert len(body["created"]) == 2
