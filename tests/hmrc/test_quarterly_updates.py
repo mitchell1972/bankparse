@@ -425,3 +425,119 @@ def test_submit_property_hits_correct_uk_endpoint():
     )
     assert "Idempotency-Key" not in kwargs  # passed as named param, not header in client call
     assert kwargs["idempotency_key"]
+
+
+# ---------------------------------------------------------------------------
+# /preview + /submit with rows=[] — must fall back to the persisted ledger
+# This is THE bug that made every submit-from-the-Submit-button show £0.00,
+# regardless of HMRC connection state or categorisation on the dashboard.
+# ---------------------------------------------------------------------------
+
+def _seed_ledger_for_period(user_id: int) -> None:
+    """Drop a couple of SE-categorisable transactions into the ledger,
+    one inside the Q1 26/27 period and one outside, so we can verify
+    the period filter."""
+    import database as _db
+    _db.insert_ledger_transaction(
+        user_id, extracted_data_id=None,
+        date_iso="2026-05-10", description="STRIPE PAYOUT",
+        amount=1500.0,
+    )
+    _db.insert_ledger_transaction(
+        user_id, extracted_data_id=None,
+        date_iso="2026-06-22", description="STRIPE PAYOUT",
+        amount=800.0,
+    )
+    _db.insert_ledger_transaction(
+        user_id, extracted_data_id=None,
+        date_iso="2026-06-15", description="NCP IPSWICH",
+        amount=-2.50,
+    )
+    # Outside the Q1 window — must NOT appear in the payload.
+    _db.insert_ledger_transaction(
+        user_id, extracted_data_id=None,
+        date_iso="2026-08-01", description="STRIPE PAYOUT",
+        amount=9999.99,
+    )
+
+
+def test_preview_se_falls_back_to_ledger_when_rows_empty():
+    """rows=[] (what the Submit button actually sends) MUST load from
+    the persisted ledger, filtered by the period. Without this every
+    submit was a £0.00 payload."""
+    client, csrf, user = _client_with_user()
+    _connect_with_nino(user["id"])
+    _seed_ledger_for_period(user["id"])
+
+    r = client.post(
+        "/api/hmrc/quarterly-updates/se/preview",
+        json={"business_id": "XAIS00000999001",
+              "period_start": "2026-04-06", "period_end": "2026-07-05",
+              "rows": []},
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert r.status_code == 200, r.text
+    payload = r.json()["payload"]
+    # Two in-period STRIPE PAYOUTs = £2300 turnover. The £9999.99 row
+    # is outside the window and must be filtered out.
+    assert payload["periodIncome"]["turnover"] == 2300.0
+    # The £2.50 NCP travel cost must show up too.
+    assert payload["periodExpenses"]["travelCosts"] == 2.50
+
+
+def test_submit_se_with_empty_rows_uses_ledger():
+    """The wire payload HMRC sees must include the ledger-derived totals,
+    not zeros, when rows=[] is the request shape (which is exactly what
+    the Submit modal sends)."""
+    client, csrf, user = _client_with_user()
+    _connect_with_nino(user["id"])
+    _seed_ledger_for_period(user["id"])
+
+    mock_resp = MagicMock(status_code=200, json={"transactionReference": "ABC"},
+                          headers={}, audit_id="audit-fb-1")
+    with patch("hmrc.services.quarterly_updates._client.request",
+               return_value=mock_resp) as mock_call:
+        r = client.post(
+            "/api/hmrc/quarterly-updates/se/submit",
+            json={"business_id": "XAIS00000999001",
+                  "period_start": "2026-04-06", "period_end": "2026-07-05",
+                  "rows": []},
+            headers={"X-CSRF-Token": csrf},
+        )
+    assert r.status_code == 200, r.text
+    sent = mock_call.call_args.kwargs["json_body"]
+    assert sent["periodIncome"]["turnover"] == 2300.0
+    assert sent["periodExpenses"]["travelCosts"] == 2.50
+
+
+def test_preview_property_falls_back_to_ledger_when_rows_empty():
+    """Same fallback for UK property."""
+    client, csrf, user = _client_with_user()
+    _connect_with_nino(user["id"])
+    import database as _db
+    _db.insert_ledger_transaction(
+        user["id"], extracted_data_id=None,
+        date_iso="2026-05-10", description="RENT TENANT PAYMENT",
+        amount=1200.0,
+    )
+    _db.insert_ledger_transaction(
+        user["id"], extracted_data_id=None,
+        date_iso="2026-06-12", description="BRITISH GAS",
+        amount=-85.0,
+    )
+
+    r = client.post(
+        "/api/hmrc/quarterly-updates/property/preview",
+        json={"business_id": "XPIS00000999002",
+              "period_start": "2026-04-06", "period_end": "2026-07-05",
+              "rows": []},
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert r.status_code == 200, r.text
+    payload = r.json()["payload"]
+    # UK property income → ukProperty.income.periodAmount or similar — we
+    # don't pin the exact schema shape here because the field tree is
+    # nested; just confirm SOMETHING non-zero made it through.
+    flat = str(payload)
+    assert "1200" in flat, f"rent income missing from payload: {payload}"
+
