@@ -1686,19 +1686,26 @@ async def get_extracted_data(request: Request):
     return JSONResponse({
         "statements": {
             "rows": statement_rows,
+            # Include each file's transactions so the dashboard can
+            # rehydrate the per-statement view after a page navigation
+            # (e.g. back from /hmrc/connect) without re-uploading.
             "files": [
                 {"id": f["id"], "filename": f["source_filename"],
-                 "row_count": f["row_count"], "parsed_at": f["parsed_at"]}
+                 "row_count": f["row_count"], "parsed_at": f["parsed_at"],
+                 "transactions": f["rows"]}
                 for f in statement_files
             ],
+            "summary": _summarise_transactions(statement_rows),
         },
         "receipts": {
             "rows": receipt_rows,
             "files": [
                 {"id": f["id"], "filename": f["source_filename"],
-                 "row_count": f["row_count"], "parsed_at": f["parsed_at"]}
+                 "row_count": f["row_count"], "parsed_at": f["parsed_at"],
+                 "transactions": f["rows"]}
                 for f in receipt_files
             ],
+            "summary": _summarise_transactions(receipt_rows),
         },
         "total_size_bytes": total_bytes,
         "session_max_bytes": SESSION_MAX_BYTES,
@@ -1706,6 +1713,31 @@ async def get_extracted_data(request: Request):
         # British store names strongly suggest GBP.
         "currency": _guess_currency(receipt_rows, statement_rows),
     })
+
+
+def _summarise_transactions(rows: list[dict]) -> dict:
+    """Compute the credit/debit/net rollup used by the bulk-statement panel.
+
+    Matches parsers/csv_parser.py + parsers/pdf_parser.py so rehydrated
+    sessions display the same numbers a fresh upload would.
+    """
+    credits = 0.0
+    debits = 0.0
+    for r in rows:
+        try:
+            amt = float(r.get("amount") or 0)
+        except (TypeError, ValueError):
+            amt = 0.0
+        if amt > 0:
+            credits += amt
+        elif amt < 0:
+            debits += amt
+    return {
+        "total_transactions": len(rows),
+        "total_credits": round(credits, 2),
+        "total_debits": round(debits, 2),
+        "net": round(credits + debits, 2),
+    }
 
 
 @app.post("/api/extracted-data/clear")

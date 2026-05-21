@@ -2270,9 +2270,77 @@
             if (data.session_max_bytes) sessionMaxBytes = data.session_max_bytes;
             if (data.currency && CURRENCY_SYMBOLS[data.currency]) sessionCurrency = data.currency;
             updateAccumulatedBanner();
+
+            // Rehydrate the results panel from persisted rows so navigating
+            // away (e.g. /hmrc/connect → Back to dashboard) doesn't lose the
+            // parsed data view. Only rehydrate if nothing else has been
+            // rendered yet — fresh uploads in this tab already populate it.
+            rehydrateBulkStatementsFromAccumulated(data);
+            rehydrateBulkReceiptsFromAccumulated(data);
         } catch (e) {
             console.log('Accumulated data fetch failed (offline?)');
         }
+    }
+
+    function rehydrateBulkStatementsFromAccumulated(data) {
+        const stmt = data && data.statements;
+        if (!stmt || !stmt.files || stmt.files.length === 0) return;
+        // Don't clobber an in-flight render in this tab.
+        if (bulkStatementData || (allTransactions && allTransactions.length > 0)) return;
+
+        const statementsForRender = stmt.files.map((f, i) => ({
+            // showBulkStatementPage uses `bank_name || source || 'Statement N'`
+            // for the per-file header — fall back to the saved filename.
+            source: f.filename,
+            filename: f.filename,
+            transactions: f.transactions || [],
+            summary: undefined,  // not displayed in the per-statement header
+        }));
+
+        const rehydrated = {
+            statements: statementsForRender,
+            all_transactions: stmt.rows || [],
+            summary: stmt.summary || {
+                total_transactions: (stmt.rows || []).length,
+                total_credits: 0, total_debits: 0, net: 0,
+            },
+            statement_count: stmt.files.length,
+            currency: data.currency || '',
+            // Persistent download URL — XLSX is rebuilt server-side from
+            // the saved rows. Doesn't expire across page reloads.
+            download_url: '/api/extracted-data/download?mode=statement',
+        };
+        showBulkStatementResults(rehydrated);
+    }
+
+    function rehydrateBulkReceiptsFromAccumulated(data) {
+        const rcpt = data && data.receipts;
+        if (!rcpt || !rcpt.files || rcpt.files.length === 0) return;
+        if (bulkReceiptData || (allReceiptItems && allReceiptItems.length > 0)) return;
+
+        const allItems = rcpt.rows || [];
+        // showBulkReceiptResults expects combined_items + grand_total +
+        // receipt_count + total_items. Compute what we can; the rest is
+        // best-effort since we don't persist per-receipt totals.
+        const grandTotal = allItems.reduce((s, it) => {
+            const v = parseFloat(it.total_price || it.amount || 0) || 0;
+            return s + v;
+        }, 0);
+
+        const rehydrated = {
+            combined_items: allItems,
+            grand_total: Math.round(grandTotal * 100) / 100,
+            receipt_count: rcpt.files.length,
+            total_items: allItems.length,
+            receipts: rcpt.files.map(f => ({
+                source: f.filename,
+                filename: f.filename,
+                items: f.transactions || [],
+            })),
+            currency: data.currency || '',
+            download_url: '/api/extracted-data/download?mode=receipt',
+        };
+        showBulkReceiptResults(rehydrated);
     }
 
     function updateAccumulatedBanner() {
