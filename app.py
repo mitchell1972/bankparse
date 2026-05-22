@@ -181,6 +181,7 @@ try:
     from hmrc.routers import obligations as _hmrc_obligations_router
     from hmrc.routers import business_details as _hmrc_business_details_router
     from hmrc.routers import sandbox as _hmrc_sandbox_router
+    from hmrc.routers import sandbox_seed as _hmrc_sandbox_seed_router
     from hmrc.routers import sandbox_test_user as _hmrc_sandbox_test_user_router
     from hmrc.routers import quarterly_updates_se as _hmrc_quarterly_se_router
     from hmrc.routers import quarterly_updates_property as _hmrc_quarterly_prop_router
@@ -196,6 +197,7 @@ try:
     app.include_router(_hmrc_obligations_router.router)
     app.include_router(_hmrc_business_details_router.router)
     app.include_router(_hmrc_sandbox_router.router)
+    app.include_router(_hmrc_sandbox_seed_router.router)
     app.include_router(_hmrc_sandbox_test_user_router.router)
     app.include_router(_hmrc_quarterly_se_router.router)
     app.include_router(_hmrc_quarterly_prop_router.router)
