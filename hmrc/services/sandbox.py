@@ -125,9 +125,18 @@ def _tax_year_end(d: date) -> date:
 # ---------------------------------------------------------------------------
 
 
+# Default labels for the bootstrap-created businesses. These are stamped
+# as HMRC's `tradingName` AND saved as the local display label, so they
+# show up unchanged on the obligations card and the file-with-HMRC page.
+# Names match the seed-transaction narrative (consulting + Ipswich
+# property portfolio) so the demo reads as one coherent story.
+#
+# HMRC's Business Details API tradingName regex permits ASCII letters,
+# digits, space, `-`, `,`, `.`, `&`, `'`, `/`. Use plain hyphen (not the
+# em-dash we use in our own seed descriptions) to stay inside that.
 WANTED_BUSINESS_TYPES: tuple[tuple[str, str], ...] = (
-    ("self-employment", "Sandbox sole trader"),
-    ("property",        "Sandbox property"),
+    ("self-employment", "Mitoba - sole trader"),
+    ("property",        "Ipswich SA portfolio"),
 )
 
 

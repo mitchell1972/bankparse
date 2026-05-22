@@ -349,7 +349,7 @@ function renderObligations() {
                   style="background:#1B4F72; color:#fff; border:0; padding:0.5rem 1rem; border-radius:6px; font-weight:600; cursor:pointer; font-size:0.88rem;">
             🚀 Set me up with a complete sandbox
           </button>
-          <a href="/hmrc/connect"
+          <a href="/api/hmrc/connect?fresh=1"
              style="display:inline-block; background:#fff; color:#1B4F72; border:1px solid #1B4F72; padding:0.5rem 1rem; border-radius:6px; text-decoration:none; font-weight:600; font-size:0.88rem;">
             Or sign in with different credentials →
           </a>
@@ -383,7 +383,21 @@ function renderObligations() {
           if (sr.ok) {
             setupMsg.style.display = 'block';
             setupMsg.style.color = '#065F46';
-            setupMsg.textContent = '✓ Sandbox set up. Reloading…';
+            setupMsg.textContent = '✓ Businesses provisioned — seeding sample transactions…';
+            // Seed sample ledger transactions so the obligations the user
+            // is about to submit have realistic income/expense totals
+            // instead of £0.00. Idempotent + sandbox-only — a 404 (prod
+            // deploy) or any other failure is non-fatal; we reload either
+            // way because the businesses themselves are already saved.
+            try {
+              await fetch('/api/hmrc/sandbox/seed-sample-data', {
+                method: 'POST', credentials: 'include',
+                headers: { 'Content-Type': 'application/json',
+                           'X-CSRF-Token': decodeURIComponent(csrf) },
+                body: '{}',
+              });
+            } catch (e) { /* non-fatal */ }
+            setupMsg.textContent = '✓ Sandbox + sample data ready. Reloading…';
             setTimeout(() => window.location.reload(), 600);
             return;
           }
