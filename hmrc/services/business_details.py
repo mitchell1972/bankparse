@@ -40,13 +40,30 @@ _API_VERSION = "application/vnd.hmrc.1.0+json"
 
 
 def persist_nino_only(user_id: int, nino: str) -> None:
-    """Save the NINO with an EMPTY business list (preserving any
-    businesses already stored). Used when HMRC returns
-    MATCHING_RESOURCE_NOT_FOUND on Business Details — the user has
-    stated a NINO and downstream sandbox-bootstrap endpoints need it."""
+    """Save the NINO so downstream sandbox-bootstrap endpoints can find it.
+
+    Refuses to overwrite when the user is already in a Live state — i.e.
+    has businesses saved against an existing NINO. Without this guard, a
+    probe call (or stale auto-Discover round) with a different NINO can
+    silently demote a working setup to demo mode, then the next Set-me-up
+    fails with OAUTH_NINO_MISMATCH against the wrong NINO. Discovered
+    during the bankscanai.com production journey on 2026-05-22.
+
+    Switching NINOs is still possible via:
+      - Successful connect-businesses (the happy path — saves new NINO +
+        the businesses HMRC returns for it)
+      - Explicit /api/hmrc/disconnect → re-OAuth → re-Discover
+    """
     from ..repositories import tokens as _tokens
-    existing = (_tokens.get_tokens(user_id) or {}).get("businesses") or []
-    _tokens.save_nino_and_businesses(user_id, nino, existing)
+    info = _tokens.get_tokens(user_id) or {}
+    existing_nino = info.get("nino")
+    existing_businesses = info.get("businesses") or []
+    # If we already have businesses saved against a different NINO, don't
+    # demote. The caller's HTTP path still 404s; the user can fix via the
+    # documented Disconnect-and-retry flow.
+    if existing_businesses and existing_nino and existing_nino != nino:
+        return
+    _tokens.save_nino_and_businesses(user_id, nino, existing_businesses)
 
 
 def fetch_for_nino(*, user_id: int, nino: str, request_obj) -> list[UiBusiness]:
