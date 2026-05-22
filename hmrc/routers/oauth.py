@@ -42,7 +42,11 @@ async def hmrc_connect(request: Request):
         return RedirectResponse(url="/login?next=/api/hmrc/connect", status_code=302)
 
     state = _oauth.new_state()
-    url = _oauth.build_authorize_url(state)
+    # `?fresh=1` opts into a forced HMRC re-login. Used after Mint and after
+    # explicit Disconnect so the user's next OAuth round doesn't silently
+    # re-use HMRC's existing GG session cookie for a previous test identity.
+    prompt_login = (request.query_params.get("fresh", "") in ("1", "true", "yes"))
+    url = _oauth.build_authorize_url(state, prompt_login=prompt_login)
 
     response = RedirectResponse(url=url, status_code=302)
     # Bind `state` to the user's browser with a short-lived cookie.

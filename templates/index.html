@@ -2637,10 +2637,21 @@
                     return;
                 }
                 const serr = await sr.json().catch(() => ({}));
+                // setup-complete fails with OAUTH_NINO_MISMATCH when HMRC's
+                // OAuth session is for a previous test user, not the freshly-
+                // minted NINO. That's the SAME failure the 409 branch below
+                // catches — route it through the recovery card so the user
+                // sees the GG creds inline + a one-click Disconnect-and-
+                // retry button, not a leaked machine sentinel.
+                const setupDetail = String(serr.detail || `HMRC returned ${sr.status}`);
+                if (/OAUTH_NINO_MISMATCH/i.test(setupDetail)) {
+                    renderOAuthMismatchRecovery(banner, stashed, setupDetail);
+                    return;
+                }
                 banner.style.background = '#FEE2E2';
                 banner.style.borderColor = '#FCA5A5';
                 banner.style.color = '#991B1B';
-                banner.innerHTML = `Couldn't auto-set-up: ${serr.detail || sr.status}. Use the NINO form below to finish manually.`;
+                banner.innerHTML = `Couldn't auto-set-up: ${setupDetail}. Use the NINO form below to finish manually.`;
                 return;
             }
             // 3) Anything else (409 OAuth mismatch, 400, etc.) — surface
@@ -2729,7 +2740,11 @@
                     if (r.ok) {
                         // Redirect straight to OAuth so the user can paste
                         // the GG creds shown above on HMRC's sign-in page.
-                        window.location.href = '/api/hmrc/connect';
+                        // ?fresh=1 sends prompt=login to HMRC so any sticky
+                        // sandbox GG session cookie gets torn down — the
+                        // root cause we're recovering from is HMRC silently
+                        // re-OAuthing as the previous test identity.
+                        window.location.href = '/api/hmrc/connect?fresh=1';
                         return;
                     }
                     resetBtn.disabled = false;
@@ -2981,7 +2996,7 @@
                             sandboxMsg.innerHTML = `
                                 <div>${safe}</div>
                                 <div style="margin-top:0.6rem;">
-                                  <a href="/hmrc/connect"
+                                  <a href="/api/hmrc/connect?fresh=1"
                                      style="display:inline-block; background:#2874A6; color:#fff; padding:0.5rem 1rem; border-radius:4px; text-decoration:none; font-weight:600; font-size:0.85rem;">
                                     Connect to HMRC →
                                   </a>
@@ -3081,7 +3096,7 @@
                                   Sign in again with the credentials above so HMRC recognises
                                   the new NINO.
                                 </div>
-                                <a href="/hmrc/connect"
+                                <a href="/api/hmrc/connect?fresh=1"
                                    style="display:inline-block; background:#2874A6; color:#fff; padding:0.5rem 1rem; border-radius:4px; text-decoration:none; font-weight:600; font-size:0.85rem;">
                                   Connect to HMRC →
                                 </a>

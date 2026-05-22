@@ -32,11 +32,31 @@ logger = logging.getLogger("bankparse.hmrc.oauth")
 REQUIRED_SCOPES = ["read:self-assessment", "write:self-assessment"]
 
 
-def build_authorize_url(state: str, redirect_uri: str | None = None) -> str:
+def build_authorize_url(
+    state: str,
+    redirect_uri: str | None = None,
+    *,
+    prompt_login: bool = False,
+) -> str:
     """Build the URL we redirect the user to in order to grant access.
 
     `state` is an unguessable token we generated and bound to the user's
     server-side session; we verify it matches in the callback to prevent CSRF.
+
+    `prompt_login=True` adds `prompt=login` so HMRC's sandbox tears down any
+    existing Government Gateway session cookie and re-prompts for credentials.
+    Without this, a developer who's just minted a fresh sandbox test user
+    silently OAuths back in as the *previous* sandbox identity — producing
+    a token whose `nino` doesn't match the freshly-minted NINO. HMRC then
+    rejects subsequent `create-test-business` calls with `MATCHING_RESOURCE_
+    NOT_FOUND`, surfaced in our UI as `OAUTH_NINO_MISMATCH`.
+
+    `prompt=login` is OIDC standard (RFC 6749 §3.1.2.1 extension), not pure
+    OAuth 2.0. HMRC's OAuth endpoint is RFC 6749 and may ignore it — but
+    sending it costs nothing and has been observed to work on
+    test-api.service.hmrc.gov.uk. The defence in depth is the UX path: when
+    the token's identity does mismatch, we surface a one-click recovery
+    card with the GG creds inline so the user can sign in correctly.
     """
     params = {
         "response_type": "code",
@@ -45,6 +65,8 @@ def build_authorize_url(state: str, redirect_uri: str | None = None) -> str:
         "redirect_uri": redirect_uri or _cfg.HMRC_REDIRECT_URI,
         "state": state,
     }
+    if prompt_login:
+        params["prompt"] = "login"
     return f"{_cfg.HMRC_BASE_URL}{_cfg.OAUTH_AUTHORIZE_PATH}?{_urlparse.urlencode(params)}"
 
 
