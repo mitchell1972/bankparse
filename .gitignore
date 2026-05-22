@@ -11,3 +11,6 @@ outputs/
 usage/
 bankparse.db*
 .env*.local
+# Playwright MCP scratch dir + ad-hoc journey screenshots
+.playwright-mcp/
+journey_*.png
