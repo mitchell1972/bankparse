@@ -4229,6 +4229,14 @@ BLOG_POSTS = {
         "template": "blog/tax-season-bank-statement-conversion.html",
         "keywords": "tax season bank statement conversion UK, Self Assessment bank statement preparation, year-end bank statement processing, January tax deadline bank statements, VAT quarter-end statement conversion, convert bank statements for tax return, bookkeeper tax season automation UK",
     },
+    "bank-statement-data-security-gdpr-compliance": {
+        "title": "Bank Statement Data Security & GDPR Compliance — A Guide for UK Bookkeepers (2026)",
+        "description": "Are your clients' bank statements sitting unprotected in email inboxes, free cloud tools, or unencrypted laptops? Complete GDPR compliance guide for UK bookkeepers — ICO requirements, data residency, secure file transfer, breach response, and practical steps to protect your practice from fines.",
+        "date": "2026-05-22",
+        "author": "BankScan AI Team",
+        "template": "blog/bank-statement-data-security-gdpr.html",
+        "keywords": "bank statement data security UK, GDPR bank statement processing, secure bank statement conversion, accountant data protection compliance, ICO financial data guidance, cloud tool GDPR bookkeepers, client bank statement security, UK data residency bank statements",
+    },
 }
 
 
