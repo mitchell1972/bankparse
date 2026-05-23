@@ -98,13 +98,29 @@ def create_test_business(
         wire_type = "self-employment"
         default_name = "Sandbox sole trader"
 
+    # Default to the current MTD ITSA tax year (6 Apr → 5 Apr). Allow
+    # SANDBOX_BUSINESS_TY_START env override (sandbox-only) for end-to-
+    # end test paths that need to submit against earlier supported tax
+    # years — HMRC sandbox returns RULE_TAX_YEAR_NOT_SUPPORTED for
+    # businesses whose firstAccountingPeriodStartDate falls in a tax
+    # year HMRC isn't accepting submissions for. Set this env var to
+    # e.g. '2024-04-06' to provision businesses in TY 2024/25 for
+    # green-path testing.
     today = date.today()
+    override = os.environ.get("SANDBOX_BUSINESS_TY_START", "").strip()
+    if override and is_sandbox():
+        try:
+            start = date.fromisoformat(override)
+        except ValueError:
+            start = _tax_year_start(today)
+    else:
+        start = _tax_year_start(today)
+    end = date(start.year + 1, 4, 5)
+
     body: dict = {
         "typeOfBusiness": wire_type,
-        # MTD ITSA tax year runs 6 April → 5 April. Pick the current
-        # tax-year window so HMRC happily accepts the dates.
-        "firstAccountingPeriodStartDate": _tax_year_start(today).isoformat(),
-        "firstAccountingPeriodEndDate":   _tax_year_end(today).isoformat(),
+        "firstAccountingPeriodStartDate": start.isoformat(),
+        "firstAccountingPeriodEndDate":   end.isoformat(),
         "accountingType": "CASH",
     }
     if wire_type == "self-employment":
