@@ -168,10 +168,27 @@ def submit_se_quarter(
     # NOT_FOUND. Verified via HMRC docs 2026-05-23.
     path = f"/individuals/business/self-employment/{nino}/{business_id}/period"
 
+    # HMRC's spec for this endpoint requires periodIncome and
+    # periodExpenses objects to be PRESENT with explicit values, even
+    # zeros — submitting them empty triggers RULE_INCORRECT_OR_EMPTY_
+    # BODY_SUBMITTED. By default Pydantic's model_dump(exclude_none=True)
+    # strips the None-valued categoriser outputs which collapses both
+    # objects to {}. Use exclude_none=False here so HMRC sees every
+    # category explicitly, and post-process to convert None → 0.0 so the
+    # wire shape never carries `null` (HMRC rejects nulls inside these
+    # objects too).
+    body = payload.model_dump(exclude_none=False)
+    for key in ("periodIncome", "periodExpenses"):
+        obj = body.get(key)
+        if isinstance(obj, dict):
+            for k, v in list(obj.items()):
+                if v is None:
+                    obj[k] = 0.0
+
     resp = _client.request(
         user_id=user_id, method="POST", path=path,
         request_obj=request_obj,
-        json_body=payload.model_dump(exclude_none=True),
+        json_body=body,
         accept_version=_SE_API_VERSION,
         idempotency_key=idempotency_key or str(uuid.uuid4()),
     )

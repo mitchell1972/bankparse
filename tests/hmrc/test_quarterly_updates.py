@@ -360,9 +360,17 @@ def test_submit_se_returns_502_on_network_error():
     assert r.status_code == 502
 
 
-def test_submit_se_omits_empty_categories_from_payload():
-    """HMRC's schema rejects null values for unused expense categories — we
-    must strip them via model_dump(exclude_none=True)."""
+def test_submit_se_emits_explicit_zeros_for_empty_categories():
+    """HMRC's spec for /period requires periodIncome and periodExpenses
+    objects to be PRESENT with explicit values for every category, even
+    zeros — submitting empty objects (after exclude_none stripping)
+    triggers RULE_INCORRECT_OR_EMPTY_BODY_SUBMITTED.
+
+    Verified live on bankscanai.com 2026-05-23: HMRC rejected our
+    submission because Pydantic's exclude_none=True dropped categories
+    with no transactions, collapsing periodIncome to {} for periods
+    where the ledger was sparse. Fix: emit explicit 0.0 for any
+    category the categoriser left as None."""
     client, csrf, user = _client_with_user()
     _connect_with_nino(user["id"])
     mock_resp = MagicMock(status_code=200, json={}, headers={}, audit_id="x")
@@ -376,10 +384,15 @@ def test_submit_se_omits_empty_categories_from_payload():
             headers={"X-CSRF-Token": csrf},
         )
     sent = mock_call.call_args.kwargs["json_body"]
-    # Only the categories that actually had values should appear.
-    assert "turnover" in sent["periodIncome"]
-    # `cisPaymentsToSubcontractors` was untouched -> must be absent.
-    assert "cisPaymentsToSubcontractors" not in sent.get("periodExpenses", {})
+    # Category that had a value: numeric (likely 100.0 for turnover).
+    assert isinstance(sent["periodIncome"].get("turnover"), (int, float))
+    # Category that had NO value: must be 0.0 (not omitted, not None).
+    assert sent["periodExpenses"].get("cisPaymentsToSubcontractors") == 0.0
+    # And no None/null leaks into the wire body.
+    for k, v in sent["periodIncome"].items():
+        assert v is not None, f"periodIncome.{k} should never be None on the wire"
+    for k, v in sent["periodExpenses"].items():
+        assert v is not None, f"periodExpenses.{k} should never be None on the wire"
 
 
 # ---------------------------------------------------------------------------
