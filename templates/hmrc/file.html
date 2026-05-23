@@ -237,9 +237,50 @@ async function loadAll() {
 // render a one-click 'Disconnect & start over' button right inside the
 // error panel so the user doesn't have to bounce through /hmrc/connect
 // and a 'Disconnect' button manually.
+//
+// Two recovery paths surfaced, depending on what's in localStorage:
+//   (A) Stashed mint creds exist → show GG userId+password inline so
+//       the user can paste them on HMRC's sign-in page after Disconnect.
+//   (B) No stash → push the user toward Mint on the dashboard, because
+//       without matching GG creds the same OAuth identity will keep
+//       getting picked even with prompt=login.
 function renderOauthMismatchRecovery(panel, detail) {
   // Strip the machine sentinel from the user-visible text.
   const userText = String(detail || '').replace(/^OAUTH_NINO_MISMATCH:\s*/, '');
+  const safe = s => String(s == null ? '' : s).replace(/[<>&]/g,
+      c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
+
+  let creds = {};
+  try {
+    const raw = localStorage.getItem('bp_pending_creds');
+    if (raw) creds = JSON.parse(raw) || {};
+  } catch (e) {}
+  const hasCreds = !!(creds && (creds.userId || creds.password));
+
+  const credRow = (label, value) => value ? `
+    <div style="display:flex; gap:0.5rem; align-items:center; margin:0.2rem 0;">
+      <span style="min-width:120px; color:#7B7B7B; font-size:0.78rem;">${label}</span>
+      <code style="background:#fff; padding:0.15rem 0.4rem; border-radius:3px; border:1px solid #D5DBDB; font-size:0.85rem; user-select:all;">${safe(value)}</code>
+      <button type="button" onclick="navigator.clipboard.writeText('${safe(value)}'); this.textContent='✓'"
+              style="background:none; border:0; color:#2874A6; cursor:pointer; font-size:0.78rem;">copy</button>
+    </div>` : '';
+
+  const credsBlock = hasCreds ? `
+    <div style="background:#fff; border:1px solid #F4D03F; border-radius:5px; padding:0.6rem 0.8rem; margin:0.6rem 0;">
+      <div style="font-weight:600; font-size:0.82rem; color:#7D6608; margin-bottom:0.35rem;">
+        Credentials from your most recent mint — sign in with EXACTLY these on HMRC's page:
+      </div>
+      ${credRow('NINO',        creds.nino)}
+      ${credRow('GG userId',   creds.userId)}
+      ${credRow('GG password', creds.password)}
+    </div>` : `
+    <div style="background:#fff; border:1px solid #F4D03F; border-radius:5px; padding:0.6rem 0.8rem; margin:0.6rem 0; font-size:0.82rem; color:#566573;">
+      We don't have the original GG credentials for this NINO in this browser.
+      Easiest fix: <a href="/" style="color:#7D6608; font-weight:600;">go to the dashboard</a> and click
+      <em>Mint sandbox test user</em> — HMRC returns a NINO + matching GG creds
+      as a single bundle so the next OAuth round can't pick the wrong identity.
+    </div>`;
+
   panel.style.background = '#FEF3C7';
   panel.style.border = '1px solid #F4D03F';
   panel.style.color = '#7D6608';
@@ -248,10 +289,11 @@ function renderOauthMismatchRecovery(panel, detail) {
   panel.style.marginTop = '0.6rem';
   panel.innerHTML = `
     <div style="font-weight:600; margin-bottom:0.4rem;">⚠ OAuth identity doesn't match this NINO</div>
-    <div style="font-size:0.85rem; margin-bottom:0.55rem;">${userText.replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]))}</div>
+    <div style="font-size:0.85rem; margin-bottom:0.55rem;">${safe(userText)}</div>
+    ${credsBlock}
     <button type="button" id="hmrcFileDisconnectStartOver"
             style="background:#B91C1C; color:#fff; border:0; padding:0.5rem 1rem; border-radius:6px; font-weight:600; cursor:pointer; font-size:0.88rem;">
-      Disconnect HMRC &amp; start over →
+      Disconnect HMRC &amp; ${hasCreds ? 're-OAuth with the creds above' : 'go mint a fresh test user'} →
     </button>
   `;
   const btn = document.getElementById('hmrcFileDisconnectStartOver');
@@ -266,9 +308,15 @@ function renderOauthMismatchRecovery(panel, detail) {
           body: '{}',
         });
         if (r.ok) {
-          // Send them to the dashboard where they can mint a fresh
-          // test user + re-OAuth in the streamlined PR #76 flow.
-          window.location.href = '/';
+          if (hasCreds) {
+            // Have matching GG creds → straight back into OAuth with
+            // prompt=login so HMRC's sandbox drops any sticky session.
+            window.location.href = '/api/hmrc/connect?fresh=1';
+          } else {
+            // No matching creds → send to the dashboard where the Mint
+            // card is one click away.
+            window.location.href = '/';
+          }
           return;
         }
         btn.disabled = false;
@@ -349,7 +397,7 @@ function renderObligations() {
                   style="background:#1B4F72; color:#fff; border:0; padding:0.5rem 1rem; border-radius:6px; font-weight:600; cursor:pointer; font-size:0.88rem;">
             🚀 Set me up with a complete sandbox
           </button>
-          <a href="/hmrc/connect"
+          <a href="/api/hmrc/connect?fresh=1"
              style="display:inline-block; background:#fff; color:#1B4F72; border:1px solid #1B4F72; padding:0.5rem 1rem; border-radius:6px; text-decoration:none; font-weight:600; font-size:0.88rem;">
             Or sign in with different credentials →
           </a>
@@ -383,7 +431,21 @@ function renderObligations() {
           if (sr.ok) {
             setupMsg.style.display = 'block';
             setupMsg.style.color = '#065F46';
-            setupMsg.textContent = '✓ Sandbox set up. Reloading…';
+            setupMsg.textContent = '✓ Businesses provisioned — seeding sample transactions…';
+            // Seed sample ledger transactions so the obligations the user
+            // is about to submit have realistic income/expense totals
+            // instead of £0.00. Idempotent + sandbox-only — a 404 (prod
+            // deploy) or any other failure is non-fatal; we reload either
+            // way because the businesses themselves are already saved.
+            try {
+              await fetch('/api/hmrc/sandbox/seed-sample-data', {
+                method: 'POST', credentials: 'include',
+                headers: { 'Content-Type': 'application/json',
+                           'X-CSRF-Token': decodeURIComponent(csrf) },
+                body: '{}',
+              });
+            } catch (e) { /* non-fatal */ }
+            setupMsg.textContent = '✓ Sandbox + sample data ready. Reloading…';
             setTimeout(() => window.location.reload(), 600);
             return;
           }

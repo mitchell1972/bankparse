@@ -448,3 +448,84 @@ def test_setup_complete_works_after_discover_returned_404():
     body = r2.json()
     assert body["nino"] == "GT787697B"
     assert len(body["created"]) == 2
+
+
+def test_persist_nino_only_refuses_to_overwrite_a_live_nino():
+    """Regression: a probe call to connect-businesses with the wrong NINO
+    must NOT clobber a working setup. Discovered live on bankscanai.com
+    during the 2026-05-22 Playwright journey — a stale auto-Discover or
+    sloppy debug call could demote a Live HMRC connection to demo mode
+    by overwriting the NINO with garbage, then the next Set-me-up tried
+    to provision against the wrong NINO and surfaced OAUTH_NINO_MISMATCH.
+
+    Guard: persist_nino_only does nothing when the user has businesses
+    already saved against a DIFFERENT NINO.
+    """
+    from hmrc.services import business_details as _bd
+    from hmrc.repositories import tokens as _tokens
+
+    client, csrf, user = _client_with_user(email="nino-overwrite@example.com")
+    # Seed a Live state: NINO + businesses already saved.
+    _tokens.save_tokens(
+        user_id=user["id"], access_token="at",
+        refresh_token="rt", expires_in_seconds=14400,
+        scope="read:self-assessment write:self-assessment",
+    )
+    _tokens.save_nino_and_businesses(
+        user["id"], "AA111111B",
+        [{"business_id": "XAIS001", "type_of_business": "self-employment",
+          "label": "Mitoba - sole trader"}],
+    )
+
+    # Stale probe with a DIFFERENT NINO must not demote.
+    _bd.persist_nino_only(user["id"], "ZZ999999Z")
+
+    info = _tokens.get_tokens(user["id"])
+    assert info["nino"] == "AA111111B", (
+        f"Expected the original NINO to survive a stale probe, got {info['nino']!r}"
+    )
+    assert len(info["businesses"]) == 1
+
+
+def test_persist_nino_only_allows_initial_setup():
+    """The guard must NOT block first-time NINO save (no prior NINO + no
+    businesses). That's the normal happy-path on first Discover."""
+    from hmrc.services import business_details as _bd
+    from hmrc.repositories import tokens as _tokens
+
+    client, csrf, user = _client_with_user(email="nino-initial@example.com")
+    _tokens.save_tokens(
+        user_id=user["id"], access_token="at",
+        refresh_token="rt", expires_in_seconds=14400,
+        scope="read:self-assessment write:self-assessment",
+    )
+
+    _bd.persist_nino_only(user["id"], "AA111111B")
+
+    info = _tokens.get_tokens(user["id"])
+    assert info["nino"] == "AA111111B"
+
+
+def test_persist_nino_only_allows_replacing_a_demo_nino_without_businesses():
+    """If the user has a NINO saved but NO businesses (demo state — typed
+    NINO but Discover returned 404), they may legitimately want to switch
+    to a different NINO. The guard must allow that — only Live state
+    (businesses saved) is sticky."""
+    from hmrc.services import business_details as _bd
+    from hmrc.repositories import tokens as _tokens
+
+    client, csrf, user = _client_with_user(email="nino-switch@example.com")
+    _tokens.save_tokens(
+        user_id=user["id"], access_token="at",
+        refresh_token="rt", expires_in_seconds=14400,
+        scope="read:self-assessment write:self-assessment",
+    )
+    # NINO saved, but NO businesses (demo state)
+    _tokens.save_nino_and_businesses(user["id"], "AA111111B", [])
+
+    _bd.persist_nino_only(user["id"], "BB222222C")
+
+    info = _tokens.get_tokens(user["id"])
+    assert info["nino"] == "BB222222C", (
+        "Should allow NINO switch in demo state — only Live state is sticky."
+    )

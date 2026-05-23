@@ -36,6 +36,7 @@ from datetime import date
 
 from .. import config as _cfg
 from ..repositories import tokens as _tokens
+from ..schemas import categories as _cats
 from . import client as _client
 
 logger = logging.getLogger("bankparse.hmrc.sandbox")
@@ -124,9 +125,18 @@ def _tax_year_end(d: date) -> date:
 # ---------------------------------------------------------------------------
 
 
+# Default labels for the bootstrap-created businesses. These are stamped
+# as HMRC's `tradingName` AND saved as the local display label, so they
+# show up unchanged on the obligations card and the file-with-HMRC page.
+# Names match the seed-transaction narrative (consulting + Ipswich
+# property portfolio) so the demo reads as one coherent story.
+#
+# HMRC's Business Details API tradingName regex permits ASCII letters,
+# digits, space, `-`, `,`, `.`, `&`, `'`, `/`. Use plain hyphen (not the
+# em-dash we use in our own seed descriptions) to stay inside that.
 WANTED_BUSINESS_TYPES: tuple[tuple[str, str], ...] = (
-    ("self-employment", "Sandbox sole trader"),
-    ("property",        "Sandbox property"),
+    ("self-employment", "Mitoba - sole trader"),
+    ("property",        "Ipswich SA portfolio"),
 )
 
 
@@ -317,3 +327,139 @@ def _is_nino_oauth_mismatch(exc: _client.HmrcApiError) -> bool:
     body = exc.body or {}
     code = body.get("code") if isinstance(body, dict) else ""
     return (code or "").upper() == "MATCHING_RESOURCE_NOT_FOUND"
+
+
+# ---------------------------------------------------------------------------
+# Sample transaction seeding — gives a freshly-provisioned sandbox account
+# enough ledger data that the quarterly submit buttons produce non-£0.00
+# totals out of the box. Sandbox-only.
+# ---------------------------------------------------------------------------
+
+# Realistic-feeling fixtures for a small UK sole trader + landlord. Mix
+# is deliberately tilted so SE submits show consulting income/expenses and
+# property submits show rent/repairs. Same ledger feeds both (this is how
+# the production product works today — one user has one ledger), so the
+# AI categoriser routes each row to the right business-type category on
+# each submit.
+_SAMPLE_TRANSACTIONS: tuple[dict, ...] = (
+    # --- SE-flavoured income (consulting / sole-trader) ---
+    {"days_from_quarter_start": 3,  "desc": "Consulting fee — Acme Ltd invoice #1042", "amount": 2400.00,
+     "cat": _cats.SE_INCOME},
+    {"days_from_quarter_start": 17, "desc": "Workshop facilitation — Northridge Co",   "amount": 1850.00,
+     "cat": _cats.SE_INCOME},
+    {"days_from_quarter_start": 32, "desc": "Sale of services — Beacon Studios",        "amount": 1200.00,
+     "cat": _cats.SE_INCOME},
+    {"days_from_quarter_start": 60, "desc": "Retainer — Helmsley Partners May",         "amount": 1500.00,
+     "cat": _cats.SE_INCOME},
+    # --- Property-flavoured income (rent) ---
+    {"days_from_quarter_start": 5,  "desc": "Rent received — Flat 1 Tower Mill Lane",   "amount": 950.00,
+     "cat": _cats.PROP_INCOME_RENT, "prop": True},
+    {"days_from_quarter_start": 6,  "desc": "Rent received — 14 Foundry Street",         "amount": 1300.00,
+     "cat": _cats.PROP_INCOME_RENT, "prop": True},
+    {"days_from_quarter_start": 35, "desc": "Rent received — Flat 1 Tower Mill Lane",   "amount": 950.00,
+     "cat": _cats.PROP_INCOME_RENT, "prop": True},
+    {"days_from_quarter_start": 36, "desc": "Rent received — 14 Foundry Street",         "amount": 1300.00,
+     "cat": _cats.PROP_INCOME_RENT, "prop": True},
+    {"days_from_quarter_start": 65, "desc": "Rent received — Flat 1 Tower Mill Lane",   "amount": 950.00,
+     "cat": _cats.PROP_INCOME_RENT, "prop": True},
+    {"days_from_quarter_start": 66, "desc": "Rent received — 14 Foundry Street",         "amount": 1300.00,
+     "cat": _cats.PROP_INCOME_RENT, "prop": True},
+    # --- SE expenses (travel, admin, professional) ---
+    {"days_from_quarter_start": 8,  "desc": "Train — London Liverpool St to Ipswich",   "amount": -42.30,
+     "cat": _cats.SE_EXPENSE_TRAVEL},
+    {"days_from_quarter_start": 19, "desc": "Hotel — Premier Inn Manchester (1 night)", "amount": -89.00,
+     "cat": _cats.SE_EXPENSE_TRAVEL},
+    {"days_from_quarter_start": 22, "desc": "Subscription — Microsoft 365 Business",    "amount": -12.50,
+     "cat": _cats.SE_EXPENSE_ADMIN},
+    {"days_from_quarter_start": 28, "desc": "Accountancy — quarterly payroll filing",   "amount": -180.00,
+     "cat": _cats.SE_EXPENSE_PROFESSIONAL},
+    # --- Property expenses (repairs, services, premises) ---
+    {"days_from_quarter_start": 12, "desc": "Plumber callout — Flat 1 leak",             "amount": -185.00,
+     "cat": _cats.PROP_EXPENSE_REPAIRS, "prop": True},
+    {"days_from_quarter_start": 40, "desc": "Letting agent fee — Foundry St May",        "amount": -156.00,
+     "cat": _cats.PROP_EXPENSE_SERVICES, "prop": True},
+    {"days_from_quarter_start": 47, "desc": "Council tax — 14 Foundry Street (void)",    "amount": -142.50,
+     "cat": _cats.PROP_EXPENSE_PREMISES, "prop": True},
+    {"days_from_quarter_start": 53, "desc": "Boiler service — Flat 1 annual",            "amount": -98.00,
+     "cat": _cats.PROP_EXPENSE_REPAIRS, "prop": True},
+)
+
+
+def _current_quarter_start(today: date | None = None) -> date:
+    """First day of the MTD ITSA quarter containing `today`.
+
+    MTD ITSA tax year quarters: 6 Apr → 5 Jul, 6 Jul → 5 Oct,
+    6 Oct → 5 Jan, 6 Jan → 5 Apr. We pick the most-recent boundary
+    so seeded data lands in the period the dashboard is currently
+    nudging the user to submit.
+    """
+    d = today or date.today()
+    boundaries = [
+        date(d.year, 4, 6), date(d.year, 7, 6),
+        date(d.year, 10, 6), date(d.year + 1, 1, 6),
+        date(d.year - 1, 10, 6), date(d.year, 1, 6),
+    ]
+    past = [b for b in boundaries if b <= d]
+    return max(past)
+
+
+def seed_sample_transactions(user_id: int, *, today: date | None = None) -> dict:
+    """Insert the canonical sample transactions into the user's ledger
+    for the current MTD ITSA quarter. Sandbox-only — caller MUST gate on
+    `is_sandbox()`.
+
+    Returns: {"inserted": N, "skipped_existing": M, "period_start": iso,
+              "period_end": iso}.
+
+    Idempotency: the ledger_transactions content_hash column has an INDEX
+    but no UNIQUE constraint, so we pre-check by hash + user_id before
+    inserting. A second invocation goes entirely down the skipped path.
+    """
+    from database import insert_ledger_transaction, _hash_transaction, _fetchall_dicts
+    from datetime import timedelta
+
+    q_start = _current_quarter_start(today)
+    q_end = q_start + timedelta(days=90)  # ~3 months — generous; HMRC quarter is 91 days
+
+    # One round-trip to read every existing content_hash for this user,
+    # so per-row work is a Python set lookup.
+    existing_rows = _fetchall_dicts(
+        "SELECT content_hash FROM ledger_transactions WHERE user_id = ?",
+        (user_id,),
+    )
+    existing_hashes = {r["content_hash"] for r in existing_rows if r.get("content_hash")}
+
+    inserted = 0
+    skipped = 0
+    for tx in _SAMPLE_TRANSACTIONS:
+        day = q_start + timedelta(days=int(tx["days_from_quarter_start"]))
+        # Defensive: never seed outside the quarter — clip if the fixture
+        # offset overshoots the quarter end.
+        if day > q_end:
+            day = q_end
+        h = _hash_transaction(day.isoformat(), str(tx["desc"]), float(tx["amount"]))
+        if h in existing_hashes:
+            skipped += 1
+            continue
+        insert_ledger_transaction(
+            user_id=user_id,
+            extracted_data_id=None,
+            date_iso=day.isoformat(),
+            description=str(tx["desc"]),
+            amount=float(tx["amount"]),
+            currency="GBP",
+            transaction_type=("credit" if tx["amount"] > 0 else "debit"),
+            hmrc_category=str(tx["cat"]),
+            hmrc_category_confidence=95,
+            hmrc_category_reason="Sandbox seed — pre-categorised demo data.",
+            reference=None,
+        )
+        existing_hashes.add(h)
+        inserted += 1
+
+    return {
+        "inserted": inserted,
+        "skipped_existing": skipped,
+        "period_start": q_start.isoformat(),
+        "period_end": (q_start + timedelta(days=90)).isoformat(),
+    }

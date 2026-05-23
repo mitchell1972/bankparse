@@ -132,8 +132,13 @@
                         });
                         if (r.ok) {
                             // Send straight to HMRC's authorize URL so the user
-                            // signs in again with one click.
-                            window.location.href = '/api/hmrc/connect';
+                            // signs in again with one click. ?fresh=1 tells the
+                            // server to add prompt=login, which forces HMRC's
+                            // sandbox to drop any sticky GG session cookie —
+                            // without that, the user would silently re-OAuth
+                            // as the previous test identity and end up right
+                            // back in OAUTH_NINO_MISMATCH.
+                            window.location.href = '/api/hmrc/connect?fresh=1';
                             return;
                         }
                         msg.style.display = 'block';

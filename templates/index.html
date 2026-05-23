@@ -2497,6 +2497,14 @@
                 // Discover so they don't have to retype it. Idempotent.
                 if (data.connected) {
                     maybeAutoDiscoverFromStash();
+                    // No-stash path: user OAuthed with their own GG creds,
+                    // typed a NINO, hit the empty-businesses state. Auto-
+                    // provision SE+property businesses AND seed sample
+                    // transactions so they don't have to click anything
+                    // else to see a working demo.
+                    if (data.nino) {
+                        maybeAutoSetupFromServerState(data.nino);
+                    }
                 }
             } else {
                 badge.style.background = '#D1FAE5';
@@ -2632,15 +2640,39 @@
                     body: '{}',
                 });
                 if (sr.ok) {
-                    banner.innerHTML = `✓ Sandbox ready. Reloading…`;
+                    banner.innerHTML = `✓ Sandbox businesses ready — seeding sample transactions…`;
+                    // Seed before reload so the dashboard renders with
+                    // real numbers immediately. Seeding is idempotent
+                    // (content-hashed) and sandbox-only — a 404 in prod
+                    // is fine, we just skip on to reload.
+                    try {
+                        await fetch('/api/hmrc/sandbox/seed-sample-data', {
+                            method: 'POST', credentials: 'include',
+                            headers: { 'Content-Type': 'application/json',
+                                       'X-CSRF-Token': decodeURIComponent(csrf) },
+                            body: '{}',
+                        });
+                    } catch (e) { /* non-fatal — reload anyway */ }
+                    banner.innerHTML = `✓ Sandbox + sample data ready. Reloading…`;
                     setTimeout(() => window.location.reload(), 600);
                     return;
                 }
                 const serr = await sr.json().catch(() => ({}));
+                // setup-complete fails with OAUTH_NINO_MISMATCH when HMRC's
+                // OAuth session is for a previous test user, not the freshly-
+                // minted NINO. That's the SAME failure the 409 branch below
+                // catches — route it through the recovery card so the user
+                // sees the GG creds inline + a one-click Disconnect-and-
+                // retry button, not a leaked machine sentinel.
+                const setupDetail = String(serr.detail || `HMRC returned ${sr.status}`);
+                if (/OAUTH_NINO_MISMATCH/i.test(setupDetail)) {
+                    renderOAuthMismatchRecovery(banner, stashed, setupDetail);
+                    return;
+                }
                 banner.style.background = '#FEE2E2';
                 banner.style.borderColor = '#FCA5A5';
                 banner.style.color = '#991B1B';
-                banner.innerHTML = `Couldn't auto-set-up: ${serr.detail || sr.status}. Use the NINO form below to finish manually.`;
+                banner.innerHTML = `Couldn't auto-set-up: ${setupDetail}. Use the NINO form below to finish manually.`;
                 return;
             }
             // 3) Anything else (409 OAuth mismatch, 400, etc.) — surface
@@ -2654,6 +2686,89 @@
             banner.innerHTML = `Network error during auto-setup. Use the NINO form below to finish manually.`;
         } finally {
             _autoDiscoverInFlight = false;
+        }
+    }
+
+    // Server-state auto-setup. Distinct from maybeAutoDiscoverFromStash:
+    // this fires when the server tells us the user IS connected with a
+    // saved NINO but no businesses (the "sample obligations" state).
+    // Runs setup-complete + seed-sample-data without requiring any click,
+    // so first-run sandbox users land on a fully-populated dashboard.
+    //   - sessionStorage flag prevents a re-fire loop on the post-reload
+    //     dashboard render (server takes a moment to flip out of demo
+    //     state if setup-complete returned ok).
+    //   - sandbox-only effectively: setup-complete + seed both 404 in
+    //     production, so this function gracefully no-ops there.
+    let _autoSetupInFlight = false;
+    async function maybeAutoSetupFromServerState(nino) {
+        if (_autoSetupInFlight) return;
+        // Don't fight maybeAutoDiscoverFromStash — that path already
+        // owns the post-Mint flow.
+        let stashed = '';
+        try { stashed = localStorage.getItem('bp_pending_nino') || ''; }
+        catch (e) {}
+        if (stashed) return;
+        // One-shot per browser session to avoid loops if setup-complete
+        // succeeds but the server still shows demo=true on first reload.
+        try {
+            if (sessionStorage.getItem('bp_auto_setup_done') === '1') return;
+        } catch (e) {}
+        _autoSetupInFlight = true;
+        try { sessionStorage.setItem('bp_auto_setup_done', '1'); } catch (e) {}
+
+        const banner = document.createElement('div');
+        banner.id = 'bpAutoSetupBanner';
+        banner.style.cssText = 'background:#EBF5FB; border:1px solid #AED6F1; color:#1B4F72; border-radius:6px; padding:0.7rem 0.9rem; margin:0.6rem 0; font-size:0.88rem;';
+        banner.innerHTML = `Provisioning sandbox businesses for <code>${nino}</code>…`;
+        const dlPanel = document.getElementById('hmrcDeadlinesPanel');
+        if (dlPanel && dlPanel.parentNode) dlPanel.parentNode.insertBefore(banner, dlPanel);
+
+        try {
+            const csrf = (document.cookie.match(/bp_csrf=([^;]+)/) || [])[1] || '';
+            const sr = await fetch('/api/hmrc/sandbox/setup-complete', {
+                method: 'POST', credentials: 'include',
+                headers: { 'Content-Type': 'application/json',
+                           'X-CSRF-Token': decodeURIComponent(csrf) },
+                body: '{}',
+            });
+            if (sr.status === 404) {
+                // Production deploy — sandbox routes refuse. Silent no-op.
+                banner.remove();
+                return;
+            }
+            if (!sr.ok) {
+                const serr = await sr.json().catch(() => ({}));
+                const setupDetail = String(serr.detail || `HMRC returned ${sr.status}`);
+                // OAUTH_NINO_MISMATCH gets the rich recovery card (same
+                // pattern as the post-Mint flow).
+                if (/OAUTH_NINO_MISMATCH/i.test(setupDetail)) {
+                    renderOAuthMismatchRecovery(banner, nino, setupDetail);
+                    return;
+                }
+                banner.style.background = '#FEE2E2';
+                banner.style.borderColor = '#FCA5A5';
+                banner.style.color = '#991B1B';
+                banner.innerHTML = `Couldn't auto-set-up: ${setupDetail}. Click 'Set me up with a complete sandbox' below to retry.`;
+                return;
+            }
+            banner.innerHTML = `✓ Businesses ready — seeding sample transactions…`;
+            try {
+                await fetch('/api/hmrc/sandbox/seed-sample-data', {
+                    method: 'POST', credentials: 'include',
+                    headers: { 'Content-Type': 'application/json',
+                               'X-CSRF-Token': decodeURIComponent(csrf) },
+                    body: '{}',
+                });
+            } catch (e) { /* non-fatal */ }
+            banner.innerHTML = `✓ Sandbox set up with sample data. Reloading…`;
+            setTimeout(() => window.location.reload(), 600);
+        } catch (e) {
+            banner.style.background = '#FEE2E2';
+            banner.style.borderColor = '#FCA5A5';
+            banner.style.color = '#991B1B';
+            banner.innerHTML = `Network error during auto-setup. Click 'Set me up with a complete sandbox' below to retry.`;
+        } finally {
+            _autoSetupInFlight = false;
         }
     }
 
@@ -2729,7 +2844,11 @@
                     if (r.ok) {
                         // Redirect straight to OAuth so the user can paste
                         // the GG creds shown above on HMRC's sign-in page.
-                        window.location.href = '/api/hmrc/connect';
+                        // ?fresh=1 sends prompt=login to HMRC so any sticky
+                        // sandbox GG session cookie gets torn down — the
+                        // root cause we're recovering from is HMRC silently
+                        // re-OAuthing as the previous test identity.
+                        window.location.href = '/api/hmrc/connect?fresh=1';
                         return;
                     }
                     resetBtn.disabled = false;
@@ -2958,7 +3077,31 @@
                         if (!parts.length) parts.push('Nothing to do — already set up.');
                         sandboxMsg.innerHTML =
                             parts.join('<br>')
-                            + '<br>Refreshing deadlines…';
+                            + '<br>Seeding sample transactions…';
+                        // Seed sample data so the obligations card shows
+                        // realistic totals instead of £0.00. Failure here
+                        // is non-fatal — the businesses are already set
+                        // up; the user can upload a real statement instead.
+                        try {
+                            const seedResp = await fetch('/api/hmrc/sandbox/seed-sample-data', {
+                                method: 'POST',
+                                credentials: 'include',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    'X-CSRF-Token': decodeURIComponent(csrf),
+                                },
+                                body: '{}',
+                            });
+                            if (seedResp.ok) {
+                                const seedData = await seedResp.json().catch(() => ({}));
+                                const n = Number(seedData.inserted || 0);
+                                if (n > 0) {
+                                    sandboxMsg.innerHTML =
+                                        parts.join('<br>')
+                                        + `<br>✓ Seeded ${n} sample transactions (${seedData.period_start} → ${seedData.period_end}).`;
+                                }
+                            }
+                        } catch (e) { /* non-fatal */ }
                         await loadHmrcDeadlines();
                         // Then a final cheerful confirmation
                         setTimeout(() => {
@@ -2981,7 +3124,7 @@
                             sandboxMsg.innerHTML = `
                                 <div>${safe}</div>
                                 <div style="margin-top:0.6rem;">
-                                  <a href="/hmrc/connect"
+                                  <a href="/api/hmrc/connect?fresh=1"
                                      style="display:inline-block; background:#2874A6; color:#fff; padding:0.5rem 1rem; border-radius:4px; text-decoration:none; font-weight:600; font-size:0.85rem;">
                                     Connect to HMRC →
                                   </a>
@@ -3081,7 +3224,7 @@
                                   Sign in again with the credentials above so HMRC recognises
                                   the new NINO.
                                 </div>
-                                <a href="/hmrc/connect"
+                                <a href="/api/hmrc/connect?fresh=1"
                                    style="display:inline-block; background:#2874A6; color:#fff; padding:0.5rem 1rem; border-radius:4px; text-decoration:none; font-weight:600; font-size:0.85rem;">
                                   Connect to HMRC →
                                 </a>
