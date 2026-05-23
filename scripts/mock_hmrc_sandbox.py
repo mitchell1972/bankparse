@@ -258,6 +258,45 @@ async def get_obligations_per_business(type_of_business: str, nino: str, busines
     return JSONResponse({"obligations": obligations})
 
 
+@app.post("/individuals/business/self-employment/{nino}/{business_id}/period-summaries")
+async def submit_se_quarter(nino: str, business_id: str, request: Request):
+    """HMRC quarterly self-employment submission endpoint. Returns a fake
+    transactionReference + submissionId so the dashboard shows a green
+    confirmation row with a clickable reference."""
+    body = await request.json()
+    ref = f"SE-{secrets.token_hex(6).upper()}"
+    logger.info(
+        "Submitted SE quarter %s/%s for %s: income=%s expenses=%s",
+        body.get("periodDates", {}).get("periodStartDate"),
+        body.get("periodDates", {}).get("periodEndDate"),
+        business_id, sum((body.get("periodIncome") or {}).values()),
+        sum(v for v in (body.get("periodExpenses") or {}).values() if isinstance(v, (int, float))),
+    )
+    return JSONResponse({
+        "transactionReference": ref,
+        "submissionId": f"sub-{secrets.token_hex(8)}",
+        "submittedAt": date.today().isoformat() + "T00:00:00Z",
+    }, status_code=201)
+
+
+@app.post("/individuals/business/property/{nino}/{business_id}/uk/period-summaries")
+async def submit_property_quarter(nino: str, business_id: str, request: Request):
+    """Property quarterly submission — same shape as SE, different URL."""
+    body = await request.json()
+    ref = f"PROP-{secrets.token_hex(6).upper()}"
+    logger.info(
+        "Submitted property quarter %s/%s for %s",
+        body.get("periodDates", {}).get("periodStartDate"),
+        body.get("periodDates", {}).get("periodEndDate"),
+        business_id,
+    )
+    return JSONResponse({
+        "transactionReference": ref,
+        "submissionId": f"sub-{secrets.token_hex(8)}",
+        "submittedAt": date.today().isoformat() + "T00:00:00Z",
+    }, status_code=201)
+
+
 @app.get("/health")
 def health():
     return {"status": "ok", "users_minted": len(_minted_users),
