@@ -4237,6 +4237,14 @@ BLOG_POSTS = {
         "template": "blog/bank-statement-data-security-gdpr.html",
         "keywords": "bank statement data security UK, GDPR bank statement processing, secure bank statement conversion, accountant data protection compliance, ICO financial data guidance, cloud tool GDPR bookkeepers, client bank statement security, UK data residency bank statements",
     },
+    "bank-statement-conversion-property-investors": {
+        "title": "Bank Statement Conversion for Property Investors & Landlords — Complete UK Guide (2026)",
+        "description": "Managing bank statements across a buy-to-let portfolio? Complete guide to converting bank and mortgage statements for property investors and landlords — from multi-property reconciliation to SA105 tax return preparation.",
+        "date": "2026-05-23",
+        "author": "BankScan AI Team",
+        "template": "blog/bank-statement-conversion-property-investors.html",
+        "keywords": "bank statement conversion property investors UK, landlord bank statement to Excel, buy-to-let statement processing, property portfolio bank statement management, SA105 bank statement preparation, rental income bank statement reconciliation, multiple property bank statement conversion, HMO landlord bookkeeping automation",
+    },
 }
 
 
