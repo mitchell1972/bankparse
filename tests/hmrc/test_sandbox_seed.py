@@ -259,3 +259,80 @@ def test_seed_route_csrf_required():
     client, _, _ = _client_with_user()
     r = client.post("/api/hmrc/sandbox/seed-sample-data", json={})
     assert r.status_code == 403, r.text
+
+
+# ---------------------------------------------------------------------------
+# Unseed (rollback) tests
+# ---------------------------------------------------------------------------
+
+def test_unseed_removes_only_seeded_fixtures_not_real_uploads():
+    """Critical safety property: unseed must ONLY delete rows whose
+    (date, description, amount) tuple exactly matches a seed fixture.
+    A real uploaded transaction with a similar description (e.g. an
+    actual 'Plumber callout' in the user's real ledger) must survive."""
+    from hmrc.services import sandbox as _sandbox
+    from database import get_user_ledger_transactions, insert_ledger_transaction
+
+    client, csrf, user = _client_with_user(email="unseed-safety@example.com")
+    today = date(2026, 5, 22)
+
+    # Seed the fixtures
+    seeded = _sandbox.seed_sample_transactions(user["id"], today=today)
+    assert seeded["inserted"] > 0
+
+    # Insert a REAL transaction with similar phrasing but different amount
+    # and a different date — must survive unseed.
+    insert_ledger_transaction(
+        user_id=user["id"], extracted_data_id=None,
+        date_iso="2026-04-10", description="Plumber callout — real upload",
+        amount=-220.00, currency="GBP", transaction_type="debit",
+        hmrc_category="repairsAndMaintenance",
+        hmrc_category_confidence=50,
+        hmrc_category_reason=None, reference=None,
+    )
+
+    rows_before = get_user_ledger_transactions(user["id"], limit=200)
+    real_row_count_before = sum(1 for r in rows_before if "real upload" in r["description"])
+    assert real_row_count_before == 1
+
+    # Unseed
+    result = _sandbox.unseed_sample_transactions(user["id"], today=today)
+    assert result["deleted"] == seeded["inserted"]
+
+    # The real upload must still be there
+    rows_after = get_user_ledger_transactions(user["id"], limit=200)
+    real_row_count_after = sum(1 for r in rows_after if "real upload" in r["description"])
+    assert real_row_count_after == 1, (
+        f"Real upload was wrongly deleted by unseed — only seeded fixtures should go"
+    )
+
+
+def test_unseed_route_returns_deleted_count():
+    """End-to-end: seed via the route, then unseed via the route, get
+    matching counts."""
+    client, csrf, _ = _client_with_user(email="unseed-route@example.com")
+    seed = client.post(
+        "/api/hmrc/sandbox/seed-sample-data", json={},
+        headers={"X-CSRF-Token": csrf},
+    ).json()
+    assert seed["inserted"] > 0
+
+    unseed = client.post(
+        "/api/hmrc/sandbox/unseed-sample-data", json={},
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert unseed.status_code == 200, unseed.text
+    body = unseed.json()
+    assert body["status"] == "ok"
+    assert body["deleted"] == seed["inserted"]
+
+
+def test_unseed_route_refuses_in_production(monkeypatch):
+    """Sandbox-only — production must return 404."""
+    monkeypatch.setenv("HMRC_ENV", "production")
+    client, csrf, _ = _client_with_user(email="unseed-prod@example.com")
+    r = client.post(
+        "/api/hmrc/sandbox/unseed-sample-data", json={},
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert r.status_code == 404, r.text

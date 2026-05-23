@@ -612,15 +612,35 @@ function openSubmitDialog(obligationIdx) {
       return;
     }
     const payload = preview.payload || {};
-    const inc = payload.income || {};
-    const exp = payload.expenses || {};
-    const sum = (o2) => Object.values(o2 || {}).reduce((a, b) => a + (typeof b === 'number' ? b : 0), 0);
+    // HMRC's MTD ITSA wire shape: periodIncome + periodExpenses. The old
+    // code read payload.income / payload.expenses (which never exist),
+    // so the modal always rendered £0.00 even when the preview was full.
+    // Discovered live on 2026-05-23 while testing the Submit flow.
+    const inc = payload.periodIncome || payload.income || {};
+    const exp = payload.periodExpenses || payload.expenses || {};
+    const sum = (o2) => Object.values(o2 || {}).reduce(
+      (a, b) => a + (typeof b === 'number' ? b : 0), 0);
     const income = sum(inc);
     const expenses = sum(exp);
+    // category_breakdown tells us how each total was assembled — surface
+    // it so the user can audit before clicking Submit. Without this the
+    // modal hides every interesting fact behind one bottom-line number.
+    const breakdown = preview.category_breakdown || {};
+    const breakdownRows = Object.entries(breakdown)
+      .filter(([, v]) => typeof v === 'number' && v !== 0)
+      .sort(([, a], [, b]) => Math.abs(b) - Math.abs(a))
+      .map(([k, v]) => `<div class="row" style="font-size:0.85rem;"><span style="color:#566573; padding-left:0.5rem;">${k}</span><span>${fmtGBP(v)}</span></div>`)
+      .join('');
+    const flagged = preview.flagged_for_review || 0;
+    const flaggedNote = flagged > 0
+      ? `<div class="row" style="font-size:0.85rem; color:#92400E; background:#FEF3C7; padding:0.4rem 0.6rem; border-radius:4px; margin-top:0.5rem;">⚠ ${flagged} transaction(s) flagged for review (low categorisation confidence). HMRC will accept the figures as-is — review the dashboard table if you want to change them.</div>`
+      : '';
     document.getElementById('dlgTotals').innerHTML = `
       <div class="row"><span>Income (gross)</span><strong>${fmtGBP(income)}</strong></div>
       <div class="row"><span>Expenses (gross)</span><strong>${fmtGBP(expenses)}</strong></div>
       <div class="row"><span>Net for period</span><strong>${fmtGBP(income - expenses)}</strong></div>
+      ${breakdownRows ? `<div style="margin-top:0.5rem; padding-top:0.5rem; border-top:1px solid #E5E7EB; font-size:0.78rem; color:#7B7B7B; text-transform:uppercase; letter-spacing:0.05em;">Breakdown by HMRC category</div>${breakdownRows}` : ''}
+      ${flaggedNote}
     `;
   });
 

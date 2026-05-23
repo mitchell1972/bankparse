@@ -37,6 +37,13 @@ class SeedSampleDataResponse(BaseModel):
     period_end: str | None = None
 
 
+class UnseedSampleDataResponse(BaseModel):
+    status: Literal["ok"] = "ok"
+    deleted: int = 0
+    period_start: str | None = None
+    period_end: str | None = None
+
+
 def _user(request: Request) -> dict | None:
     """Lazy import to avoid circular dep on `app`."""
     try:
@@ -76,3 +83,25 @@ async def seed_sample_data(request: Request) -> SeedSampleDataResponse:
         raise HTTPException(status_code=401, detail="Authentication required.")
     result = _sandbox.seed_sample_transactions(user["id"])
     return SeedSampleDataResponse(**result)
+
+
+@router.post(
+    "/api/hmrc/sandbox/unseed-sample-data",
+    response_model=UnseedSampleDataResponse,
+)
+async def unseed_sample_data(request: Request) -> UnseedSampleDataResponse:
+    """Inverse of seed-sample-data. Removes the canonical sample
+    transactions inserted by the seeder for the current MTD ITSA quarter
+    — matched by exact (date, description, amount) content_hash, so real
+    uploaded statements with similar descriptions can't be hit.
+
+    Use when verifying the journey on production polluted the ledger
+    with test fixtures and you want to roll back without DB access.
+    Sandbox-only.
+    """
+    _refuse_in_production()
+    user = _user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required.")
+    result = _sandbox.unseed_sample_transactions(user["id"])
+    return UnseedSampleDataResponse(**result)
