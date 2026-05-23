@@ -163,7 +163,10 @@ def submit_se_quarter(
             expected validation cases like duplicate-submission).
     """
     nino = _require_nino(user_id)
-    path = f"/individuals/business/self-employment/{nino}/{business_id}/period-summaries"
+    # HMRC renamed the path on Self-Employment Business API v5.0 — was
+    # /period-summaries, now /period. Old path returns MATCHING_RESOURCE_
+    # NOT_FOUND. Verified via HMRC docs 2026-05-23.
+    path = f"/individuals/business/self-employment/{nino}/{business_id}/period"
 
     resp = _client.request(
         user_id=user_id, method="POST", path=path,

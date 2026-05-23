@@ -253,9 +253,13 @@ def test_submit_se_hits_correct_hmrc_url_with_idempotency_key():
     assert r.status_code == 200, r.text
     kwargs = mock_call.call_args.kwargs
     assert kwargs["method"] == "POST"
+    # HMRC renamed this endpoint on SE Business API v5.0 — was
+    # /period-summaries, now /period. Verified via HMRC docs 2026-05-23.
+    # Old path returned MATCHING_RESOURCE_NOT_FOUND which surfaced as a
+    # confusing user-facing error.
     assert kwargs["path"] == (
         "/individuals/business/self-employment/"
-        "CX139207A/XAIS00000999001/period-summaries"
+        "CX139207A/XAIS00000999001/period"
     )
     # Idempotency-Key MUST be present and a UUID string (HMRC will reject
     # duplicate submissions; this is the contract).
