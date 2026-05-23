@@ -65,6 +65,22 @@ def create_test_business(
     Returns the HMRC response (typically the new businessId). Raises
     `HmrcNotConnectedError` if the user hasn't OAuthed yet, or
     `HmrcApiError` on a non-2xx from HMRC.
+
+    Calls HMRC's Self Assessment Test Support (MTD) v1.0 API:
+    `POST /individuals/self-assessment-test-support/business/{nino}`.
+
+    Historical note: this lived under Business Details API v1.x at
+    `/individuals/business/details/{nino}/test-only/create-business`.
+    HMRC moved it to the dedicated Test Support API. The old path now
+    returns 404 MATCHING_RESOURCE_NOT_FOUND, which our code previously
+    mis-interpreted as OAUTH_NINO_MISMATCH because the body shape looks
+    the same as the auth-fail case. Verified via the live HMRC docs on
+    2026-05-23 (see Self Assessment Test Support API endpoint list).
+
+    Wire shapes per HMRC docs:
+      Self-employment requires `tradingName` (max 35 chars) + a full
+      business address (line1, postcode at minimum). Property forbids
+      both tradingName and address.
     """
     info = _tokens.get_tokens(user_id) or {}
     nino = info.get("nino")
@@ -77,23 +93,30 @@ def create_test_business(
     # Normalise our internal `property` to HMRC's wire value `uk-property`.
     if type_of_business == "property":
         wire_type = "uk-property"
-        default_name = "Sandbox property"
+        default_name = None  # property must NOT carry a tradingName
     else:
         wire_type = "self-employment"
         default_name = "Sandbox sole trader"
 
     today = date.today()
-    body = {
+    body: dict = {
         "typeOfBusiness": wire_type,
-        "tradingName": (trading_name or default_name)[:105],
         # MTD ITSA tax year runs 6 April → 5 April. Pick the current
         # tax-year window so HMRC happily accepts the dates.
         "firstAccountingPeriodStartDate": _tax_year_start(today).isoformat(),
         "firstAccountingPeriodEndDate":   _tax_year_end(today).isoformat(),
         "accountingType": "CASH",
     }
+    if wire_type == "self-employment":
+        body["tradingName"] = (trading_name or default_name)[:35]
+        # HMRC requires a full address on SE businesses. The fixture
+        # address is a stable real-looking UK address — production
+        # users overwrite this from their actual business profile.
+        body["businessAddressLineOne"] = "47 Union Walk"
+        body["businessAddressPostcode"] = "TS25 1PA"
+        body["businessAddressCountryCode"] = "GB"
 
-    path = f"/individuals/business/details/{nino}/test-only/create-business"
+    path = f"/individuals/self-assessment-test-support/business/{nino}"
     resp = _client.request(
         user_id=user_id, method="POST", path=path,
         request_obj=request_obj,
@@ -314,19 +337,29 @@ def _is_nino_oauth_mismatch(exc: _client.HmrcApiError) -> bool:
     """True if HMRC's response means the OAuth session is for a different
     NINO than the one we're trying to mutate.
 
-    HMRC returns 404 MATCHING_RESOURCE_NOT_FOUND in two cases:
-      1. NINO has no businesses yet (we already handle this on Discover).
-      2. OAuth identity doesn't match the NINO in the URL.
+    HMRC's Self Assessment Test Support API returns:
+      403 CLIENT_OR_AGENT_NOT_AUTHORISED — when the OAuth token's identity
+        doesn't match the NINO in the URL. (Confirmed by HMRC docs on
+        2026-05-23.)
+      400 FORMAT_NINO — malformed NINO, not an auth issue.
 
-    On create-test-business the second case is the only one that can fire
-    — the endpoint doesn't lookup-by-NINO, it CREATES against the NINO in
-    the URL, which HMRC validates against the OAuth token's individual.
+    The previous version of this check looked for 404 MATCHING_RESOURCE_
+    NOT_FOUND. That error code came from the old Business Details API
+    `/test-only/create-business` endpoint, which HMRC has retired. The
+    new endpoint at `/individuals/self-assessment-test-support/business/
+    {nino}` distinguishes auth failures more cleanly via the 403 code.
+
+    Keeping the 404 path too for back-compat in case the retired endpoint
+    or any other call surface still surfaces the old code in production.
     """
-    if exc.status_code != 404:
-        return False
     body = exc.body or {}
-    code = body.get("code") if isinstance(body, dict) else ""
-    return (code or "").upper() == "MATCHING_RESOURCE_NOT_FOUND"
+    code = (body.get("code") if isinstance(body, dict) else "") or ""
+    if exc.status_code == 403 and code.upper() == "CLIENT_OR_AGENT_NOT_AUTHORISED":
+        return True
+    # Legacy: old Business Details endpoint shape (kept for safety).
+    if exc.status_code == 404 and code.upper() == "MATCHING_RESOURCE_NOT_FOUND":
+        return True
+    return False
 
 
 # ---------------------------------------------------------------------------

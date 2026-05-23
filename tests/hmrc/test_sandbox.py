@@ -201,15 +201,23 @@ def test_endpoint_calls_hmrc_and_persists_new_business():
     assert r.status_code == 200, r.text
 
     # The exact URL we hit at HMRC — bumping this URL is a real change.
+    # HMRC moved this endpoint from Business Details to Self Assessment
+    # Test Support on 2026-05-23; verified via live HMRC docs. The old
+    # path returned 404 MATCHING_RESOURCE_NOT_FOUND which our code mis-
+    # interpreted as OAUTH_NINO_MISMATCH.
     call_kwargs = mock_call.call_args.kwargs
     assert call_kwargs["method"] == "POST"
-    assert call_kwargs["path"] == "/individuals/business/details/CX139207A/test-only/create-business"
+    assert call_kwargs["path"] == "/individuals/self-assessment-test-support/business/CX139207A"
 
     # Sandbox HMRC requires uk-property wire value — but for SE we send self-employment.
     body = call_kwargs["json_body"]
     assert body["typeOfBusiness"] == "self-employment"
     assert body["tradingName"] == "Test SE"
     assert body["accountingType"] == "CASH"
+    # New endpoint requires a business address on SE businesses.
+    assert body["businessAddressLineOne"]
+    assert body["businessAddressPostcode"]
+    assert body["businessAddressCountryCode"] == "GB"
     # Accounting period must fall inside a real MTD tax year.
     assert body["firstAccountingPeriodStartDate"].endswith("-04-06")
     assert body["firstAccountingPeriodEndDate"].endswith("-04-05")
