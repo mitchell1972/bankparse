@@ -463,3 +463,55 @@ def seed_sample_transactions(user_id: int, *, today: date | None = None) -> dict
         "period_start": q_start.isoformat(),
         "period_end": (q_start + timedelta(days=90)).isoformat(),
     }
+
+
+def unseed_sample_transactions(user_id: int, *, today: date | None = None) -> dict:
+    """Inverse of seed_sample_transactions. Deletes the canonical sample
+    transactions for the current MTD ITSA quarter by matching against the
+    same content_hashes the seeder produces. Safe — only touches rows
+    whose (date, description, amount) tuple matches a fixture entry, so
+    real uploaded statements with similar descriptions can't be hit.
+
+    Returns: {"deleted": N, "period_start": iso, "period_end": iso}.
+    """
+    from database import _hash_transaction, _execute, _fetchall_dicts
+    from datetime import timedelta
+
+    q_start = _current_quarter_start(today)
+    q_end = q_start + timedelta(days=90)
+
+    # Recompute the content_hashes the seeder would have produced.
+    target_hashes: set[str] = set()
+    for tx in _SAMPLE_TRANSACTIONS:
+        day = q_start + timedelta(days=int(tx["days_from_quarter_start"]))
+        if day > q_end:
+            day = q_end
+        target_hashes.add(
+            _hash_transaction(day.isoformat(), str(tx["desc"]), float(tx["amount"]))
+        )
+
+    if not target_hashes:
+        return {"deleted": 0, "period_start": q_start.isoformat(),
+                "period_end": q_end.isoformat()}
+
+    # Delete each matching row. SQLite doesn't let us parameterize an IN
+    # clause easily across drivers, so we run one DELETE per hash; sub-
+    # millisecond at this size (~18 hashes).
+    deleted = 0
+    for h in target_hashes:
+        rows = _fetchall_dicts(
+            "SELECT id FROM ledger_transactions WHERE user_id = ? AND content_hash = ?",
+            (user_id, h),
+        )
+        for r in rows:
+            _execute(
+                "DELETE FROM ledger_transactions WHERE id = ?",
+                (r["id"],),
+            )
+            deleted += 1
+
+    return {
+        "deleted": deleted,
+        "period_start": q_start.isoformat(),
+        "period_end": q_end.isoformat(),
+    }
