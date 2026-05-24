@@ -34,6 +34,10 @@ STUB_ACCESS_TOKEN = "stub-hmrc-access-token-abcdef"
 STUB_REFRESH_TOKEN = "stub-hmrc-refresh-token-123456"
 STUB_TRANSACTION_REFERENCE = "STUB-TX-REF-001"
 STUB_TRANSACTION_REFERENCE_PROP = "STUB-TX-REF-PROP-001"
+STUB_EOPS_REFERENCE = "STUB-EOPS-REF-001"
+STUB_FINAL_DECL_REFERENCE = "STUB-FINAL-DECL-001"
+STUB_CALCULATION_ID = "stub-calc-id-001"
+STUB_TOTAL_TAX_AMOUNT = 1980.0  # what the calculation endpoint returns
 STUB_BUSINESS_ID_SE = "XAIS00000000001"
 STUB_BUSINESS_ID_PROP = "XPIS00000000002"
 STUB_NINO = "AA123456A"
@@ -191,6 +195,31 @@ class _Handler(BaseHTTPRequestHandler):
             self._json(200, {"errors": [], "warnings": []})
             return
 
+        # Tax calculation result — GET /individuals/calculations/{nino}/
+        # self-assessment/{taxYear}/{calculationId}. Returns the mature
+        # body with totalTaxAmount populated so the journey can assert
+        # a non-zero tax owed.
+        if (
+            "/individuals/calculations/" in path
+            and "/self-assessment/" in path
+            and "/final-declaration" not in path
+            and path.endswith(STUB_CALCULATION_ID)
+        ):
+            self._json(200, {
+                "calculation": {
+                    "taxCalculation": {
+                        "incomeTax": {"payPensionsProfit": {
+                            "incomeTaxAmount": 1480.0,
+                        }},
+                        "nics": {"class4Nics": {"nicsAmount": 500.0}},
+                        "totalTaxAmount": STUB_TOTAL_TAX_AMOUNT,
+                    },
+                    "totalIncome": {"totalIncomeReceived": 16450.0},
+                },
+                "metadata": {"calculationId": STUB_CALCULATION_ID},
+            })
+            return
+
         self._json(404, {"code": "MATCHING_RESOURCE_NOT_FOUND", "_stub_path": path})
 
     def _dispatch_post(self, body: Any) -> None:
@@ -251,6 +280,36 @@ class _Handler(BaseHTTPRequestHandler):
                 "transactionReference": STUB_TRANSACTION_REFERENCE,
                 "paymentReference": "PMTREF-001",
             })
+            return
+
+        # End of Period Statement — finalises one business for the tax year.
+        # Path: /individuals/business/{nino}/{bizId}/end-of-period-statements
+        if path.endswith("/end-of-period-statements"):
+            if not isinstance(body, dict) or not body.get("finalised"):
+                self._json(400, {
+                    "code": "RULE_BUSINESS_INCOME_PERIOD_NOT_FINALISED",
+                    "message": "Body must set finalised: true",
+                })
+                return
+            self._json(204, {"transactionReference": STUB_EOPS_REFERENCE})
+            return
+
+        # Trigger tax calculation. POST returns calculationId; body irrelevant.
+        # Path: /individuals/calculations/{nino}/self-assessment/{taxYear}
+        if (
+            "/individuals/calculations/" in path
+            and "/self-assessment/" in path
+            and not path.endswith("/final-declaration")
+            and "/" + STUB_CALCULATION_ID not in path
+        ):
+            self._json(202, {"calculationId": STUB_CALCULATION_ID})
+            return
+
+        # Final declaration submit — the annual return. No body. Returns 204.
+        # Path: /individuals/calculations/{nino}/self-assessment/{taxYear}/
+        #       {calculationId}/final-declaration
+        if path.endswith("/final-declaration"):
+            self._json(204, {"transactionReference": STUB_FINAL_DECL_REFERENCE})
             return
 
         # UK property submit — what the landlord flow ultimately hits.

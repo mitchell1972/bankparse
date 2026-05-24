@@ -150,6 +150,46 @@ def test_auto_categorise_assigns_hmrc_categories():
     assert by_amt[-42.99]["hmrc_category_reason"] == "Stub test categorisation"
 
 
+def test_auto_categorise_splits_property_rows_from_se_rows():
+    """Property-flavoured descriptions (rent received, letting agent, plumber
+    callout) must route through the property categoriser; everything else
+    goes through the caller-supplied stream (default ``se``). Before this
+    split, mixed sole-trader+landlord statements had every rent receipt
+    classified as SE income on the dashboard tax tile.
+
+    Caught by the Playwright submit journey 2026-05-24."""
+    import database as _db
+    _db.create_user("split@example.com", "h")
+    uid = _db.get_user_by_email("split@example.com")["id"]
+    _db.insert_ledger_transaction(
+        uid, extracted_data_id=None,
+        date_iso="2026-05-15", description="RENT RECEIVED TOWER MILL LANE",
+        amount=950.0, hmrc_category=None,
+    )
+    _db.insert_ledger_transaction(
+        uid, extracted_data_id=None,
+        date_iso="2026-05-15", description="INVOICE ACME CONSULTING",
+        amount=2400.0, hmrc_category=None,
+    )
+
+    seen_business_types: list[str] = []
+    async def _capturing_stub(rows, user_id):
+        seen_business_types.append(rows.business_type)
+        return _stub_categorise_response(rows, user_id)
+
+    import asyncio
+    from services.ledger_ingest import auto_categorise_user_transactions
+    with patch("hmrc.services.categorisation.resolve",
+               new_callable=AsyncMock, side_effect=_capturing_stub):
+        n = asyncio.run(auto_categorise_user_transactions(uid))
+    assert n == 2
+    # Two separate categoriser calls — one per business stream.
+    assert sorted(seen_business_types) == ["property", "se"], (
+        f"Expected one 'property' + one 'se' resolve call, got: "
+        f"{seen_business_types!r}"
+    )
+
+
 def test_auto_categorise_only_touches_uncategorised_rows_by_default():
     """only_uncategorised=True must NOT overwrite categories the user has
     already confirmed."""

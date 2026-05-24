@@ -45,7 +45,11 @@ expect = playwright_sync.expect
 from tests.e2e._hmrc_stub import (
     STUB_BUSINESS_ID_PROP,
     STUB_BUSINESS_ID_SE,
+    STUB_CALCULATION_ID,
+    STUB_EOPS_REFERENCE,
+    STUB_FINAL_DECL_REFERENCE,
     STUB_NINO,
+    STUB_TOTAL_TAX_AMOUNT,
     STUB_TRANSACTION_REFERENCE,
     STUB_TRANSACTION_REFERENCE_PROP,
 )
@@ -505,4 +509,218 @@ def test_mtd_user_full_journey(page: Page, hmrc_live_server):
         "File with HMRC", timeout=10_000,
     )
 
+    # ====================================================================
+    # ACT 9 — Tax estimate ("how much do I owe?") tile shows real numbers
+    # ====================================================================
+    # Every dashboard render hits this endpoint. If it returns £0 against
+    # a properly-categorised ledger, the user can't trust any number on
+    # the page — and that's what we saw with the legacy `se_`/`property_`
+    # prefix bug, which would have made the tile show £0 against any
+    # categorised ledger. Assert real numbers come back.
+    jar3, csrf3 = _cookies_for_httpx(page)
+    fc = httpx.get(f"{base}/api/tax-forecast", cookies=jar3, timeout=10.0)
+    assert fc.status_code == 200, (
+        f"[ACT 9] /api/tax-forecast failed: {fc.status_code} {fc.text}"
+    )
+    forecast = fc.json() or {}
+    se_income = (forecast.get("self_employment") or {}).get("income") or 0.0
+    prop_income = (forecast.get("property") or {}).get("income") or 0.0
+    assert se_income > 0, (
+        f"[ACT 9] SE income on the tax tile is £{se_income} — should be "
+        f"~£3,900 from the consulting+fee credits we uploaded. Full forecast: {forecast!r}"
+    )
+    assert prop_income > 0, (
+        f"[ACT 9] Property income on the tax tile is £{prop_income} — should "
+        f"be ~£2,250 from the two RENT RECEIVED rows. Full forecast: {forecast!r}"
+    )
+
+    # ====================================================================
+    # ACT 10 — End of Period Statement: finalise SE + property for the year
+    # ====================================================================
+    # Once a year per business. We drive the API directly since the
+    # dashboard UI for EOPS submit isn't wired up on /hmrc/file yet — but
+    # the endpoint MUST work so when the UI ships there's no surprise.
+    today_iso = dt.date.today().isoformat()
+    year_start = (dt.date.today() - dt.timedelta(days=350)).isoformat()
+    for biz_id, biz_type, label in (
+        (STUB_BUSINESS_ID_SE, "self-employment", "SE"),
+        (STUB_BUSINESS_ID_PROP, "uk-property", "property"),
+    ):
+        eops_req_start = len(stub.recorded_requests)
+        r = httpx.post(
+            f"{base}/api/hmrc/eops/submit",
+            json={
+                "business_id": biz_id,
+                "type_of_business": biz_type,
+                "period_start": year_start,
+                "period_end": today_iso,
+            },
+            headers={"X-CSRF-Token": csrf3, "Content-Type": "application/json"},
+            cookies=jar3, timeout=15.0,
+        )
+        assert r.status_code == 200, (
+            f"[ACT 10/{label}] EOPS submit failed: {r.status_code} {r.text}"
+        )
+        eops_posts = [
+            x for x in stub.recorded_requests[eops_req_start:]
+            if x["method"] == "POST" and x["path"].endswith("/end-of-period-statements")
+        ]
+        assert eops_posts, (
+            f"[ACT 10/{label}] No EOPS POST hit the stub. Captured: "
+            f"{[x['path'] for x in stub.recorded_requests[eops_req_start:]]}"
+        )
+        eops_body = eops_posts[-1]["body"] or {}
+        assert eops_body.get("finalised") is True, (
+            f"[ACT 10/{label}] HMRC requires finalised=true on EOPS body, "
+            f"got: {eops_body!r}"
+        )
+
+    # ====================================================================
+    # ACT 11 — Trigger + fetch tax calculation
+    # ====================================================================
+    # Tax year format HMRC expects: "2026-27" (the year started on
+    # 6 April that year). Build it from today rather than hard-coding so
+    # the test stays correct across tax-year boundaries.
+    today = dt.date.today()
+    ty_start_year = today.year if today >= dt.date(today.year, 4, 6) else today.year - 1
+    tax_year = f"{ty_start_year}-{str(ty_start_year + 1)[-2:]}"
+
+    trig = httpx.post(
+        f"{base}/api/hmrc/calculation/trigger",
+        json={"tax_year": tax_year},
+        headers={"X-CSRF-Token": csrf3, "Content-Type": "application/json"},
+        cookies=jar3, timeout=15.0,
+    )
+    assert trig.status_code == 200, (
+        f"[ACT 11] calculation trigger failed: {trig.status_code} {trig.text}"
+    )
+    calc_id = trig.json().get("calculation_id")
+    assert calc_id == STUB_CALCULATION_ID, (
+        f"[ACT 11] Expected calculationId {STUB_CALCULATION_ID}, got {calc_id!r}"
+    )
+
+    got = httpx.post(
+        f"{base}/api/hmrc/calculation/get",
+        json={"tax_year": tax_year, "calculation_id": calc_id},
+        headers={"X-CSRF-Token": csrf3, "Content-Type": "application/json"},
+        cookies=jar3, timeout=15.0,
+    )
+    assert got.status_code == 200, (
+        f"[ACT 11] calculation get failed: {got.status_code} {got.text}"
+    )
+    summary = got.json()
+    assert summary.get("total_amount_payable") == STUB_TOTAL_TAX_AMOUNT, (
+        f"[ACT 11] Calculation summary didn't surface totalTaxAmount. "
+        f"Got: {summary!r}"
+    )
+
+    # ====================================================================
+    # ACT 12 — Submit the Final Declaration (= file the tax return)
+    # ====================================================================
+    fd_req_start = len(stub.recorded_requests)
+    fd = httpx.post(
+        f"{base}/api/hmrc/final-declaration/submit",
+        json={
+            "tax_year": tax_year,
+            "calculation_id": calc_id,
+            "finalised": True,
+        },
+        headers={"X-CSRF-Token": csrf3, "Content-Type": "application/json"},
+        cookies=jar3, timeout=15.0,
+    )
+    assert fd.status_code == 200, (
+        f"[ACT 12] final declaration failed: {fd.status_code} {fd.text}"
+    )
+    fd_posts = [
+        x for x in stub.recorded_requests[fd_req_start:]
+        if x["method"] == "POST" and x["path"].endswith("/final-declaration")
+    ]
+    assert fd_posts, (
+        f"[ACT 12] No final-declaration POST hit the stub. Captured: "
+        f"{[x['path'] for x in stub.recorded_requests[fd_req_start:]]}"
+    )
+    assert any(
+        k.lower() == "idempotency-key" for k in (fd_posts[-1]["headers"] or {})
+    ), (
+        f"[ACT 12] final declaration missing Idempotency-Key: "
+        f"{list(fd_posts[-1]['headers'])}"
+    )
+
     csv_path.unlink(missing_ok=True)
+
+
+# ---------------------------------------------------------------------------
+# PDF upload — gated on a real Anthropic API key
+# ---------------------------------------------------------------------------
+
+import os as _os
+_PDF_FIXTURE = (
+    Path(__file__).resolve().parents[1] / "fixtures" / "us_statements" / "bofa_sample.pdf"
+)
+
+
+@pytest.mark.skipif(
+    not _os.environ.get("ANTHROPIC_API_KEY"),
+    reason="PDF parsing needs ANTHROPIC_API_KEY; set it to exercise the AI path",
+)
+@pytest.mark.skipif(
+    not _PDF_FIXTURE.exists(),
+    reason=f"PDF fixture missing at {_PDF_FIXTURE}",
+)
+def test_pdf_upload_lands_rows_in_ledger(page: Page, hmrc_live_server):
+    """Most real BankScan users upload PDF statements from their bank, not
+    handcrafted CSVs. Exercise that path so we know:
+
+      1. The /api/parse PDF code path actually runs end-to-end with AI
+      2. Parsed rows hit the ledger (so they'd feed the HMRC submit)
+
+    Skipped when no ANTHROPIC_API_KEY is in the env so CI without secrets
+    doesn't fail; if you set the key, this runs and burns ~$0.01 of Claude
+    tokens to read the fixture statement.
+    """
+    base = hmrc_live_server["base_url"]
+    email = f"pdf-user-{int(time.time())}@example.test"
+    password = "password12345"
+
+    # Same bootstrap as the main journey, in helper form.
+    _ui_register(page, base, email, password)
+    if "/verify-email" not in page.url:
+        page.goto(f"{base}/verify-email")
+    page.locator("input#code, input[name=code]").first.fill(
+        _peek_otp(base, email)
+    )
+    page.locator("button#verify-btn, button[type=submit]").first.click()
+    expect(page).to_have_url(
+        re.compile(rf"^{re.escape(base)}/start-trial(\?.*)?$"), timeout=10_000,
+    )
+    _set_subscription_state(
+        base, email, subscription_status="trialing",
+        stripe_subscription_id="sub_pdf_e2e",
+        trial_end_at=time.time() + 6 * 86400,
+    )
+
+    page.goto(f"{base}/")
+    page.locator("input[type=file]").first.set_input_files(str(_PDF_FIXTURE))
+    page.locator(
+        "button#parseBtn, button:has-text('Convert to Spreadsheet')"
+    ).first.click()
+    # PDFs go through Claude vision; allow up to 60 s for parse.
+    page.wait_for_timeout(8000)
+
+    jar, _ = _cookies_for_httpx(page)
+    last = {"rows": [], "status": None}
+    def _has_rows():
+        r = httpx.get(f"{base}/api/ledger", cookies=jar, timeout=10.0)
+        last["status"] = r.status_code
+        if r.status_code != 200:
+            return False
+        rows = (r.json() or {}).get("transactions") or []
+        last["rows"] = rows
+        return len(rows) >= 1
+    try:
+        _wait_until(_has_rows, timeout_s=75.0, interval=2.0)
+    except AssertionError as e:
+        raise AssertionError(
+            f"PDF→ledger pipeline didn't deposit any rows. "
+            f"/api/ledger -> {last['status']}, rows={len(last['rows'])}"
+        ) from e

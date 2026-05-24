@@ -55,6 +55,31 @@ def ingest_statement_rows(
     return new_ids
 
 
+# Description keywords that almost certainly indicate property income or
+# expenses — used to route a row to the property categoriser BEFORE we send
+# it to the regex/AI pipeline. Without this every rent receipt on a mixed
+# (sole-trader + landlord) statement ends up under SE_OTHER_INCOME on the
+# dashboard, because auto_categorise_user_transactions was previously
+# hard-coded to business_type="se". Caught by the Playwright submit
+# journey on 2026-05-24.
+_PROPERTY_HINT_PATTERNS = (
+    "rent received", "rent rec'd", "rent paid",
+    "rental income", "lettings",
+    "letting agent", "letting fee", "tenant ",
+    "landlord", "property manager",
+    "ground rent", "service charge",
+    "boiler service", "plumber callout",
+    "epc certificate", "gas safety",
+)
+
+
+def _looks_like_property_row(description: str) -> bool:
+    if not description:
+        return False
+    d = description.lower()
+    return any(p in d for p in _PROPERTY_HINT_PATTERNS)
+
+
 async def auto_categorise_user_transactions(
     user_id: int,
     *,
@@ -65,11 +90,20 @@ async def auto_categorise_user_transactions(
     """Run the HMRC categoriser on the user's transactions and persist the
     result on each row.
 
+    Splits the input by suspected business stream first: any row whose
+    description matches a property-income / property-expense pattern is
+    classified against the property taxonomy; everything else goes through
+    the caller-supplied ``business_type`` (default ``"se"``).
+
+    Mixed sole-trader + landlord statements are the bread-and-butter
+    BankScan target user (sole trader who also lets a flat). Without this
+    split their rent receipts end up under ``other`` in the SE bucket and
+    the dashboard tax tile shows the wrong split.
+
     By default only runs on rows where ``hmrc_category`` is NULL so we don't
     keep re-categorising things the user has already confirmed. Returns the
     number of transactions that got a category attached this run.
     """
-    # Local imports — keep ledger_ingest importable without the full hmrc stack
     from hmrc.schemas.categorise import CategoriseRequest, TransactionIn
     from hmrc.services.categorisation import resolve
 
@@ -81,41 +115,57 @@ async def auto_categorise_user_transactions(
     if not targets:
         return 0
 
-    # Build the request payload — preserve the tx id so we can match the
-    # response back to the ledger row. ``reference`` flows through so
-    # the categoriser can lean on the customer-supplied memo.
-    rows_in = [
-        TransactionIn(
+    def _to_in(tx: dict) -> TransactionIn:
+        return TransactionIn(
             description=tx.get("description") or "",
             reference=tx.get("reference") or None,
             amount=float(tx.get("amount") or 0),
             date=tx.get("date_iso"),
             id=tx["id"],
         )
-        for tx in targets
-    ]
-    req = CategoriseRequest(business_type=business_type, rows=rows_in)
 
-    try:
-        resp, _metrics = await resolve(req, user_id=user_id)
-    except Exception:  # noqa: BLE001 — auto-categorisation is best-effort
-        logger.exception("Auto-categorisation failed for user %s", user_id)
-        return 0
+    property_targets: list[dict] = []
+    other_targets: list[dict] = []
+    for tx in targets:
+        if _looks_like_property_row(tx.get("description") or ""):
+            property_targets.append(tx)
+        else:
+            other_targets.append(tx)
 
-    # The response preserves order, so zip back to the input ids.
     updated = 0
-    for tx, out_row in zip(targets, resp.rows):
-        cls = out_row.hmrc
-        if not cls or not cls.category:
-            continue
-        confidence = int(round(float(cls.confidence) * 100))
-        database.update_transaction_status(
-            tx["id"],
-            hmrc_category=cls.category,
-            hmrc_category_confidence=confidence,
-            hmrc_category_reason=cls.reasoning or None,
+
+    async def _resolve_and_persist(target_rows: list[dict], bt: str) -> int:
+        if not target_rows:
+            return 0
+        req = CategoriseRequest(
+            business_type=bt,
+            rows=[_to_in(tx) for tx in target_rows],
         )
-        updated += 1
+        try:
+            resp, _m = await resolve(req, user_id=user_id)
+        except Exception:  # noqa: BLE001 — best-effort
+            logger.exception(
+                "Auto-categorisation failed for user %s (stream=%s)",
+                user_id, bt,
+            )
+            return 0
+        n = 0
+        for tx, out_row in zip(target_rows, resp.rows):
+            cls = out_row.hmrc
+            if not cls or not cls.category:
+                continue
+            confidence = int(round(float(cls.confidence) * 100))
+            database.update_transaction_status(
+                tx["id"],
+                hmrc_category=cls.category,
+                hmrc_category_confidence=confidence,
+                hmrc_category_reason=cls.reasoning or None,
+            )
+            n += 1
+        return n
+
+    updated += await _resolve_and_persist(property_targets, "property")
+    updated += await _resolve_and_persist(other_targets, business_type)
     return updated
 
 
