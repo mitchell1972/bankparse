@@ -43,6 +43,8 @@ from datetime import date
 import httpx
 import pytest
 
+pytestmark = pytest.mark.hmrc_sandbox
+
 REAL_SANDBOX_BASE = "https://test-api.service.hmrc.gov.uk"
 TOKEN_PATH = "/oauth/token"
 TEST_USER_PATH = "/create-test-user/individuals"

@@ -7,6 +7,8 @@ outputs/
 .DS_Store
 .env
 .env.*
+# But DO commit example templates — they have no real secrets.
+!.env.hmrc.example
 *.db
 usage/
 bankparse.db*

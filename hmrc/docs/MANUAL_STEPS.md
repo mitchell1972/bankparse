@@ -7,6 +7,11 @@ HMRC's web forms, recording video, and talking to HMRC support.
 once submitted. Every day not on the clock is a day shaved off the
 April 2027 launch window. Submit this week.
 
+> **For local dev / sandbox** (no recognition needed), use
+> [`dev-hub-setup.md`](dev-hub-setup.md) — 10-15 minutes from zero to a
+> verified sandbox connection on your laptop. Run
+> `python scripts/hmrc_dev_hub_check.py` to confirm everything is wired.
+
 ---
 
 ## Step 1 — Get production HMRC credentials
