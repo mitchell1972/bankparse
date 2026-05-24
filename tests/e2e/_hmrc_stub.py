@@ -33,7 +33,9 @@ logger = logging.getLogger("bankparse.tests.hmrc_stub")
 STUB_ACCESS_TOKEN = "stub-hmrc-access-token-abcdef"
 STUB_REFRESH_TOKEN = "stub-hmrc-refresh-token-123456"
 STUB_TRANSACTION_REFERENCE = "STUB-TX-REF-001"
+STUB_TRANSACTION_REFERENCE_PROP = "STUB-TX-REF-PROP-001"
 STUB_BUSINESS_ID_SE = "XAIS00000000001"
+STUB_BUSINESS_ID_PROP = "XPIS00000000002"
 STUB_NINO = "AA123456A"
 
 
@@ -134,9 +136,13 @@ class _Handler(BaseHTTPRequestHandler):
             self.end_headers()
             return
 
-        # Obligations — return one open SE quarter so the dashboard renders a
-        # Submit button on the current period.
-        # Path shape: /individuals/business/self-employment/{nino}/{bizId}/obligations
+        # Obligations — return one open quarter per business type so the
+        # dashboard renders a Submit button on the current period for both
+        # SE (sole trader) and property (landlord). Most BankScan users
+        # have both, so the journey exercises both.
+        # Paths:
+        #   /individuals/business/self-employment/{nino}/{bizId}/obligations
+        #   /individuals/business/property/{nino}/{bizId}/obligations
         if "/obligations" in path and "/self-employment/" in path:
             start, end, due = _open_quarter_window()
             self._json(200, {"obligations": [{
@@ -144,6 +150,24 @@ class _Handler(BaseHTTPRequestHandler):
                     "referenceType": "selfEmploymentId",
                     "referenceNumber": STUB_BUSINESS_ID_SE,
                     "incomeSourceType": "self-employment",
+                },
+                "obligationDetails": [{
+                    "status": "Open",
+                    "inboundCorrespondenceFromDate": start,
+                    "inboundCorrespondenceToDate": end,
+                    "inboundCorrespondenceDueDate": due,
+                    "periodKey": "#001",
+                }],
+            }]})
+            return
+
+        if "/obligations" in path and "/property/" in path:
+            start, end, due = _open_quarter_window()
+            self._json(200, {"obligations": [{
+                "identification": {
+                    "referenceType": "incomeSourceId",
+                    "referenceNumber": STUB_BUSINESS_ID_PROP,
+                    "incomeSourceType": "uk-property",
                 },
                 "obligationDetails": [{
                     "status": "Open",
@@ -229,10 +253,23 @@ class _Handler(BaseHTTPRequestHandler):
             })
             return
 
-        # Property submit (not exercised by the SE journey but kept here so
-        # future property tests work without changes).
+        # UK property submit — what the landlord flow ultimately hits.
+        # Path: /individuals/business/property/{nino}/{bizId}/uk/period-summaries
         if "/property/" in path and "/period-summaries" in path:
-            self._json(200, {"transactionReference": "STUB-PROP-REF-001"})
+            if not isinstance(body, dict):
+                self._json(400, {"code": "INVALID_BODY", "message": "Body is not JSON object"})
+                return
+            for required in ("periodDates", "periodIncome", "periodExpenses"):
+                if required not in body:
+                    self._json(400, {
+                        "code": "RULE_INCORRECT_OR_EMPTY_BODY_SUBMITTED",
+                        "message": f"Missing required field: {required}",
+                    })
+                    return
+            self._json(200, {
+                "transactionReference": STUB_TRANSACTION_REFERENCE_PROP,
+                "paymentReference": "PMTREF-PROP-001",
+            })
             return
 
         self._json(404, {"code": "MATCHING_RESOURCE_NOT_FOUND", "_stub_path": path})
