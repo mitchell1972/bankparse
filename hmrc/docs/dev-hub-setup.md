@@ -13,6 +13,66 @@ once you have the client id + secret saved somewhere you can retrieve.
 
 ---
 
+## Current state (as of 2026-05-24)
+
+A sandbox application **already exists** in the BankScan dev-hub account:
+
+| Field | Value |
+|---|---|
+| Application name | `BankScan AI` |
+| Application ID | `c16a75dc-378d-4171-a2ca-4a4f1cd068b0` |
+| Environment | Sandbox |
+| Client ID | `UhqfKGKZlsk3dBHxqW4gkZVT2iG5` |
+| Last API call | 23 May 2026 |
+| Direct link | <https://developer.service.hmrc.gov.uk/developer/applications/c16a75dc-378d-4171-a2ca-4a4f1cd068b0/manage> |
+
+**APIs already subscribed** (no action needed):
+
+| API | Version |
+|---|---|
+| Self Assessment Test Support (MTD) | 1.0 |
+| Create Test User | 1.0 |
+| Business Details (MTD) | 2.0 |
+| Obligations (MTD) | 3.0 |
+| Self Employment Business (MTD) | 5.0 |
+| Property Business (MTD) | 6.0 |
+| Business Source Adjustable Summary (MTD) | 7.0 |
+| Individual Calculations (MTD) | 8.0 ⚠ |
+| Test Fraud Prevention Headers | 1.0 |
+
+> ⚠ Our code (`hmrc/services/annual.py`) currently pins Calculations API
+> v7.0 in the Accept header but the app is now subscribed to v8.0.
+> Spawned task on the queue to investigate; the real-sandbox tests will
+> 404 on calculation calls until that's reconciled.
+
+**Redirect URIs currently registered** (1 of 5 used):
+
+  - `https://bankscanai.com/api/hmrc/callback` (production)
+  - **MISSING for local dev:** `http://127.0.0.1:8000/api/hmrc/callback`
+
+**Client secret:** one exists (ending `…75b0`, created 18 May 2026, last
+used 23 May 2026). HMRC's policy is that the full secret is only shown
+**once** at creation time, so unless you saved it the first time, you'll
+need to generate a new one.
+
+### Two manual actions to finish setup
+
+Because both are state-changing on a shared dev-hub app, the automation
+deliberately stops short of them. Do them yourself in 2 minutes:
+
+1. **Add the localhost redirect URI** —
+   <https://developer.service.hmrc.gov.uk/developer/applications/c16a75dc-378d-4171-a2ca-4a4f1cd068b0/redirect-uris>
+   → **Add a redirect URI** →
+   `http://127.0.0.1:8000/api/hmrc/callback` → **Add**.
+2. **Get a client secret you can copy** —
+   <https://developer.service.hmrc.gov.uk/developer/applications/c16a75dc-378d-4171-a2ca-4a4f1cd068b0/client-secrets>
+   → if you saved the `…75b0` secret at creation, reuse that; otherwise
+   click **Generate another client secret**, copy the new value
+   immediately (HMRC will only show it once), and optionally delete the
+   old one once you've confirmed the new one works.
+
+---
+
 ## Step 1 — Find or create your sandbox application
 
 1. Open <https://developer.service.hmrc.gov.uk/developer/applications>.
