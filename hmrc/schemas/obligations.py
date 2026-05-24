@@ -15,9 +15,9 @@ HMRC docs:
 from __future__ import annotations
 
 import datetime as dt
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 # ---------------------------------------------------------------------------
@@ -35,7 +35,74 @@ class HmrcObligation(BaseModel):
 
 
 class HmrcObligations(BaseModel):
+    """Top-level response from HMRC's Obligations endpoints.
+
+    Accepts BOTH the flat shape (older HMRC API versions that returned
+    ``{obligations: [{periodKey, start, end, due, status}]}``) AND the
+    nested shape that the current MTD ITSA APIs return:
+
+    ``{obligations: [{identification: {...}, obligationDetails: [...]}]}``
+
+    where each inner ``obligationDetails`` entry uses HMRC's verbose field
+    names (``inboundCorrespondenceFromDate`` / ``inboundCorrespondenceToDate``
+    / ``inboundCorrespondenceDueDate`` / ``inboundCorrespondenceDateReceived``
+    / ``status`` of ``"O"`` (Open) or ``"F"`` (Fulfilled)).
+
+    Earlier this model only handled the flat shape and ``_fetch_one_business``
+    blew up with a 5-error ValidationError against any real sandbox response.
+    Caught by the Playwright submit-journey test on 2026-05-24.
+    """
     obligations: list[HmrcObligation] = Field(default_factory=list)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _flatten_hmrc_wire_shape(cls, data: Any) -> Any:
+        """Normalise the nested HMRC wire shape into our flat ``obligations``
+        list. Pass-through for the legacy flat shape so existing fixtures
+        and tests don't break."""
+        if not isinstance(data, dict):
+            return data
+        items = data.get("obligations")
+        if not isinstance(items, list) or not items:
+            return data
+
+        flat: list[dict[str, Any]] = []
+        any_nested = False
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            details = item.get("obligationDetails")
+            if isinstance(details, list):
+                any_nested = True
+                for d in details:
+                    if not isinstance(d, dict):
+                        continue
+                    flat.append(_flatten_one(d))
+            else:
+                # Already in the flat shape — keep it as-is.
+                flat.append(item)
+
+        if any_nested:
+            return {**data, "obligations": flat}
+        return data
+
+
+def _flatten_one(d: dict[str, Any]) -> dict[str, Any]:
+    """Map ONE nested HMRC obligationDetails entry to our flat HmrcObligation."""
+    status_raw = (d.get("status") or "").strip()
+    status = {"O": "Open", "F": "Fulfilled"}.get(status_raw.upper(), status_raw or "Open")
+    return {
+        "periodKey": d.get("periodKey") or "",
+        "start": d.get("inboundCorrespondenceFromDate") or d.get("start") or "",
+        "end": d.get("inboundCorrespondenceToDate") or d.get("end") or "",
+        "due": d.get("inboundCorrespondenceDueDate") or d.get("due") or "",
+        "status": status,
+        "received": (
+            d.get("inboundCorrespondenceDateReceived")
+            or d.get("received")
+            or None
+        ),
+    }
 
 
 # ---------------------------------------------------------------------------

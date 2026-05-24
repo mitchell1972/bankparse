@@ -237,6 +237,70 @@ def test_connected_with_setup_calls_hmrc_and_maps_to_ui():
     assert open_ob["due"] == "2026-11-05"
 
 
+# --- Nested HMRC wire shape -------------------------------------------------
+# The MTD ITSA Obligations endpoint returns obligations nested under
+# `identification` + `obligationDetails` with the verbose
+# `inboundCorrespondence*Date` field names. Earlier versions of our schema
+# blew up with a ValidationError on this — caught by the Playwright submit
+# journey on 2026-05-24. Now locked in here so the unit suite catches
+# regressions without spinning up Chromium.
+
+_NESTED_SANDBOX_RESPONSE = {
+    "obligations": [
+        {
+            "identification": {
+                "referenceType": "selfEmploymentId",
+                "referenceNumber": "XAIS00000000001",
+                "incomeSourceType": "self-employment",
+            },
+            "obligationDetails": [
+                {
+                    "status": "F",
+                    "inboundCorrespondenceFromDate": "2026-04-06",
+                    "inboundCorrespondenceToDate": "2026-07-05",
+                    "inboundCorrespondenceDateReceived": "2026-08-02",
+                    "inboundCorrespondenceDueDate": "2026-08-05",
+                    "periodKey": "#001",
+                },
+                {
+                    "status": "O",
+                    "inboundCorrespondenceFromDate": "2026-07-06",
+                    "inboundCorrespondenceToDate": "2026-10-05",
+                    "inboundCorrespondenceDueDate": "2026-11-05",
+                    "periodKey": "#002",
+                },
+            ],
+        },
+    ],
+}
+
+
+def test_nested_obligation_details_shape_is_accepted():
+    """HMRC's MTD wire format nests obligationDetails under each business
+    and uses inboundCorrespondence* field names + status codes O/F. We must
+    accept that shape verbatim — failure mode before the schema fix was a
+    500 from the obligations endpoint."""
+    client, _, user = _client_with_user()
+    _connect_hmrc(user["id"])
+
+    mock_resp = MagicMock(
+        status_code=200, json=_NESTED_SANDBOX_RESPONSE, headers={}, audit_id="abc"
+    )
+    with patch("hmrc.services.obligations._client.request", return_value=mock_resp):
+        r = client.get("/api/hmrc/obligations")
+    assert r.status_code == 200, r.text
+
+    body = r.json()
+    assert body["connected"] is True
+    assert body["demo"] is False
+    # Both nested obligationDetails flattened into UiObligation rows.
+    assert len(body["obligations"]) == 2
+    open_one = next(o for o in body["obligations"] if o["period_key"] == "#002")
+    assert open_one["due"] == "2026-11-05"
+    assert open_one["period_start"] == "2026-07-06"
+    assert open_one["period_end"] == "2026-10-05"
+
+
 def test_hmrc_error_does_not_break_response():
     """If HMRC returns 5xx we still return 200 with demo=False and an error
     string so the UI can render gracefully."""
