@@ -39,7 +39,19 @@ logger = logging.getLogger("bankparse.hmrc.annual")
 
 
 _EOPS_API_VERSION = "application/vnd.hmrc.3.0+json"
-_CALC_API_VERSION = "application/vnd.hmrc.7.0+json"
+# Individual Calculations API: HMRC retired v7 (404s on docs page). v8 is
+# the only version published — verified against developer.service.hmrc.gov.uk
+# on 2026-05-24. v8 changed the trigger endpoint path, see trigger_calculation.
+_CALC_API_VERSION = "application/vnd.hmrc.8.0+json"
+
+# Calculation-type values v8 accepts on the trigger + finalise endpoints.
+# `intent-to-finalise` is what the annual flow uses — tells HMRC to compute
+# the year's tax with the current quarterly + EOPS data so the user can
+# review before clicking final-declaration. The dashboard's tax tile uses
+# `in-year` instead (mid-year provisional calc).
+CALC_TYPE_IN_YEAR = "in-year"
+CALC_TYPE_INTENT_TO_FINALISE = "intent-to-finalise"
+CALC_TYPE_FINAL_DECLARATION = "final-declaration"
 
 
 def _require_nino(user_id: int) -> str:
@@ -99,15 +111,25 @@ def trigger_calculation(
     user_id: int,
     request_obj,
     tax_year: str,
+    calculation_type: str = CALC_TYPE_INTENT_TO_FINALISE,
     idempotency_key: str | None = None,
 ) -> tuple[str, dict, str]:
     """Tell HMRC to compute the tax bill. Returns (calculationId, raw, audit_id).
+
+    v8 of the API requires an explicit `calculationType` segment in the
+    URL — pre-v8 the endpoint was `POST /…/self-assessment/{taxYear}`,
+    which now 404s. Use ``intent-to-finalise`` for the end-of-year flow
+    (default — what the annual button does), ``in-year`` for mid-year
+    provisional calcs that feed the dashboard tax tile.
 
     The actual numbers aren't ready immediately — caller should poll
     `get_calculation` until HMRC's response carries the populated body.
     """
     nino = _require_nino(user_id)
-    path = f"/individuals/calculations/{nino}/self-assessment/{tax_year}"
+    path = (
+        f"/individuals/calculations/{nino}/self-assessment/"
+        f"{tax_year}/trigger/{calculation_type}"
+    )
     resp = _client.request(
         user_id=user_id, method="POST", path=path,
         request_obj=request_obj,
@@ -191,9 +213,13 @@ def submit_final_declaration(
     own dedupe via the audit log too.
     """
     nino = _require_nino(user_id)
+    # v8 unified the trailing path segment into `{calculationType}`. The
+    # literal `final-declaration` is still the correct value — the URL is
+    # textually identical to v7 but the semantics of the last segment
+    # changed from "fixed action" to "calculationType enum".
     path = (
         f"/individuals/calculations/{nino}/self-assessment/"
-        f"{tax_year}/{calculation_id}/final-declaration"
+        f"{tax_year}/{calculation_id}/{CALC_TYPE_FINAL_DECLARATION}"
     )
     resp = _client.request(
         user_id=user_id, method="POST", path=path,

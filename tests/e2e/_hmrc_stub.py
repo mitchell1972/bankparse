@@ -294,13 +294,16 @@ class _Handler(BaseHTTPRequestHandler):
             self._json(204, {"transactionReference": STUB_EOPS_REFERENCE})
             return
 
-        # Trigger tax calculation. POST returns calculationId; body irrelevant.
-        # Path: /individuals/calculations/{nino}/self-assessment/{taxYear}
+        # Trigger tax calculation (v8). POST returns calculationId; body
+        # irrelevant. Path shape per the live HMRC docs (verified
+        # 2026-05-24):
+        #   /individuals/calculations/{nino}/self-assessment/{taxYear}/
+        #     trigger/{calculationType}
+        # calculationType ∈ {in-year, intent-to-finalise, intent-to-amend}
         if (
             "/individuals/calculations/" in path
             and "/self-assessment/" in path
-            and not path.endswith("/final-declaration")
-            and "/" + STUB_CALCULATION_ID not in path
+            and "/trigger/" in path
         ):
             self._json(202, {"calculationId": STUB_CALCULATION_ID})
             return

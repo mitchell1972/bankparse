@@ -234,9 +234,15 @@ def test_calculation_trigger_hits_correct_url_with_idempotency_key():
     assert r.status_code == 200, r.text
     kwargs = mock_call.call_args.kwargs
     assert kwargs["method"] == "POST"
+    # v8 of the Calculations API requires an explicit
+    # `/trigger/{calculationType}` segment — v7's flat path was retired.
+    # Default calculationType is intent-to-finalise (the end-of-year flow
+    # the dashboard uses; see hmrc/services/annual.py).
     assert kwargs["path"] == (
         "/individuals/calculations/CX139207A/self-assessment/2026-27"
+        "/trigger/intent-to-finalise"
     )
+    assert kwargs["accept_version"] == "application/vnd.hmrc.8.0+json"
     assert kwargs["idempotency_key"]
     body = r.json()
     assert body["calculation_id"] == "00000000-0000-1000-8000-000000000001"
