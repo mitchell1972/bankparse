@@ -237,6 +237,70 @@ def test_connected_with_setup_calls_hmrc_and_maps_to_ui():
     assert open_ob["due"] == "2026-11-05"
 
 
+# --- Nested HMRC wire shape -------------------------------------------------
+# The MTD ITSA Obligations endpoint returns obligations nested under
+# `identification` + `obligationDetails` with the verbose
+# `inboundCorrespondence*Date` field names. Earlier versions of our schema
+# blew up with a ValidationError on this — caught by the Playwright submit
+# journey on 2026-05-24. Now locked in here so the unit suite catches
+# regressions without spinning up Chromium.
+
+_NESTED_SANDBOX_RESPONSE = {
+    "obligations": [
+        {
+            "identification": {
+                "referenceType": "selfEmploymentId",
+                "referenceNumber": "XAIS00000000001",
+                "incomeSourceType": "self-employment",
+            },
+            "obligationDetails": [
+                {
+                    "status": "F",
+                    "inboundCorrespondenceFromDate": "2026-04-06",
+                    "inboundCorrespondenceToDate": "2026-07-05",
+                    "inboundCorrespondenceDateReceived": "2026-08-02",
+                    "inboundCorrespondenceDueDate": "2026-08-05",
+                    "periodKey": "#001",
+                },
+                {
+                    "status": "O",
+                    "inboundCorrespondenceFromDate": "2026-07-06",
+                    "inboundCorrespondenceToDate": "2026-10-05",
+                    "inboundCorrespondenceDueDate": "2026-11-05",
+                    "periodKey": "#002",
+                },
+            ],
+        },
+    ],
+}
+
+
+def test_nested_obligation_details_shape_is_accepted():
+    """HMRC's MTD wire format nests obligationDetails under each business
+    and uses inboundCorrespondence* field names + status codes O/F. We must
+    accept that shape verbatim — failure mode before the schema fix was a
+    500 from the obligations endpoint."""
+    client, _, user = _client_with_user()
+    _connect_hmrc(user["id"])
+
+    mock_resp = MagicMock(
+        status_code=200, json=_NESTED_SANDBOX_RESPONSE, headers={}, audit_id="abc"
+    )
+    with patch("hmrc.services.obligations._client.request", return_value=mock_resp):
+        r = client.get("/api/hmrc/obligations")
+    assert r.status_code == 200, r.text
+
+    body = r.json()
+    assert body["connected"] is True
+    assert body["demo"] is False
+    # Both nested obligationDetails flattened into UiObligation rows.
+    assert len(body["obligations"]) == 2
+    open_one = next(o for o in body["obligations"] if o["period_key"] == "#002")
+    assert open_one["due"] == "2026-11-05"
+    assert open_one["period_start"] == "2026-07-06"
+    assert open_one["period_end"] == "2026-10-05"
+
+
 def test_hmrc_error_does_not_break_response():
     """If HMRC returns 5xx we still return 200 with demo=False and an error
     string so the UI can render gracefully."""
@@ -255,6 +319,66 @@ def test_hmrc_error_does_not_break_response():
     assert body["connected"] is True
     assert body["error"] is not None
     assert "503" in body["error"]
+
+
+def test_matching_resource_not_found_returns_oauth_mismatch_hint():
+    """When HMRC's Obligations API returns 404 MATCHING_RESOURCE_NOT_FOUND
+    the most common cause is the OAuth bearer token being tied to a
+    DIFFERENT NINO than the one in the user's record. The raw error body
+    is opaque to end-users; we replace it with an actionable hint
+    pointing at the Disconnect → re-OAuth recovery path.
+
+    Regression test for the issue surfaced in the live dashboard where
+    a user typed a fresh sandbox NINO into the search field after
+    OAuthing as a different test individual, then saw 'HMRC returned
+    404: MATCHING_RESOURCE_NOT_FOUND' instead of a clear next-step."""
+    from hmrc.services.client import HmrcApiError
+
+    client, _, user = _client_with_user()
+    _connect_hmrc(user["id"])
+
+    def _raise_404_match(**kwargs):
+        raise HmrcApiError(404, {
+            "code": "MATCHING_RESOURCE_NOT_FOUND",
+            "message": "A resource with the name in the request can not be found in the API",
+        })
+
+    with patch("hmrc.services.obligations._client.request",
+               side_effect=_raise_404_match):
+        r = client.get("/api/hmrc/obligations")
+    assert r.status_code == 200
+    body = r.json()
+    err = body["error"] or ""
+    # The friendly error must mention the recovery action — disconnect
+    # and re-OAuth — not the raw HMRC code.
+    assert "OAUTH_NINO_MISMATCH" in err, (
+        f"Expected OAUTH_NINO_MISMATCH sentinel in error, got: {err!r}"
+    )
+    assert "Disconnect" in err or "disconnect" in err, (
+        f"Expected disconnect-recovery hint, got: {err!r}"
+    )
+    # Should NOT leak the raw HMRC code through.
+    assert "MATCHING_RESOURCE_NOT_FOUND" not in err, (
+        f"Raw HMRC code leaked into user-facing error: {err!r}"
+    )
+
+
+def test_403_returns_wrong_gateway_hint():
+    """HMRC 403 on obligations → friendly 'wrong Government Gateway' hint."""
+    from hmrc.services.client import HmrcApiError
+
+    client, _, user = _client_with_user()
+    _connect_hmrc(user["id"])
+
+    def _raise_403(**kwargs):
+        raise HmrcApiError(403, {"code": "FORBIDDEN", "message": "no"})
+
+    with patch("hmrc.services.obligations._client.request", side_effect=_raise_403):
+        r = client.get("/api/hmrc/obligations")
+    assert r.status_code == 200
+    err = r.json()["error"] or ""
+    assert "Government Gateway" in err, f"Expected GG hint, got: {err!r}"
+    assert "MTD-enabled" in err
 
 
 def test_multiple_businesses_call_hmrc_once_each():

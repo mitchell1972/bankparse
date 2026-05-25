@@ -84,12 +84,50 @@ def fetch_for_user(*, user_id: int, request_obj) -> ObligationsResponse:
                 "HMRC obligations call failed (user=%s, business=%s): %s",
                 user_id, biz.get("business_id"), exc,
             )
-            err = err or f"HMRC returned {exc.status_code}: {exc.body}"
+            err = err or _friendly_obligations_error(exc, nino=nino)
 
     return ObligationsResponse(
         connected=True, demo=False, obligations=_sort_rows(rows), error=err,
         nino=nino,
     )
+
+
+def _friendly_obligations_error(exc: _client.HmrcApiError, *, nino: str) -> str:
+    """Translate raw HMRC errors from the Obligations call into actionable
+    plain-English hints for the dashboard.
+
+    The #1 head-scratcher is HMRC 404 ``MATCHING_RESOURCE_NOT_FOUND``: it
+    fires when the OAuth bearer token is tied to a DIFFERENT NINO than the
+    one we just wrote into the user's record (very common when the user
+    creates a fresh sandbox individual in one tab then types a different
+    NINO into the dashboard in another). The raw HMRC body is opaque to
+    end-users, so we replace it with a concrete next-step.
+    """
+    code = ""
+    body = exc.body or {}
+    if isinstance(body, dict):
+        code = (body.get("code") or "").upper()
+
+    if exc.status_code == 404 and code == "MATCHING_RESOURCE_NOT_FOUND":
+        return (
+            f"OAUTH_NINO_MISMATCH: HMRC doesn't recognise NINO {nino} with "
+            "your current HMRC sign-in — your OAuth session is for a "
+            "different test user. Click 'Disconnect from HMRC' on the "
+            "Connect-to-HMRC page, then sign in again with the Government "
+            "Gateway userId + password that matches this NINO. If you "
+            "don't have those credentials, mint a fresh sandbox test user "
+            "on the dashboard and OAuth as that new identity."
+        )
+
+    if exc.status_code == 403:
+        return (
+            "HMRC refused the obligations request (403). Most often this "
+            "means you OAuthed with the wrong Government Gateway user — "
+            "make sure it's the MTD-enabled one for this NINO."
+        )
+
+    # Default — surface enough detail to debug without exposing internals.
+    return f"HMRC returned {exc.status_code}: {body}"
 
 
 # ---------------------------------------------------------------------------

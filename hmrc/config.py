@@ -30,7 +30,14 @@ HMRC_TOKEN_ENCRYPTION_KEY = os.environ.get("HMRC_TOKEN_ENCRYPTION_KEY", "")
 SANDBOX_BASE_URL = "https://test-api.service.hmrc.gov.uk"
 PRODUCTION_BASE_URL = "https://api.service.hmrc.gov.uk"
 
-HMRC_BASE_URL = PRODUCTION_BASE_URL if HMRC_ENV == "production" else SANDBOX_BASE_URL
+# `HMRC_BASE_URL` env wins if set — lets the E2E suite point every HMRC
+# call at a local stub server (see `tests/e2e/conftest_hmrc_e2e.py`) so the
+# full submit journey can be driven by Playwright without touching the real
+# sandbox or production. Production deploys never set this, so behaviour
+# there is unchanged.
+HMRC_BASE_URL = os.environ.get("HMRC_BASE_URL") or (
+    PRODUCTION_BASE_URL if HMRC_ENV == "production" else SANDBOX_BASE_URL
+)
 
 # OAuth endpoints (relative to base).
 OAUTH_AUTHORIZE_PATH = "/oauth/authorize"

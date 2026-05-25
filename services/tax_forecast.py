@@ -82,17 +82,50 @@ def _current_tax_year_start() -> _dt.date:
     return _dt.date(today.year, 4, 6)
 
 
-_SE_INCOME_CATEGORIES = {"se_turnover", "se_other_income"}
-_PROPERTY_INCOME_CATEGORIES = {"property_rent_income", "property_other_income"}
+# Recognise BOTH wire shapes the ledger has ever held:
+#
+#   * canonical HMRC names — `SE_INCOME`, `PROP_INCOME_RENT`, `SE_EXPENSE_
+#     TRAVEL` etc. from `hmrc.schemas.categories`. These are what the live
+#     categorisation pipeline writes today.
+#   * legacy prefixed names (`se_turnover`, `property_rent_income` …) —
+#     stored on a small number of older ledger rows + still used in some
+#     unit-test fixtures. Kept here so a long-running user account doesn't
+#     suddenly lose its history when we tightened the forecaster.
+#
+# Earlier this module ONLY recognised the legacy prefixes — every
+# properly-categorised row was silently dropped from the dashboard tax
+# tile. Caught by the Playwright submit journey on 2026-05-24.
+from hmrc.schemas import categories as _hmrc_cats
+
+_SE_INCOME_CATEGORIES = {
+    _hmrc_cats.SE_INCOME, _hmrc_cats.SE_OTHER_INCOME,
+    "se_turnover", "se_other_income",  # legacy
+}
+_PROPERTY_INCOME_CATEGORIES = {
+    _hmrc_cats.PROP_INCOME_RENT,
+    _hmrc_cats.PROP_INCOME_PREMIUMS,
+    _hmrc_cats.PROP_INCOME_OTHER,
+    "property_rent_income", "property_other_income",  # legacy
+}
 _INCOME_CATEGORIES = _SE_INCOME_CATEGORIES | _PROPERTY_INCOME_CATEGORIES
+
+# Canonical sets — everything HMRC defines plus the income aliases above.
+_SE_ALL_CANONICAL = set(_hmrc_cats.SE_CATEGORIES) | _SE_INCOME_CATEGORIES
+_PROPERTY_ALL_CANONICAL = (
+    set(_hmrc_cats.PROPERTY_CATEGORIES) | _PROPERTY_INCOME_CATEGORIES
+)
 
 
 def _is_se_category(cat: str) -> bool:
-    return bool(cat) and cat.startswith("se_")
+    if not cat:
+        return False
+    return cat in _SE_ALL_CANONICAL or cat.startswith("se_")
 
 
 def _is_property_category(cat: str) -> bool:
-    return bool(cat) and cat.startswith("property_")
+    if not cat:
+        return False
+    return cat in _PROPERTY_ALL_CANONICAL or cat.startswith("property_")
 
 
 def forecast_tax_due(user_id: int) -> dict:
