@@ -203,10 +203,36 @@ def test_hmrc_file_redirects_to_login_in_browser(page: Page):
 # ---------------------------------------------------------------------------
 
 
+def _seed_csrf_cookie() -> str:
+    """GET any page to make the server set ``bp_csrf``. Returns the cookie
+    value. The CSRF middleware (csrf.py:CSRFMiddleware.dispatch) only sets
+    the cookie on GET/HEAD/OPTIONS, and every state-changing POST requires
+    the cookie value echoed back in the X-CSRF-Token header. Without this
+    /api/login itself returns 403 'CSRF validation failed.'"""
+    req = urllib.request.Request(PROD_URL + "/", method="GET")
+    resp = urllib.request.urlopen(req, timeout=15)
+    for header_name, header_value in resp.headers.items():
+        if header_name.lower() != "set-cookie":
+            continue
+        pair = header_value.split(";", 1)[0]
+        if "=" not in pair:
+            continue
+        k, v = pair.split("=", 1)
+        if k.strip() == "bp_csrf":
+            return v.strip()
+    raise AssertionError("Server did not set bp_csrf on GET /")
+
+
 def _login_via_json_api() -> dict[str, str]:
     """POST /api/login with the test creds. Returns the cookie jar as a
     {name: value} dict suitable for adding via Playwright's
-    BrowserContext.add_cookies or urllib's Cookie header."""
+    BrowserContext.add_cookies or urllib's Cookie header.
+
+    Seeds a CSRF cookie first (see _seed_csrf_cookie) — the prod CSRF
+    middleware rejects state-changing POSTs that don't echo bp_csrf back
+    via the X-CSRF-Token header."""
+    csrf_token = _seed_csrf_cookie()
+
     body = json.dumps({
         "email": PROD_TEST_USER_EMAIL,
         "password": PROD_TEST_USER_PASSWORD,
@@ -215,7 +241,11 @@ def _login_via_json_api() -> dict[str, str]:
         PROD_URL + "/api/login",
         data=body,
         method="POST",
-        headers={"Content-Type": "application/json"},
+        headers={
+            "Content-Type": "application/json",
+            "Cookie": f"bp_csrf={csrf_token}",
+            "X-CSRF-Token": csrf_token,
+        },
     )
     try:
         resp = urllib.request.urlopen(req, timeout=15)
@@ -228,7 +258,7 @@ def _login_via_json_api() -> dict[str, str]:
 
     # urllib doesn't surface Set-Cookie headers via headers.get_all reliably
     # on some versions — use raw header iteration.
-    cookies: dict[str, str] = {}
+    cookies: dict[str, str] = {"bp_csrf": csrf_token}
     for header_name, header_value in resp.headers.items():
         if header_name.lower() != "set-cookie":
             continue
@@ -398,15 +428,24 @@ _GG_PASSWORD_SELECTORS = [
     'input[autocomplete="current-password"]',
 ]
 _GG_SIGN_IN_SELECTORS = [
-    'button[type="submit"]',
-    'input[type="submit"]',
+    # Match the sign-in button specifically — NOT a bare button[type=submit],
+    # which on test-www.tax.service.gov.uk first matches the cookies-banner
+    # "Accept additional cookies" button and silently breaks the flow.
     'button:has-text("Sign in")',
+    'input[value="Sign in"]',
+    'form[action*="sign-in"] button[type="submit"]',
+    'main button[type="submit"]',
+    'form button[type="submit"]:not([name="cookies"])',
 ]
 _GRANT_SELECTORS = [
+    # 2026-05-25: live sandbox button text is "Give permission".
+    'button:has-text("Give permission")',
     'button:has-text("Grant authority")',
     'button:has-text("Continue")',
+    'input[value="Give permission"]',
     'input[value="Grant authority"]',
     'input[value="Continue"]',
+    'form[action*="grantscope"] button[type="submit"]',
     'button[type="submit"]',
 ]
 
@@ -444,14 +483,21 @@ def _seed_csrf_via_browser(page) -> str:
 
 def _login_in_browser(page) -> None:
     """Log into bankscanai.com via the POST /api/login JSON API using
-    page.request so cookies flow into the browser context."""
+    page.request so cookies flow into the browser context.
+
+    Seeds bp_csrf via a GET first — without echoing the cookie back via
+    X-CSRF-Token the CSRF middleware (csrf.py) returns 403 on every POST."""
+    csrf = _seed_csrf_via_browser(page)
     resp = page.request.post(
         PROD_URL + "/api/login",
         data=json.dumps({
             "email": PROD_TEST_USER_EMAIL,
             "password": PROD_TEST_USER_PASSWORD,
         }),
-        headers={"Content-Type": "application/json"},
+        headers={
+            "Content-Type": "application/json",
+            "X-CSRF-Token": csrf,
+        },
         timeout=20_000,
     )
     assert resp.status == 200, (
@@ -511,6 +557,141 @@ def test_mint_sandbox_individual_returns_nino_and_gg_creds(authed_browser: Page)
     }
 
 
+def _complete_oauth_handshake(page: Page) -> dict:
+    """Mint a sandbox individual, drive the full OAuth dance, and return
+    the minted credentials dict. Idempotent: if the user is already
+    connected this short-circuits to a no-op + returns ``{}``.
+
+    Extracted so each tier-3 test can re-establish OAuth at the start of
+    its run — the ``authed_browser`` fixture disconnects on teardown, so
+    later tests can't rely on tokens left by earlier ones."""
+    # Short-circuit if already connected.
+    obl_resp = page.request.get(PROD_URL + "/api/hmrc/obligations", timeout=15_000)
+    if obl_resp.status == 200 and obl_resp.json().get("connected") is True:
+        return {}
+
+    csrf = _seed_csrf_via_browser(page)
+    # Disconnect any half-OAuth from a prior interrupted run.
+    page.request.post(
+        PROD_URL + "/api/hmrc/disconnect",
+        headers={"X-CSRF-Token": csrf},
+        timeout=10_000,
+    )
+    resp = page.request.post(
+        PROD_URL + "/api/hmrc/sandbox/create-test-user",
+        headers={"X-CSRF-Token": csrf, "Content-Type": "application/json"},
+        data="{}",
+        timeout=30_000,
+    )
+    assert resp.status == 200, f"mint failed: {resp.status} {resp.text()[:500]}"
+    creds = resp.json()
+    gg_user_id = creds.get("user_id") or creds.get("userId")
+    gg_password = creds["password"]
+
+    page.goto(PROD_URL + "/hmrc/connect", wait_until="domcontentloaded", timeout=30_000)
+    connect_btn = page.locator(
+        'form[action="/api/hmrc/connect"] button[type=submit]'
+    ).first
+    connect_btn.wait_for(state="visible", timeout=10_000)
+    connect_btn.click()
+
+    page.wait_for_url(lambda url: "tax.service.gov.uk" in url, timeout=30_000)
+    assert (
+        "test-www.tax.service.gov.uk" in page.url
+        or "test-api.service.hmrc.gov.uk" in page.url
+    ), f"Expected to land on HMRC SANDBOX, got: {page.url}"
+
+    # Walk past interstitials until sign-in form (password input) appears.
+    for _ in range(4):
+        if page.locator('input[type="password"]').count() > 0:
+            break
+        gateway_link = page.locator(
+            'a:has-text("Sign in to the HMRC online service"), '
+            'a:has-text("Sign in"), button:has-text("Sign in"), '
+            'a:has-text("Continue"), button:has-text("Continue")'
+        ).first
+        gateway_link.wait_for(state="visible", timeout=10_000)
+        gateway_link.click()
+        try:
+            page.wait_for_load_state("networkidle", timeout=15_000)
+        except Exception:
+            pass
+    else:
+        raise AssertionError(
+            f"Walked 4 interstitials and never reached a password input. "
+            f"Now on {page.url!r}."
+        )
+
+    user_input = _first_visible(page, _GG_USER_ID_SELECTORS)
+    user_input.fill(gg_user_id)
+    pwd_input = _first_visible(page, _GG_PASSWORD_SELECTORS)
+    pwd_input.fill(gg_password)
+    sign_in_btn = _first_visible(page, _GG_SIGN_IN_SELECTORS)
+    sign_in_btn.click()
+
+    def _signed_in(url: str) -> bool:
+        from urllib.parse import urlparse
+        parsed = urlparse(url)
+        if parsed.netloc.endswith("bankscanai.com"):
+            return True
+        path = parsed.path or ""
+        return path.startswith("/oauth/grantscope") or "consent" in path.lower()
+
+    page.wait_for_url(_signed_in, timeout=30_000)
+
+    if "bankscanai.com" not in page.url:
+        grant_btn = page.locator(
+            'form[action*="grantscope"] button[type="submit"], '
+            'button:has-text("Give permission"), '
+            'button:has-text("Grant authority")'
+        ).first
+        try:
+            grant_btn.wait_for(state="visible", timeout=15_000)
+            grant_btn.click()
+        except Exception:
+            pass
+        import time as _time
+        deadline = _time.monotonic() + 45.0
+        while _time.monotonic() < deadline:
+            if "bankscanai.com" in page.url:
+                break
+            _time.sleep(0.5)
+        else:
+            raise AssertionError(
+                f"After grant click page.url never reached bankscanai.com "
+                f"within 45s. Stuck on: {page.url}"
+            )
+        try:
+            page.wait_for_load_state("networkidle", timeout=10_000)
+        except Exception:
+            pass
+
+    # After OAuth, persist the NINO against the user's tokens. The
+    # downstream sandbox/setup-complete + quarterly-update endpoints
+    # require info["nino"] to be set — otherwise they 409 with
+    # "Enter your sandbox NINO in the dashboard and click
+    # 'Discover my businesses' once before using this setup."
+    # POST /api/hmrc/connect-businesses also persists the NINO via the
+    # 404 fallback (the freshly-minted NINO has no businesses yet),
+    # so we expect 404 from connect-businesses — that's fine.
+    nino = creds.get("nino")
+    if nino:
+        csrf_after = _seed_csrf_via_browser(page)
+        cb_resp = page.request.post(
+            PROD_URL + "/api/hmrc/connect-businesses",
+            headers={"X-CSRF-Token": csrf_after, "Content-Type": "application/json"},
+            data=json.dumps({"nino": nino}),
+            timeout=30_000,
+        )
+        assert cb_resp.status in (200, 404), (
+            f"connect-businesses returned {cb_resp.status} {cb_resp.text()[:300]}. "
+            f"Expected 200 (existing businesses) or 404 (no businesses yet, "
+            f"but NINO persisted)."
+        )
+
+    return creds
+
+
 @_full_oauth
 def test_full_oauth_handshake_with_sandbox_gg(authed_browser: Page):
     """Drive Playwright through the full OAuth dance:
@@ -544,8 +725,15 @@ def test_full_oauth_handshake_with_sandbox_gg(authed_browser: Page):
     connect_btn.wait_for(state="visible", timeout=10_000)
     connect_btn.click()
 
-    # Should land on HMRC sandbox. The first page is usually the
-    # GG sign-in page on test-www.tax.service.gov.uk.
+    # Should land on HMRC sandbox. As of 2026-05-25 the live flow is:
+    #   1) /oauth/start             — informational, "Continue" link
+    #   2) /oauth/whatYouWillNeed   — "Sign in to the HMRC online service" link
+    #   3) /api-test-login/sign-in  — the real GG sandbox sign-in form
+    #   4) /oauth/grantscope        — "Grant authority" button (sometimes
+    #                                  skipped if HMRC auto-redirects)
+    # The interstitial labels can change without notice — match on the
+    # presence of a password input to detect the sign-in page rather than
+    # by URL.
     page.wait_for_url(
         lambda url: "tax.service.gov.uk" in url,
         timeout=30_000,
@@ -553,6 +741,37 @@ def test_full_oauth_handshake_with_sandbox_gg(authed_browser: Page):
     assert "test-www.tax.service.gov.uk" in page.url or "test-api.service.hmrc.gov.uk" in page.url, (
         f"Expected to land on HMRC SANDBOX, got: {page.url}"
     )
+
+    # Walk through up to 4 interstitial pages until we reach a page with
+    # a password input (the GG sign-in form). Click the first visible
+    # Continue / Sign in link/button on each step. Bail with a useful
+    # message if we never hit the sign-in form.
+    for _ in range(4):
+        if page.locator('input[type="password"]').count() > 0:
+            break
+        gateway_link = page.locator(
+            'a:has-text("Sign in to the HMRC online service"), '
+            'a:has-text("Sign in"), button:has-text("Sign in"), '
+            'a:has-text("Continue"), button:has-text("Continue")'
+        ).first
+        try:
+            gateway_link.wait_for(state="visible", timeout=10_000)
+        except Exception as e:
+            raise AssertionError(
+                f"On {page.url!r} could not find Continue/Sign-in control: {e}. "
+                f"HMRC interstitial UI changed — update the gateway_link "
+                f"selector list in test_full_oauth_handshake_with_sandbox_gg."
+            )
+        gateway_link.click()
+        try:
+            page.wait_for_load_state("networkidle", timeout=15_000)
+        except Exception:
+            pass
+    else:
+        raise AssertionError(
+            f"Walked 4 interstitials and never reached a password input. "
+            f"Now on {page.url!r}."
+        )
 
     # Fill GG userId + password.
     user_input = _first_visible(page, _GG_USER_ID_SELECTORS)
@@ -564,26 +783,58 @@ def test_full_oauth_handshake_with_sandbox_gg(authed_browser: Page):
 
     # Sometimes HMRC shows a "Grant authority" page next. Sometimes it
     # skips straight to the callback. Wait for whichever happens.
-    page.wait_for_url(
-        lambda url: "bankscanai.com/api/hmrc/callback" in url
-        or "grantscope" in url
-        or "consent" in url.lower(),
-        timeout=30_000,
-    )
+    # Careful: the sign-in page itself has ``continue=%2Foauth%2Fgrantscope``
+    # in its query string, so a naive ``"grantscope" in url`` match resolves
+    # IMMEDIATELY (before any navigation). Match on the path component only.
+    def _signed_in(url: str) -> bool:
+        # Strip the query string before checking — sign-in page has
+        # /oauth/grantscope encoded in ?continue= and would false-match.
+        from urllib.parse import urlparse
+        parsed = urlparse(url)
+        if parsed.netloc.endswith("bankscanai.com"):
+            return True
+        path = parsed.path or ""
+        return path.startswith("/oauth/grantscope") or "consent" in path.lower()
+
+    page.wait_for_url(_signed_in, timeout=30_000)
 
     # If we're on a grant-scope page, click through.
+    # Note: ``page.wait_for_url`` uses Playwright's expect_navigation
+    # semantics and can race with already-completed navigations from a
+    # form-POST click. Poll page.url directly instead.
     if "bankscanai.com" not in page.url:
+        # Prefer a single very specific selector that can only match the
+        # grant button — _first_visible races several selectors and can
+        # pick the cookies-banner button by accident.
+        grant_btn = page.locator(
+            'form[action*="grantscope"] button[type="submit"], '
+            'button:has-text("Give permission"), '
+            'button:has-text("Grant authority")'
+        ).first
         try:
-            grant_btn = _first_visible(page, _GRANT_SELECTORS, timeout=15_000)
+            grant_btn.wait_for(state="visible", timeout=15_000)
             grant_btn.click()
-        except AssertionError:
-            # Page changed without our intervention (HMRC auto-redirects
-            # in some cases). Continue.
+        except Exception:
+            # Page might have auto-redirected without showing the form.
             pass
-        page.wait_for_url(
-            lambda url: "bankscanai.com" in url,
-            timeout=30_000,
-        )
+        # Poll for the redirect back to our origin. The callback handler
+        # 302s to /hmrc/connect?status=ok, so we accept either URL.
+        import time as _time
+        deadline = _time.monotonic() + 45.0
+        while _time.monotonic() < deadline:
+            if "bankscanai.com" in page.url:
+                break
+            _time.sleep(0.5)
+        else:
+            raise AssertionError(
+                f"After clicking Give permission, page.url never reached "
+                f"bankscanai.com within 45s. Stuck on: {page.url}"
+            )
+        # Settle any in-flight redirect on bankscanai.com itself.
+        try:
+            page.wait_for_load_state("networkidle", timeout=10_000)
+        except Exception:
+            pass
 
     # We're back on bankscanai.com. Verify tokens stored by querying obligations.
     obl_resp = page.request.get(
@@ -602,19 +853,14 @@ def test_full_oauth_handshake_with_sandbox_gg(authed_browser: Page):
 @_full_oauth
 def test_sandbox_setup_complete_creates_se_and_property(authed_browser: Page):
     """Once OAuth is done, /api/hmrc/sandbox/setup-complete creates
-    SE + property businesses idempotently against the connected NINO."""
+    SE + property businesses idempotently against the connected NINO.
+
+    Self-contained: re-establishes OAuth via _complete_oauth_handshake
+    rather than relying on tokens from a prior test (the authed_browser
+    fixture disconnects on teardown)."""
     page = authed_browser
 
-    # Re-mint + re-OAuth to make this test independent of run order.
-    # (Skip if obligations already shows connected:true.)
-    obl_resp = page.request.get(PROD_URL + "/api/hmrc/obligations", timeout=15_000)
-    if obl_resp.status == 200 and obl_resp.json().get("connected") is True:
-        pass
-    else:
-        pytest.skip(
-            "Must run test_full_oauth_handshake_with_sandbox_gg first — "
-            "this test relies on stored OAuth tokens."
-        )
+    _complete_oauth_handshake(page)
 
     csrf = _seed_csrf_via_browser(page)
     resp = page.request.post(
@@ -645,22 +891,76 @@ def test_quarterly_update_se_preview_against_sandbox(authed_browser: Page):
     full pipeline (rows → categorisation → HMRC wire payload) functions
     end-to-end on prod.
 
-    Skips if prior tests didn't run (no businesses set up)."""
+    Self-contained: re-establishes OAuth, runs setup-complete to create
+    SE + property businesses, then submits a preview."""
     page = authed_browser
+
+    creds = _complete_oauth_handshake(page)
+    minted_nino = creds.get("nino")
+
+    # Ensure SE + property businesses exist on this account.
+    csrf = _seed_csrf_via_browser(page)
+    setup_resp = page.request.post(
+        PROD_URL + "/api/hmrc/sandbox/setup-complete",
+        headers={"X-CSRF-Token": csrf, "Content-Type": "application/json"},
+        data="{}",
+        timeout=30_000,
+    )
+    assert setup_resp.status == 200, (
+        f"setup-complete failed before preview: {setup_resp.status} "
+        f"{setup_resp.text()[:300]}"
+    )
+    setup_body = setup_resp.json()
+    all_setup_biz = (setup_body.get("created") or []) + (setup_body.get("already_existed") or [])
+    se_setup_biz = [b for b in all_setup_biz if (b.get("type_of_business") or "").lower() == "self-employment"]
+    assert se_setup_biz, f"setup-complete did not create an SE business: {setup_body}"
+
+    # Re-run connect-businesses so the SE + property businessIds get
+    # persisted to info["businesses"]. setup-complete creates them on
+    # HMRC's side but our local copy is still empty from the earlier
+    # connect-businesses 404 path.
+    if minted_nino:
+        cb_resp = page.request.post(
+            PROD_URL + "/api/hmrc/connect-businesses",
+            headers={"X-CSRF-Token": csrf, "Content-Type": "application/json"},
+            data=json.dumps({"nino": minted_nino}),
+            timeout=30_000,
+        )
+        # Should be 200 now (businesses exist); accept 404 too in case of
+        # HMRC sandbox propagation delay — we'll fall back to the setup
+        # response's business_id below.
+        assert cb_resp.status in (200, 404), (
+            f"connect-businesses (post-setup) returned {cb_resp.status} "
+            f"{cb_resp.text()[:300]}"
+        )
+
     obl_resp = page.request.get(PROD_URL + "/api/hmrc/obligations", timeout=15_000)
-    if not (obl_resp.status == 200 and obl_resp.json().get("connected") is True):
-        pytest.skip("OAuth not connected — run earlier tier-3 tests first.")
+    assert obl_resp.status == 200, (
+        f"obligations failed: {obl_resp.status} {obl_resp.text()[:300]}"
+    )
     obl_body = obl_resp.json()
     se_obligations = [
         o for o in obl_body.get("obligations", [])
         if o.get("business_type") == "self-employment"
     ]
-    if not se_obligations:
-        pytest.skip("No SE obligations on the account — run setup-complete first.")
-    se_obl = se_obligations[0]
-    biz_id = se_obl.get("business_id")
-    period_start = se_obl.get("period_start") or "2026-04-06"
-    period_end = se_obl.get("period_end") or "2026-07-05"
+    if se_obligations:
+        se_obl = se_obligations[0]
+        biz_id = se_obl.get("business_id")
+        period_start = se_obl.get("period_start") or "2026-04-06"
+        period_end = se_obl.get("period_end") or "2026-07-05"
+    else:
+        # Fall back to the businessId from the setup-complete response and
+        # the default first-quarter window. Obligations may not be
+        # propagated yet on the sandbox immediately after business
+        # creation — the preview endpoint doesn't care, it just wants
+        # a valid business_id.
+        biz_id = se_setup_biz[0].get("business_id") or se_setup_biz[0].get("businessId")
+        period_start = "2026-04-06"
+        period_end = "2026-07-05"
+        assert biz_id, (
+            f"No SE business_id available from either obligations or "
+            f"setup-complete: obl={obl_body} setup={setup_body}"
+        )
 
     csrf = _seed_csrf_via_browser(page)
     resp = page.request.post(
