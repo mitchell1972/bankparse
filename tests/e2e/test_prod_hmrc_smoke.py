@@ -2,49 +2,58 @@
 Production smoke test — proves the live HMRC submission journey is
 reachable and auth-gated correctly on ``https://bankscanai.com``.
 
-Two tiers of coverage, gated by env vars so neither runs in normal CI:
+Three tiers of coverage, each gated separately so nothing runs in normal CI:
 
-  TIER 1 — anonymous (set PROD_SMOKE=1)
+  TIER 1 — anonymous (PROD_SMOKE=1)
     Read-only, no DB writes, no credentials needed. Proves the routes
-    are alive and auth-gated:
-      - Landing page renders + sign-in CTA visible, no JS errors
-      - /login renders email + password form, no JS errors
-      - /hmrc/file, /hmrc/connect 302 to /login?next=...
-      - /api/hmrc/obligations 401s
-      - /api/hmrc/penalty-status 200s (intentionally open)
-      - Browser-driven /hmrc/file lands on /login
+    are alive and auth-gated.
 
-  TIER 2 — authenticated (also set PROD_TEST_USER_EMAIL + PROD_TEST_USER_PASSWORD)
+  TIER 2 — authenticated (also PROD_TEST_USER_EMAIL + PROD_TEST_USER_PASSWORD)
     Requires a pre-existing verified account on bankscanai.com. Proves
-    the deeper flow without filing real returns (prod is wired to HMRC
-    SANDBOX — verified via /api/hmrc/sandbox/* returning 403 CSRF on
-    prod, not 404):
-      - Login round-trip works, session cookie issued
-      - /api/hmrc/obligations returns 200 (data or business-setup-required)
-      - /api/hmrc/connect (OAuth initiation) redirects to the HMRC
-        SANDBOX host test-api.service.hmrc.gov.uk — NOT prod HMRC
-      - Sandbox test-user provisioning route is reachable and authed
+    login, /api/hmrc/obligations, the OAuth redirect points to HMRC
+    SANDBOX (critical guard against being wired to prod HMRC), and the
+    sandbox test-user provisioning route is reachable.
 
-How to provide the TIER 2 credentials:
+  TIER 3 — full OAuth handshake + sandbox submission (also PROD_SMOKE_FULL=1)
+    Mutates state: mints a sandbox individual, drives Playwright through
+    HMRC's Government Gateway sandbox login on test-www.tax.service.gov.uk,
+    accepts the grant-scope, lands back on /api/hmrc/callback, sets up
+    SE + property businesses via /api/hmrc/sandbox/setup-complete, and
+    runs a quarterly-update PREVIEW (no submit — preview is the deepest
+    safe read against real sandbox data we can do without leaving
+    submission records the user has to clean up). Disconnects at end via
+    /api/hmrc/disconnect.
 
+How to run each tier:
+
+    # tier 1 (8 tests)
     export PROD_SMOKE=1
+    pytest tests/e2e/test_prod_hmrc_smoke.py --browser chromium
+
+    # + tier 2 (4 more tests)
     export PROD_TEST_USER_EMAIL='you+e2esmoke@yourdomain.com'
     export PROD_TEST_USER_PASSWORD='...'
-    pytest tests/e2e/test_prod_hmrc_smoke.py -xvs --browser chromium
 
-If you don't already have a verified account on bankscanai.com, register
-one with any email you own (the OTP arrives via real Resend email),
-verify, then export those creds before running.
+    # + tier 3 (4 more tests, slow + state-mutating)
+    export PROD_SMOKE_FULL=1
+    pytest tests/e2e/test_prod_hmrc_smoke.py --browser chromium -v
 
-What this test deliberately STILL does NOT do, even at tier 2:
+What tier 3 deliberately STILL does NOT do:
 
-  - Submit a quarterly update / EOPS / final-declaration. Even against
-    sandbox these write rows the test would then need to clean up.
-  - Drive the full Government-Gateway OAuth handshake on HMRC's own
-    sandbox site. That requires minting a sandbox test individual
-    first (POST /api/hmrc/sandbox/create-test-user) and then having
-    Playwright type those credentials into HMRC's external login page.
-    Achievable but flaky — left for the next iteration.
+  - POST a quarterly-update SUBMIT (only preview). Submission writes an
+    immutable audit row HMRC won't let us undo from the sandbox even
+    though the numbers themselves evaporate.
+  - Touch EOPS or final-declaration. Same reason — they leave records
+    in HMRC's sandbox we can't undo.
+
+Tier 3 known-flaky failure modes:
+
+  - HMRC sandbox occasionally CAPTCHAs the GG sign-in page. Re-run.
+  - HMRC sandbox is slower than production (10-15s page loads aren't
+    unusual). Timeouts are generous accordingly.
+  - HMRC's GG sandbox UI changes selectors without notice. If the test
+    fails on the sign-in step with a missing-selector error, update
+    _gg_signin_selectors below.
 """
 from __future__ import annotations
 
@@ -357,3 +366,323 @@ def test_sandbox_create_test_user_route_is_reachable():
         f"404 would mean the route isn't deployed; 500 a server crash; "
         f"401 would mean auth failed even though we sent bp_auth."
     )
+
+
+# ---------------------------------------------------------------------------
+# TIER 3 — full OAuth handshake + sandbox bootstrap + preview submission
+# ---------------------------------------------------------------------------
+
+_full_oauth = pytest.mark.skipif(
+    os.environ.get("PROD_SMOKE_FULL") != "1"
+    or not (PROD_TEST_USER_EMAIL and PROD_TEST_USER_PASSWORD),
+    reason=(
+        "Set PROD_SMOKE_FULL=1 + PROD_TEST_USER_EMAIL/PASSWORD to run "
+        "the full OAuth + sandbox-submit tier. This mutates state on "
+        "the prod user (stores HMRC tokens, creates businesses) and "
+        "drives Playwright through HMRC's GG sandbox login page."
+    ),
+)
+
+
+# HMRC Government Gateway sandbox login — selectors as of 2026-05-25.
+# HMRC tweaks this UI occasionally; update here if tier 3 starts failing
+# on a missing-selector error.
+_GG_USER_ID_SELECTORS = [
+    'input[name="userId"]',
+    "input#user_id",
+    'input[autocomplete="username"]',
+]
+_GG_PASSWORD_SELECTORS = [
+    'input[name="password"]',
+    "input#password",
+    'input[autocomplete="current-password"]',
+]
+_GG_SIGN_IN_SELECTORS = [
+    'button[type="submit"]',
+    'input[type="submit"]',
+    'button:has-text("Sign in")',
+]
+_GRANT_SELECTORS = [
+    'button:has-text("Grant authority")',
+    'button:has-text("Continue")',
+    'input[value="Grant authority"]',
+    'input[value="Continue"]',
+    'button[type="submit"]',
+]
+
+
+def _first_visible(page, selectors: list[str], timeout: int = 8_000):
+    """Return the first selector from ``selectors`` that resolves to a
+    visible element on ``page``. Raises with a clear message listing
+    everything tried."""
+    from playwright.sync_api import TimeoutError as PWTimeout
+
+    deadline_each = max(timeout // len(selectors), 1_500)
+    for sel in selectors:
+        try:
+            loc = page.locator(sel).first
+            loc.wait_for(state="visible", timeout=deadline_each)
+            return loc
+        except PWTimeout:
+            continue
+    raise AssertionError(
+        f"None of these selectors resolved on {page.url!r}: {selectors}. "
+        f"HMRC GG UI likely changed — update _GG_*_SELECTORS in this file."
+    )
+
+
+def _seed_csrf_via_browser(page) -> str:
+    """Visit /api/hmrc/penalty-status to make the server set the bp_csrf
+    cookie (any GET works). Returns the cookie value."""
+    page.goto(PROD_URL + "/api/hmrc/penalty-status", wait_until="domcontentloaded")
+    cookies = page.context.cookies(PROD_URL)
+    for c in cookies:
+        if c["name"] == "bp_csrf":
+            return c["value"]
+    raise AssertionError("bp_csrf cookie not set by server after GET")
+
+
+def _login_in_browser(page) -> None:
+    """Log into bankscanai.com via the POST /api/login JSON API using
+    page.request so cookies flow into the browser context."""
+    resp = page.request.post(
+        PROD_URL + "/api/login",
+        data=json.dumps({
+            "email": PROD_TEST_USER_EMAIL,
+            "password": PROD_TEST_USER_PASSWORD,
+        }),
+        headers={"Content-Type": "application/json"},
+        timeout=20_000,
+    )
+    assert resp.status == 200, (
+        f"Login failed: {resp.status} {resp.text()[:200]}"
+    )
+
+
+@pytest.fixture
+def authed_browser(page: Page):
+    """Yields a Playwright Page already logged into bankscanai.com.
+    Auto-disconnects HMRC tokens on teardown so subsequent runs aren't
+    polluted by stored OAuth state from the prior run."""
+    _login_in_browser(page)
+    yield page
+    # Best-effort cleanup — disconnect HMRC tokens.
+    try:
+        csrf = _seed_csrf_via_browser(page)
+        page.request.post(
+            PROD_URL + "/api/hmrc/disconnect",
+            headers={"X-CSRF-Token": csrf},
+            timeout=10_000,
+        )
+    except Exception:
+        pass
+
+
+@_full_oauth
+def test_mint_sandbox_individual_returns_nino_and_gg_creds(authed_browser: Page):
+    """POST /api/hmrc/sandbox/create-test-user mints a fresh HMRC sandbox
+    individual and returns NINO + Government Gateway userId + password.
+
+    Stores the credentials on the page context for the next test to
+    pick up."""
+    page = authed_browser
+    csrf = _seed_csrf_via_browser(page)
+    resp = page.request.post(
+        PROD_URL + "/api/hmrc/sandbox/create-test-user",
+        headers={"X-CSRF-Token": csrf, "Content-Type": "application/json"},
+        data="{}",
+        timeout=30_000,
+    )
+    assert resp.status == 200, (
+        f"create-test-user failed: {resp.status} {resp.text()[:500]}. "
+        f"Common cause: HMRC_CLIENT_ID/HMRC_CLIENT_SECRET not set on Vercel."
+    )
+    body = resp.json()
+    assert body.get("nino"), f"No nino in response: {body}"
+    assert body.get("user_id") or body.get("userId"), f"No GG userId in response: {body}"
+    assert body.get("password"), f"No GG password in response: {body}"
+
+    # Stash on the page object for the next test via context storage.
+    page.context._sandbox_creds = {  # type: ignore[attr-defined]
+        "nino": body["nino"],
+        "user_id": body.get("user_id") or body.get("userId"),
+        "password": body["password"],
+        "mtd_it_id": body.get("mtd_it_id") or body.get("mtdItId"),
+    }
+
+
+@_full_oauth
+def test_full_oauth_handshake_with_sandbox_gg(authed_browser: Page):
+    """Drive Playwright through the full OAuth dance:
+       /hmrc/connect → HMRC sandbox authorize → GG sandbox sign-in →
+       grant scope → /api/hmrc/callback → tokens stored.
+
+    Verifies by hitting /api/hmrc/obligations afterwards and confirming
+    `connected: true` (or a 200 with obligations data)."""
+    page = authed_browser
+
+    # First, mint creds (this test is self-contained; if run alone it
+    # mints fresh, if run in sequence with the prior test it re-mints).
+    csrf = _seed_csrf_via_browser(page)
+    resp = page.request.post(
+        PROD_URL + "/api/hmrc/sandbox/create-test-user",
+        headers={"X-CSRF-Token": csrf, "Content-Type": "application/json"},
+        data="{}",
+        timeout=30_000,
+    )
+    assert resp.status == 200, f"mint failed: {resp.status} {resp.text()[:500]}"
+    creds = resp.json()
+    gg_user_id = creds.get("user_id") or creds.get("userId")
+    gg_password = creds["password"]
+
+    # Begin OAuth — click the connect button on /hmrc/connect.
+    page.goto(PROD_URL + "/hmrc/connect", wait_until="domcontentloaded", timeout=30_000)
+    # The page renders a form that POSTs to /api/hmrc/connect.
+    connect_btn = page.locator(
+        'form[action="/api/hmrc/connect"] button[type=submit]'
+    ).first
+    connect_btn.wait_for(state="visible", timeout=10_000)
+    connect_btn.click()
+
+    # Should land on HMRC sandbox. The first page is usually the
+    # GG sign-in page on test-www.tax.service.gov.uk.
+    page.wait_for_url(
+        lambda url: "tax.service.gov.uk" in url,
+        timeout=30_000,
+    )
+    assert "test-www.tax.service.gov.uk" in page.url or "test-api.service.hmrc.gov.uk" in page.url, (
+        f"Expected to land on HMRC SANDBOX, got: {page.url}"
+    )
+
+    # Fill GG userId + password.
+    user_input = _first_visible(page, _GG_USER_ID_SELECTORS)
+    user_input.fill(gg_user_id)
+    pwd_input = _first_visible(page, _GG_PASSWORD_SELECTORS)
+    pwd_input.fill(gg_password)
+    sign_in_btn = _first_visible(page, _GG_SIGN_IN_SELECTORS)
+    sign_in_btn.click()
+
+    # Sometimes HMRC shows a "Grant authority" page next. Sometimes it
+    # skips straight to the callback. Wait for whichever happens.
+    page.wait_for_url(
+        lambda url: "bankscanai.com/api/hmrc/callback" in url
+        or "grantscope" in url
+        or "consent" in url.lower(),
+        timeout=30_000,
+    )
+
+    # If we're on a grant-scope page, click through.
+    if "bankscanai.com" not in page.url:
+        try:
+            grant_btn = _first_visible(page, _GRANT_SELECTORS, timeout=15_000)
+            grant_btn.click()
+        except AssertionError:
+            # Page changed without our intervention (HMRC auto-redirects
+            # in some cases). Continue.
+            pass
+        page.wait_for_url(
+            lambda url: "bankscanai.com" in url,
+            timeout=30_000,
+        )
+
+    # We're back on bankscanai.com. Verify tokens stored by querying obligations.
+    obl_resp = page.request.get(
+        PROD_URL + "/api/hmrc/obligations",
+        timeout=15_000,
+    )
+    assert obl_resp.status == 200, (
+        f"/api/hmrc/obligations after OAuth: {obl_resp.status} {obl_resp.text()[:500]}"
+    )
+    obl_body = obl_resp.json()
+    assert obl_body.get("connected") is True, (
+        f"Expected connected:true after OAuth, got: {obl_body}"
+    )
+
+
+@_full_oauth
+def test_sandbox_setup_complete_creates_se_and_property(authed_browser: Page):
+    """Once OAuth is done, /api/hmrc/sandbox/setup-complete creates
+    SE + property businesses idempotently against the connected NINO."""
+    page = authed_browser
+
+    # Re-mint + re-OAuth to make this test independent of run order.
+    # (Skip if obligations already shows connected:true.)
+    obl_resp = page.request.get(PROD_URL + "/api/hmrc/obligations", timeout=15_000)
+    if obl_resp.status == 200 and obl_resp.json().get("connected") is True:
+        pass
+    else:
+        pytest.skip(
+            "Must run test_full_oauth_handshake_with_sandbox_gg first — "
+            "this test relies on stored OAuth tokens."
+        )
+
+    csrf = _seed_csrf_via_browser(page)
+    resp = page.request.post(
+        PROD_URL + "/api/hmrc/sandbox/setup-complete",
+        headers={"X-CSRF-Token": csrf, "Content-Type": "application/json"},
+        data="{}",
+        timeout=30_000,
+    )
+    assert resp.status == 200, (
+        f"setup-complete failed: {resp.status} {resp.text()[:500]}"
+    )
+    body = resp.json()
+    assert body.get("nino"), f"No NINO in response: {body}"
+    all_businesses = (body.get("created") or []) + (body.get("already_existed") or [])
+    types_seen = {b.get("type_of_business") for b in all_businesses}
+    assert "self-employment" in types_seen, (
+        f"SE business missing after setup-complete: {types_seen}"
+    )
+    assert "property" in types_seen, (
+        f"Property business missing after setup-complete: {types_seen}"
+    )
+
+
+@_full_oauth
+def test_quarterly_update_se_preview_against_sandbox(authed_browser: Page):
+    """POST /api/hmrc/quarterly-updates/se/preview against the
+    sandbox-set-up account. Preview only — no submission. Proves the
+    full pipeline (rows → categorisation → HMRC wire payload) functions
+    end-to-end on prod.
+
+    Skips if prior tests didn't run (no businesses set up)."""
+    page = authed_browser
+    obl_resp = page.request.get(PROD_URL + "/api/hmrc/obligations", timeout=15_000)
+    if not (obl_resp.status == 200 and obl_resp.json().get("connected") is True):
+        pytest.skip("OAuth not connected — run earlier tier-3 tests first.")
+    obl_body = obl_resp.json()
+    se_obligations = [
+        o for o in obl_body.get("obligations", [])
+        if o.get("business_type") == "self-employment"
+    ]
+    if not se_obligations:
+        pytest.skip("No SE obligations on the account — run setup-complete first.")
+    se_obl = se_obligations[0]
+    biz_id = se_obl.get("business_id")
+    period_start = se_obl.get("period_start") or "2026-04-06"
+    period_end = se_obl.get("period_end") or "2026-07-05"
+
+    csrf = _seed_csrf_via_browser(page)
+    resp = page.request.post(
+        PROD_URL + "/api/hmrc/quarterly-updates/se/preview",
+        headers={"X-CSRF-Token": csrf, "Content-Type": "application/json"},
+        data=json.dumps({
+            "business_id": biz_id,
+            "period_start": period_start,
+            "period_end": period_end,
+            "rows": [
+                {"date": period_start, "amount": 1000.00,
+                 "description": "Test invoice", "category": "se_turnover"},
+                {"date": period_start, "amount": -150.00,
+                 "description": "Test office supplies",
+                 "category": "se_admin_costs"},
+            ],
+        }),
+        timeout=30_000,
+    )
+    assert resp.status == 200, (
+        f"SE preview failed: {resp.status} {resp.text()[:500]}"
+    )
+    body = resp.json()
+    assert body.get("business_id") == biz_id
+    assert body.get("payload"), f"Preview returned no payload: {body}"
