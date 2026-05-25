@@ -321,6 +321,66 @@ def test_hmrc_error_does_not_break_response():
     assert "503" in body["error"]
 
 
+def test_matching_resource_not_found_returns_oauth_mismatch_hint():
+    """When HMRC's Obligations API returns 404 MATCHING_RESOURCE_NOT_FOUND
+    the most common cause is the OAuth bearer token being tied to a
+    DIFFERENT NINO than the one in the user's record. The raw error body
+    is opaque to end-users; we replace it with an actionable hint
+    pointing at the Disconnect → re-OAuth recovery path.
+
+    Regression test for the issue surfaced in the live dashboard where
+    a user typed a fresh sandbox NINO into the search field after
+    OAuthing as a different test individual, then saw 'HMRC returned
+    404: MATCHING_RESOURCE_NOT_FOUND' instead of a clear next-step."""
+    from hmrc.services.client import HmrcApiError
+
+    client, _, user = _client_with_user()
+    _connect_hmrc(user["id"])
+
+    def _raise_404_match(**kwargs):
+        raise HmrcApiError(404, {
+            "code": "MATCHING_RESOURCE_NOT_FOUND",
+            "message": "A resource with the name in the request can not be found in the API",
+        })
+
+    with patch("hmrc.services.obligations._client.request",
+               side_effect=_raise_404_match):
+        r = client.get("/api/hmrc/obligations")
+    assert r.status_code == 200
+    body = r.json()
+    err = body["error"] or ""
+    # The friendly error must mention the recovery action — disconnect
+    # and re-OAuth — not the raw HMRC code.
+    assert "OAUTH_NINO_MISMATCH" in err, (
+        f"Expected OAUTH_NINO_MISMATCH sentinel in error, got: {err!r}"
+    )
+    assert "Disconnect" in err or "disconnect" in err, (
+        f"Expected disconnect-recovery hint, got: {err!r}"
+    )
+    # Should NOT leak the raw HMRC code through.
+    assert "MATCHING_RESOURCE_NOT_FOUND" not in err, (
+        f"Raw HMRC code leaked into user-facing error: {err!r}"
+    )
+
+
+def test_403_returns_wrong_gateway_hint():
+    """HMRC 403 on obligations → friendly 'wrong Government Gateway' hint."""
+    from hmrc.services.client import HmrcApiError
+
+    client, _, user = _client_with_user()
+    _connect_hmrc(user["id"])
+
+    def _raise_403(**kwargs):
+        raise HmrcApiError(403, {"code": "FORBIDDEN", "message": "no"})
+
+    with patch("hmrc.services.obligations._client.request", side_effect=_raise_403):
+        r = client.get("/api/hmrc/obligations")
+    assert r.status_code == 200
+    err = r.json()["error"] or ""
+    assert "Government Gateway" in err, f"Expected GG hint, got: {err!r}"
+    assert "MTD-enabled" in err
+
+
 def test_multiple_businesses_call_hmrc_once_each():
     client, _, user = _client_with_user()
     _connect_hmrc(user["id"], businesses=[
