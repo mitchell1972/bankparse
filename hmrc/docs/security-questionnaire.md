@@ -93,10 +93,36 @@ scheduled before applying for production credentials.
 ## Incident response
 
 **Q: How do you handle a security incident affecting HMRC data?**
-A:
-- **Containment:** revoke the affected HMRC connection (`hmrc/repositories/tokens.py::revoke`); rotate `HMRC_TOKEN_ENCRYPTION_KEY` if a token leak is suspected.
-- **Notification:** affected users notified within 72 hours via email. HMRC notified via the dedicated software-vendor channel within the same window.
-- **Recovery:** force users to re-OAuth. Provide a clear-text incident report on bankscanai.com/status.
+
+A: Full runbook at [`incident-response.md`](incident-response.md).
+Headline:
+
+- **Single point of contact:** Mitchell Agoma (Director), `security@bankscanai.com` —
+  owns the 72-hour clock for both HMRC and ICO notifications.
+- **Containment:** revoke the affected HMRC connection
+  (`hmrc/repositories/tokens.py::revoke`); rotate
+  `HMRC_TOKEN_ENCRYPTION_KEY` per [`key-rotation.md`](key-rotation.md)
+  if a token leak is suspected.
+- **HMRC notification (within 72h of discovery):** SDST support portal
+  ticket at <https://developer.service.hmrc.gov.uk/developer/support>,
+  "I have a security concern" category. Template provided in the runbook.
+- **ICO notification (within 72h, UK GDPR Article 33):** via
+  <https://ico.org.uk/for-organisations/report-a-breach/personal-data-breach/>
+  or call 0303 123 1113. Template provided in the runbook.
+- **User notification:** affected users emailed within 72h with re-OAuth
+  + audit-review instructions.
+- **Recovery:** force users to re-OAuth. Public incident report on
+  `bankscanai.com/security` within 7 days post-resolution.
+- **Post-mortem:** blameless review filed at
+  `hmrc/docs/incidents/[date]-[short-name].md` within 14 days.
+
+Drills: quarterly tabletop exercises after recognition is granted; first
+drill within 30 days of approval.
+
+**Reporting channel for outside parties** (RFC 9116):
+<https://bankscanai.com/.well-known/security.txt> +
+<https://bankscanai.com/security> — published disclosure policy with
+safe harbour for good-faith researchers.
 
 ## Source code review
 
