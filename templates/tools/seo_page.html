@@ -430,22 +430,30 @@
         {% endif %}
 
         <!-- Use-case specific data requirements -->
+        {# NB: Jinja's attribute access falls back to looking up `items` as
+           dict.items (the method) when no `items` key exists on the dict,
+           and even when it DOES, Jinja prefers attribute over key here —
+           so we must use bracket notation. The use_case generator in
+           seo_pages.py sets `data_requirements["items"]` as a list; this
+           is the exact site that caused the 500s ZAP found on 2026-05-26
+           (see hmrc/docs/pen-test-2026-05-26.md M11). #}
         {% if page.get('data_requirements') %}
         <h2>{{ page.data_requirements.heading }}</h2>
         <p>{{ page.data_requirements.intro }}</p>
         <ul>
-            {% for item in page.data_requirements.items %}
+            {% for item in page.data_requirements['items'] %}
             <li><strong>{{ item.label }}</strong> — {{ item.detail }}</li>
             {% endfor %}
         </ul>
         {% endif %}
 
         <!-- Unique challenges section -->
+        {# Same `.items` → `['items']` pitfall as above. #}
         {% if page.get('challenges_section') %}
         <h2>{{ page.challenges_section.heading }}</h2>
         <p>{{ page.challenges_section.intro }}</p>
         <ul>
-            {% for challenge in page.challenges_section.items %}
+            {% for challenge in page.challenges_section['items'] %}
             <li>{{ challenge }}</li>
             {% endfor %}
         </ul>
