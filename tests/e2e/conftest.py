@@ -63,6 +63,15 @@ def live_server():
     env.setdefault("RESEND_API_KEY", "")  # fallback (logs OTP, doesn't send)
     env.setdefault("STRIPE_SECRET_KEY", "")
     env.setdefault("ANTHROPIC_API_KEY", "")
+    # Cookies must NOT have the Secure flag in E2E — Playwright runs over
+    # http://127.0.0.1 and Chrome accepts Secure cookies there as a
+    # "potentially trustworthy origin", BUT the tests pull cookies out of
+    # the browser into httpx for API calls and httpx has no such exemption.
+    # Without this, any Secure cookie set by the server (bp_auth, bp_csrf)
+    # silently disappears when the test makes httpx calls, breaking every
+    # round-trip that depends on authentication. Production gets the Secure
+    # flag automatically because cookies_must_be_secure() defaults True.
+    env["COOKIES_SECURE"] = "0"
     env["PYTHONUNBUFFERED"] = "1"
 
     proc = subprocess.Popen(
@@ -123,6 +132,11 @@ def hmrc_live_server():
         # 32-byte AES-GCM key; deterministic so test reruns reuse the same
         # encrypted token blobs. Generated from a fixed seed — only for tests.
         env["HMRC_TOKEN_ENCRYPTION_KEY"] = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+        # Cookies without the Secure flag — see live_server() for the
+        # detailed reason. httpx doesn't share Chrome's localhost-Secure
+        # exemption, so without this the auth cookie disappears between
+        # browser and httpx and HMRC OAuth round-trip breaks.
+        env["COOKIES_SECURE"] = "0"
         env["PYTHONUNBUFFERED"] = "1"
 
         log_path = tempfile.NamedTemporaryFile(
