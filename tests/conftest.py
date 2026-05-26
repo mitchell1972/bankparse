@@ -14,7 +14,17 @@ of the suite is safe.
 """
 from __future__ import annotations
 
+import os
+
 import pytest
+
+
+# Cookies must not have the Secure flag in the test suite — the FastAPI
+# TestClient runs over plain HTTP (http://testserver), and Secure cookies
+# would be silently dropped on the client side, breaking every CSRF-protected
+# POST in the tree. Production gets the Secure flag automatically — this
+# only opts the tests out.
+os.environ.setdefault("COOKIES_SECURE", "0")
 
 
 @pytest.fixture(autouse=True)

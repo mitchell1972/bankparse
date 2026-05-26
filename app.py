@@ -160,6 +160,13 @@ app.add_middleware(
 from csrf import CSRFMiddleware
 app.add_middleware(CSRFMiddleware)
 
+# Security headers — HSTS, CSP, X-Content-Type-Options, X-Frame-Options,
+# Referrer-Policy, Permissions-Policy, COOP, CORP. Added after CSRF so the
+# CSRF middleware's 403 response also gets the headers. See security_headers.py
+# for the full policy + a justification for each directive.
+from security_headers import SecurityHeadersMiddleware
+app.add_middleware(SecurityHeadersMiddleware)
+
 limiter = Limiter(key_func=get_remote_address)
 app.state.limiter = limiter
 

@@ -86,9 +86,15 @@ deduplication uses this key. Tests pin the contract:
 ## Penetration testing
 
 **Q: When was the last pen test?**
-A: GitGuardian secret-scanning runs on every commit (pass on PR #29).
-Static analysis via ruff + pyright (planned). Manual penetration test
-scheduled before applying for production credentials.
+A: 2026-05-26 — internal NCSC-aligned baseline against the live
+`bankscanai.com` production instance using OWASP ZAP, testssl.sh and
+Mozilla Observatory v2. **Zero High or Critical findings.** All Medium
+findings remediated in the same round (security headers + cookie
+Secure flag + login URL sanitisation). Full report:
+[`hmrc/docs/pen-test-2026-05-26.md`](pen-test-2026-05-26.md). Raw scan
+outputs under `hmrc/pentest-2026-05-26/`. Quarterly cadence documented
+in the report. GitGuardian secret scanning continues on every commit.
+Third-party CREST-approved test planned within 6 months of first ARR.
 
 ## Incident response
 
