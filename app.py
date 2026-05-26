@@ -4247,6 +4247,14 @@ BLOG_POSTS = {
         "template": "blog/bank-statement-conversion-property-investors.html",
         "keywords": "bank statement conversion property investors UK, landlord bank statement to Excel, buy-to-let statement processing, property portfolio bank statement management, SA105 bank statement preparation, rental income bank statement reconciliation, multiple property bank statement conversion, HMO landlord bookkeeping automation",
     },
+    "bank-statement-conversion-freelancers-self-employed": {
+        "title": "Bank Statement Conversion for Freelancers & Self-Employed — Complete UK Guide (2026)",
+        "description": "Freelancers and sole traders face unique bank statement challenges — irregular income, mixed personal/business accounts, and Self Assessment deadlines. Complete guide to converting bank statements for self-employed UK bookkeeping.",
+        "date": "2026-05-26",
+        "author": "BankScan AI Team",
+        "template": "blog/bank-statement-conversion-freelancers.html",
+        "keywords": "bank statement conversion freelancers UK, self-employed bank statement to Excel, sole trader bank statement processing, freelancer Self Assessment bank statements, HMRC record keeping sole trader, convert bank statements for tax return freelancer, freelance bookkeeping automation UK, self-employed expense tracking bank statements",
+    },
 }
 
 

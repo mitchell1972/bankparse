@@ -16,3 +16,4 @@ bankparse.db*
 # Playwright MCP scratch dir + ad-hoc journey screenshots
 .playwright-mcp/
 journey_*.png
+.vercel
