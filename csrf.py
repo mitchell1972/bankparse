@@ -7,14 +7,13 @@ The middleware compares the two using hmac.compare_digest to prevent timing atta
 """
 
 import hmac
-import os
 import secrets
 
 from fastapi import Request
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
-IS_PRODUCTION = os.environ.get("ENVIRONMENT", "development") == "production"
+from security_headers import cookies_must_be_secure
 
 CSRF_COOKIE = "bp_csrf"
 CSRF_HEADER = "X-CSRF-Token"
@@ -43,7 +42,7 @@ def set_csrf_cookie(response, token: str):
         max_age=CSRF_MAX_AGE,
         httponly=False,
         samesite="strict",
-        secure=IS_PRODUCTION,
+        secure=cookies_must_be_secure(),
     )
     return response
 

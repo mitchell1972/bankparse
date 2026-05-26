@@ -41,6 +41,12 @@ except ImportError:
 # --- Environment ---
 IS_PRODUCTION = os.environ.get("ENVIRONMENT", "development") == "production"
 
+# Cookie security flag — see security_headers.cookies_must_be_secure().
+# Imported via alias so existing call sites can read it as a local lookup
+# and tests can monkeypatch a single name. Defaults to True so cookies are
+# Secure on any deployment that doesn't explicitly opt out (COOKIES_SECURE=0).
+from security_headers import cookies_must_be_secure as _cookies_must_be_secure  # noqa: E402
+
 # --- Secret key for auth token signing ---
 SECRET_KEY = os.environ.get("SECRET_KEY", "bankparse-dev-secret-change-me")
 
@@ -246,14 +252,14 @@ def set_auth_cookie(response, user_id: int):
         max_age=60 * 60 * 24 * 30,
         httponly=True,
         samesite="lax",
-        secure=IS_PRODUCTION,
+        secure=_cookies_must_be_secure(),
     )
     return response
 
 
 def clear_auth_cookie(response):
     """Clear the bp_auth cookie."""
-    response.delete_cookie(key=AUTH_COOKIE, samesite="lax", secure=IS_PRODUCTION)
+    response.delete_cookie(key=AUTH_COOKIE, samesite="lax", secure=_cookies_must_be_secure())
     return response
 
 
@@ -279,7 +285,7 @@ def set_session_cookie(response: JSONResponse, session_id: str) -> JSONResponse:
         max_age=COOKIE_MAX_AGE,
         httponly=True,
         samesite="lax",
-        secure=IS_PRODUCTION,
+        secure=_cookies_must_be_secure(),
     )
     return response
 
