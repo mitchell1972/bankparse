@@ -1,0 +1,168 @@
+BankScan AI — HMRC fraud-prevention-headers validation evidence
+========================================================================
+Captured:    2026-05-26T19:55:54.697257+00:00
+Git commit:  4457544f73f0c1ecf44589cd4b916ac904d84de7
+Endpoint:    /api/hmrc/obligations (exercises full Gov-Client-* + Gov-Vendor-* stack)
+HMRC env:    sandbox (test-api.service.hmrc.gov.uk)
+
+How to read this: the deployed bankscanai.com app calls HMRC's
+sandbox Obligations API for an OAuth'd user. The 13 fraud-
+prevention headers (Gov-Client-Device-ID, Gov-Client-Public-IP,
+Gov-Vendor-Forwarded, etc.) are validated server-side by HMRC
+on every request. A non-412 response means the header structure
+passed validation. A 412 response from HMRC means a specific
+header was malformed — body lists which.
+
+Response from /api/hmrc/obligations (the deployed app's
+translation of the HMRC response into UI shape):
+------------------------------------------------------------------------
+{
+  "connected": true,
+  "demo": true,
+  "obligations": [
+    {
+      "business_type": "self-employment",
+      "business_label": "Mitoba \u2014 sole trader",
+      "business_id": "XAIS00000000001",
+      "period_key": "#001",
+      "period_start": "2026-04-06",
+      "period_end": "2026-07-05",
+      "due": "2026-08-05",
+      "received": null,
+      "status": "upcoming",
+      "days_until_due": 71,
+      "human_due": "due in 71 days"
+    },
+    {
+      "business_type": "property",
+      "business_label": "Ipswich SA portfolio",
+      "business_id": "XPIS00000000002",
+      "period_key": "#001",
+      "period_start": "2026-04-06",
+      "period_end": "2026-07-05",
+      "due": "2026-08-05",
+      "received": null,
+      "status": "upcoming",
+      "days_until_due": 71,
+      "human_due": "due in 71 days"
+    },
+    {
+      "business_type": "self-employment",
+      "business_label": "Mitoba \u2014 sole trader",
+      "business_id": "XAIS00000000001",
+      "period_key": "#002",
+      "period_start": "2026-07-06",
+      "period_end": "2026-10-05",
+      "due": "2026-11-05",
+      "received": null,
+      "status": "upcoming",
+      "days_until_due": 163,
+      "human_due": "due in 163 days"
+    },
+    {
+      "business_type": "property",
+      "business_label": "Ipswich SA portfolio",
+      "business_id": "XPIS00000000002",
+      "period_key": "#002",
+      "period_start": "2026-07-06",
+      "period_end": "2026-10-05",
+      "due": "2026-11-05",
+      "received": null,
+      "status": "upcoming",
+      "days_until_due": 163,
+      "human_due": "due in 163 days"
+    },
+    {
+      "business_type": "self-employment",
+      "business_label": "Mitoba \u2014 sole trader",
+      "business_id": "XAIS00000000001",
+      "period_key": "#003",
+      "period_start": "2026-10-06",
+      "period_end": "2027-01-05",
+      "due": "2027-02-05",
+      "received": null,
+      "status": "upcoming",
+      "days_until_due": 255,
+      "human_due": "due in 255 days"
+    },
+    {
+      "business_type": "property",
+      "business_label": "Ipswich SA portfolio",
+      "business_id": "XPIS00000000002",
+      "period_key": "#003",
+      "period_start": "2026-10-06",
+      "period_end": "2027-01-05",
+      "due": "2027-02-05",
+      "received": null,
+      "status": "upcoming",
+      "days_until_due": 255,
+      "human_due": "due in 255 days"
+    },
+    {
+      "business_type": "self-employment",
+      "business_label": "Mitoba \u2014 sole trader",
+      "business_id": "XAIS00000000001",
+      "period_key": "#004",
+      "period_start": "2027-01-06",
+      "period_end": "2027-04-05",
+      "due": "2027-05-05",
+      "received": null,
+      "status": "upcoming",
+      "days_until_due": 344,
+      "human_due": "due in 344 days"
+    },
+    {
+      "business_type": "property",
+      "business_label": "Ipswich SA portfolio",
+      "business_id": "XPIS00000000002",
+      "period_key": "#004",
+      "period_start": "2027-01-06",
+      "period_end": "2027-04-05",
+      "due": "2027-05-05",
+      "received": null,
+      "status": "upcoming",
+      "days_until_due": 344,
+      "human_due": "due in 344 days"
+    },
+    {
+      "business_type": "self-employment",
+      "business_label": "Mitoba \u2014 sole trader",
+      "business_id": "XAIS00000000001",
+      "period_key": "EOPS",
+      "period_start": "2026-04-06",
+      "period_end": "2027-04-05",
+      "due": "2028-01-31",
+      "received": null,
+      "status": "upcoming",
+      "days_until_due": 615,
+      "human_due": "due in 615 days"
+    },
+    {
+      "business_type": "property",
+      "business_label": "Ipswich SA portfolio",
+      "business_id": "XPIS00000000002",
+      "period_key": "EOPS",
+      "period_start": "2026-04-06",
+      "period_end": "2027-04-05",
+      "due": "2028-01-31",
+      "received": null,
+      "status": "upcoming",
+      "days_until_due": 615,
+      "human_due": "due in 615 days"
+    }
+  ],
+  "error": null,
+  "nino": "JA057968B"
+}
+------------------------------------------------------------------------
+
+✓ HMRC accepted the request including all 13 fraud headers.
+  (No 412 or header-related error in the response.)
+
+For the SDST application, also run the local conformance suite:
+    python3 scripts/run_conformance_suite.py --phase 3
+    Output: hmrc/docs/conformance-test-transcript.txt
+
+Reference: tests/hmrc/test_fraud_headers.py + test_fraud_headers_validator.py
+           pin every header's shape; load-budget at
+           tests/perf/test_fraud_headers_load.py.
