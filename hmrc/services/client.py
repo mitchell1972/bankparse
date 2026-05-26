@@ -30,7 +30,9 @@ from ..repositories import sessions as _sessions
 from ..repositories import submissions as _submissions
 from ..repositories import tokens as _tokens
 from . import fraud_headers as _fraud
+from . import monitoring as _monitoring
 from . import oauth as _oauth
+from . import rate_limiter as _rate_limiter
 
 logger = logging.getLogger("bankparse.hmrc.client")
 
@@ -135,6 +137,18 @@ def request(
             accept_version=accept_version,
             idempotency_key=idempotency_key,
         )
+        # Throttle outbound HMRC traffic to stay under per-vendor caps. A
+        # runaway loop or burst from a single greedy user would otherwise
+        # trip the cap and brick the service for everyone. The limiter is
+        # a process-local token bucket — see hmrc/services/rate_limiter.py.
+        # Raises RateLimitedError after HMRC_OUTBOUND_MAX_WAIT_SEC.
+        waited = _rate_limiter.acquire()
+        if waited > 0.5:
+            logger.info(
+                "HMRC outbound throttled: waited %.2fs for token (user=%s path=%s)",
+                waited, user_id, path,
+            )
+
         resp, audit_id = _do_call_and_audit(
             method=method, url=url, path=path,
             headers=headers, json_body=json_body,
@@ -161,6 +175,13 @@ def request(
 
     body = _safe_json(resp)
     if not (200 <= resp.status_code < 300):
+        # Send 5xx (HMRC-side trouble) + 0 (network) events to Sentry so
+        # we get paged on the class of failure that signals recognition-
+        # rejection-shaped issues. 4xx is user error — never alertable.
+        _monitoring.capture_hmrc_failure(
+            endpoint=path, method=method, status_code=resp.status_code,
+            body=body, user_id=user_id, audit_id=audit_id,
+        )
         raise HmrcApiError(resp.status_code, body, audit_id=audit_id)
     return HmrcResponse(
         status_code=resp.status_code,
@@ -244,6 +265,12 @@ def _do_call_and_audit(
             idempotency_key=idempotency_key,
         )
         logger.warning("HMRC network failure (user=%s, path=%s): %s", user_id, path, exc)
+        # Network failures are tagged status=0 — Sentry alerts on these too.
+        _monitoring.capture_hmrc_failure(
+            endpoint=path, method=method, status_code=0,
+            body={"network_error": str(exc)},
+            user_id=user_id, audit_id=audit_id,
+        )
         raise HmrcApiError(0, {"network_error": str(exc)}, audit_id=audit_id) from exc
 
     elapsed_ms = int((time.monotonic() - started) * 1000)

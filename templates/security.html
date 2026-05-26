@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="BankScan AI security policy — how to report a vulnerability, our response commitments, and our coordinated disclosure process.">
+    <title>Security &amp; Vulnerability Disclosure — BankScan AI</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        :root {
+            --primary: #1B4F72;
+            --primary-light: #2E86C1;
+            --accent: #27AE60;
+            --bg: #F8F9FA;
+            --card: #FFFFFF;
+            --text: #2C3E50;
+            --muted: #7F8C8D;
+            --border: #E5E7EB;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.65;
+            padding: 2rem 1rem;
+        }
+
+        a.skip-link { position: absolute; left: -9999px; }
+        a.skip-link:focus { left: 0; top: 0; padding: 1em; background: #000; color: #fff; z-index: 9999; }
+
+        .container { max-width: 780px; margin: 0 auto; }
+
+        header { text-align: center; margin-bottom: 2.5rem; }
+        header h1 { font-size: 2rem; color: var(--primary); margin-bottom: 0.5rem; }
+        header p { color: var(--muted); }
+
+        main { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 2.5rem; }
+
+        h2 { font-size: 1.4rem; color: var(--primary); margin-top: 2rem; margin-bottom: 0.75rem; }
+        h2:first-of-type { margin-top: 0; }
+
+        h3 { font-size: 1.1rem; color: var(--text); margin-top: 1.5rem; margin-bottom: 0.5rem; }
+
+        p, li { margin-bottom: 0.8rem; }
+        ul, ol { margin-left: 1.5rem; margin-bottom: 1rem; }
+
+        .contact-card {
+            background: #EBF5FB;
+            border-left: 4px solid var(--primary);
+            padding: 1.25rem 1.5rem;
+            margin: 1.5rem 0;
+            border-radius: 4px;
+        }
+        .contact-card p { margin-bottom: 0.5rem; }
+        .contact-card a { color: var(--primary); font-weight: 600; }
+
+        .meta {
+            margin-top: 2.5rem;
+            padding-top: 1rem;
+            border-top: 1px solid var(--border);
+            color: var(--muted);
+            font-size: 0.9rem;
+        }
+
+        footer { text-align: center; margin-top: 2rem; color: var(--muted); font-size: 0.9rem; }
+        footer a { color: var(--primary); }
+    </style>
+</head>
+<body>
+    <a class="skip-link" href="#main-content">Skip to main content</a>
+    <div class="container">
+        <header>
+            <h1>Security &amp; Vulnerability Disclosure</h1>
+            <p>How to report a security issue to BankScan AI.</p>
+        </header>
+
+        <main id="main-content">
+            <h2>Reporting a vulnerability</h2>
+            <p>
+                If you've found a security issue in BankScan AI — a vulnerability in
+                our web application, an exposed credential, a way to access another
+                user's data, anything that could put our users at risk — please tell
+                us. We treat reports seriously and we don't pursue legal action
+                against good-faith researchers.
+            </p>
+
+            <div class="contact-card">
+                <p><strong>Primary contact:</strong> <a href="mailto:security@bankscanai.com">security@bankscanai.com</a></p>
+                <p><strong>Fallback (also monitored):</strong> <a href="mailto:mitchellagoma@gmail.com">mitchellagoma@gmail.com</a></p>
+                <p>RFC 9116 machine-readable record at <a href="/.well-known/security.txt"><code>/.well-known/security.txt</code></a>.</p>
+            </div>
+
+            <h3>What to include in your report</h3>
+            <ul>
+                <li>A clear description of the issue and where you found it (URL or endpoint).</li>
+                <li>Steps to reproduce — ideally a minimal proof-of-concept.</li>
+                <li>The impact (what an attacker could do with this).</li>
+                <li>Your name or handle for credit if you'd like to be acknowledged.</li>
+            </ul>
+
+            <h2>What we'll do</h2>
+            <ol>
+                <li><strong>Acknowledge within 2 working days.</strong> We'll confirm we've received your report and assign it a tracking reference.</li>
+                <li><strong>Triage and validate within 5 working days.</strong> We'll let you know whether we can reproduce the issue and what severity we've assessed.</li>
+                <li><strong>Fix according to severity.</strong> Critical issues (data exposure, RCE, authentication bypass): patched within 7 days. High: 30 days. Medium: 90 days.</li>
+                <li><strong>Coordinated disclosure.</strong> We'll work with you on a disclosure timeline. By default we ask for 90 days from report to public disclosure, sooner if a fix ships earlier.</li>
+                <li><strong>Acknowledge you in our security log</strong> (with your permission) once the fix is live.</li>
+            </ol>
+
+            <h2>Scope</h2>
+            <p>In scope for this policy:</p>
+            <ul>
+                <li><code>https://bankscanai.com</code> and any subdomain we operate.</li>
+                <li>Our HMRC MTD ITSA integration endpoints (<code>/api/hmrc/*</code>).</li>
+                <li>Data handling for uploaded bank statements, receipts, and HMRC OAuth tokens.</li>
+            </ul>
+            <p>Out of scope:</p>
+            <ul>
+                <li>Findings from automated scanners (e.g. "no rate limit on the landing page", "TLS configuration warnings already at A+") without a demonstrated security impact.</li>
+                <li>Issues in third-party services we rely on (Stripe, Anthropic, Resend, Railway, Vercel) — please report those to the relevant vendor directly.</li>
+                <li>Social-engineering attacks against our staff or customers.</li>
+                <li>Denial-of-service attacks against our infrastructure.</li>
+            </ul>
+
+            <h2>Safe harbour</h2>
+            <p>
+                If you make a good-faith effort to comply with this policy, we will:
+            </p>
+            <ul>
+                <li>Not pursue or support any legal action against you in connection with your research;</li>
+                <li>Work with you to understand and resolve the issue quickly;</li>
+                <li>Recognise your contribution publicly (with your permission) once the issue is resolved.</li>
+            </ul>
+            <p>
+                Please don't access user data beyond the minimum needed to demonstrate
+                the issue, don't degrade the service for other users, and don't publish
+                the vulnerability until we've had a chance to fix it.
+            </p>
+
+            <h2>What we cover internally</h2>
+            <p>
+                Our security posture is documented for HMRC's MTD recognition review at
+                <a href="https://github.com/mitchell1972/bankparse"><code>github.com/mitchell1972/bankparse</code></a>
+                under <code>hmrc/docs/security-questionnaire.md</code>,
+                <code>hmrc/docs/data-handling.md</code>, and
+                <code>hmrc/docs/audit-log.md</code>. Key controls:
+            </p>
+            <ul>
+                <li>HMRC OAuth tokens encrypted at rest with AES-256-GCM, two-key rotation supported.</li>
+                <li>All HMRC API calls write an immutable audit row (bearer tokens stripped before storage).</li>
+                <li>Outbound rate limiting on every HMRC call to prevent runaway abuse.</li>
+                <li>Sentry-based alerting on HMRC 5xx and network failures (5xx only — 4xx is user error, not alertable).</li>
+                <li>CSRF protection on every state-changing endpoint.</li>
+                <li>UK/EU data residency (Railway europe-west4).</li>
+            </ul>
+
+            <div class="meta">
+                <strong>Effective:</strong> {{ effective_date }}<br>
+                <strong>Last updated:</strong> {{ effective_date }}<br>
+                <strong>Canonical URL:</strong> <a href="https://bankscanai.com/security">https://bankscanai.com/security</a>
+            </div>
+        </main>
+
+        <footer>
+            <p><a href="/">← Back to BankScan AI</a> &middot; <a href="/privacy">Privacy</a> &middot; <a href="/terms">Terms</a></p>
+        </footer>
+    </div>
+</body>
+</html>

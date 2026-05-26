@@ -139,6 +139,12 @@ async def lifespan(app):
     task.cancel()
 
 
+# Initialise Sentry BEFORE the FastAPI app is constructed so the
+# integrations can hook into it. No-op without SENTRY_DSN — see
+# hmrc/services/monitoring.py.
+from hmrc.services import monitoring as _monitoring  # noqa: E402
+_monitoring.init_sentry()
+
 # App
 app = FastAPI(title="BankScan AI", version="2.3.0", lifespan=lifespan)
 
@@ -441,6 +447,54 @@ async def terms_page(request: Request):
         request,
         "terms.html",
         {"effective_date": "21 May 2026"},
+    )
+
+
+# ---------------------------------------------------------------------------
+# Security disclosure — RFC 9116 + customer-facing reporting page.
+# HMRC's recognition application explicitly asks for an easy contact
+# method for customers/third parties to report security risks. Without
+# these routes the answer to that question is honestly "No".
+# ---------------------------------------------------------------------------
+
+# RFC 9116 spec: https://datatracker.ietf.org/doc/html/rfc9116
+# Served as text/plain at the well-known location researchers expect.
+# Both contacts listed so the file works whether or not security@
+# is set up on the mail server — Gmail fallback keeps it valid today.
+_SECURITY_TXT = """\
+Contact: mailto:security@bankscanai.com
+Contact: mailto:mitchellagoma@gmail.com
+Expires: 2027-12-31T23:59:59Z
+Preferred-Languages: en
+Canonical: https://bankscanai.com/.well-known/security.txt
+Policy: https://bankscanai.com/security
+"""
+
+
+@app.get("/.well-known/security.txt", response_class=PlainTextResponse)
+async def security_txt():
+    """RFC 9116 security contact file. Security researchers + automated
+    vulnerability scanners (e.g. CVE programs, bug-bounty platforms) look
+    for this at the well-known location."""
+    return _SECURITY_TXT
+
+
+# Some scanners try the legacy /security.txt path before /.well-known/.
+# Serve the same content there too — no harm, makes us findable.
+@app.get("/security.txt", response_class=PlainTextResponse)
+async def security_txt_legacy():
+    return _SECURITY_TXT
+
+
+@app.get("/security", response_class=HTMLResponse)
+async def security_page(request: Request):
+    """Public-facing security/vulnerability disclosure policy. Linked
+    from the footer + referenced in security.txt's Policy field.
+    HMRC's recognition reviewer follows this link from the application."""
+    return templates.TemplateResponse(
+        request,
+        "security.html",
+        {"effective_date": "26 May 2026"},
     )
 
 
@@ -3600,9 +3654,16 @@ async def cancel_subscription(request: Request):
     Idempotent: re-calling on an already-cancelling sub is a no-op.
 
     Returns ``{"status": "ok", "cancel_at": <unix-ts>}`` on success."""
-    if not STRIPE_AVAILABLE or not STRIPE_SECRET_KEY:
-        raise HTTPException(status_code=501, detail="Stripe is not configured.")
-
+    # Auth + has-something-to-cancel check FIRST. A 501 about Stripe config
+    # before these would (a) leak information to anonymous callers about
+    # which routes exist and (b) misorder the tests (an anonymous user
+    # should see 401, not "Stripe not configured"; a free-tier user
+    # should see 400, not 501). The Stripe import-availability check
+    # stays — but the secret-key check is removed: a user can only hold
+    # `stripe_subscription_id` if the key was valid at the time of
+    # checkout, and at this point Stripe.modify() will raise its own
+    # AuthenticationError if the key has since gone stale, which we
+    # catch in the except block below as a 500.
     user = get_current_user(request)
     if not user:
         raise HTTPException(status_code=401, detail="Authentication required.")
@@ -3613,6 +3674,9 @@ async def cancel_subscription(request: Request):
             status_code=400,
             detail="No active subscription to cancel.",
         )
+
+    if not STRIPE_AVAILABLE:
+        raise HTTPException(status_code=501, detail="Stripe library not installed.")
 
     try:
         sub = stripe.Subscription.modify(
