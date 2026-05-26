@@ -139,6 +139,12 @@ async def lifespan(app):
     task.cancel()
 
 
+# Initialise Sentry BEFORE the FastAPI app is constructed so the
+# integrations can hook into it. No-op without SENTRY_DSN — see
+# hmrc/services/monitoring.py.
+from hmrc.services import monitoring as _monitoring  # noqa: E402
+_monitoring.init_sentry()
+
 # App
 app = FastAPI(title="BankScan AI", version="2.3.0", lifespan=lifespan)
 
@@ -3600,9 +3606,16 @@ async def cancel_subscription(request: Request):
     Idempotent: re-calling on an already-cancelling sub is a no-op.
 
     Returns ``{"status": "ok", "cancel_at": <unix-ts>}`` on success."""
-    if not STRIPE_AVAILABLE or not STRIPE_SECRET_KEY:
-        raise HTTPException(status_code=501, detail="Stripe is not configured.")
-
+    # Auth + has-something-to-cancel check FIRST. A 501 about Stripe config
+    # before these would (a) leak information to anonymous callers about
+    # which routes exist and (b) misorder the tests (an anonymous user
+    # should see 401, not "Stripe not configured"; a free-tier user
+    # should see 400, not 501). The Stripe import-availability check
+    # stays — but the secret-key check is removed: a user can only hold
+    # `stripe_subscription_id` if the key was valid at the time of
+    # checkout, and at this point Stripe.modify() will raise its own
+    # AuthenticationError if the key has since gone stale, which we
+    # catch in the except block below as a 500.
     user = get_current_user(request)
     if not user:
         raise HTTPException(status_code=401, detail="Authentication required.")
@@ -3613,6 +3626,9 @@ async def cancel_subscription(request: Request):
             status_code=400,
             detail="No active subscription to cancel.",
         )
+
+    if not STRIPE_AVAILABLE:
+        raise HTTPException(status_code=501, detail="Stripe library not installed.")
 
     try:
         sub = stripe.Subscription.modify(
