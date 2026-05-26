@@ -85,6 +85,39 @@ PERMISSIONS_POLICY = ", ".join(
     ]
 )
 
+# Form-action allowlist. CSP3 extends form-action to apply to the entire
+# redirect chain triggered by a form submission, not just the initial POST
+# target. The HMRC OAuth round-trip is `POST /api/hmrc/connect` → 302 →
+# HMRC authorize URL → … → `GET /api/hmrc/callback`. If form-action is
+# 'self' only, Chrome blocks the 302 to HMRC because it's a different
+# origin, and OAuth silently breaks. Allow the HMRC API origins explicitly,
+# and additionally any origin set in HMRC_BASE_URL at boot (used by tests
+# pointing at a local stub, and by HMRC's own sandbox/prod swap).
+_DEFAULT_HMRC_FORM_ACTION_HOSTS = (
+    "https://test-api.service.hmrc.gov.uk",
+    "https://api.service.hmrc.gov.uk",
+)
+
+
+def _form_action_value() -> str:
+    """Build the `form-action` directive value at module import.
+
+    Always includes 'self' and the two real HMRC API origins. If
+    HMRC_BASE_URL is set (tests / sandbox), its scheme+host+port is added
+    so the e2e stub at e.g. http://127.0.0.1:12345 is allowed too.
+    """
+    sources = ["'self'", *_DEFAULT_HMRC_FORM_ACTION_HOSTS]
+    base = os.environ.get("HMRC_BASE_URL", "").strip()
+    if base:
+        from urllib.parse import urlsplit
+        parts = urlsplit(base)
+        if parts.scheme and parts.netloc:
+            origin = f"{parts.scheme}://{parts.netloc}"
+            if origin not in sources:
+                sources.append(origin)
+    return "form-action " + " ".join(sources)
+
+
 # CSP — enforce mode. Built with:
 #   - default-src 'self'      everything defaults to same-origin
 #   - script-src               allow Google Tag Manager + inline (gtag bootstrap)
@@ -92,8 +125,9 @@ PERMISSIONS_POLICY = ", ".join(
 #   - img-src 'self' data:    inline data: for SVG icons, plus GTM beacons
 #   - connect-src             XHR/fetch — self + GA + Sentry (when configured)
 #   - frame-ancestors 'none'  defence-in-depth for X-Frame-Options
-#   - form-action 'self'      forms can only POST back to us (defeats clickjack-
-#                             submit)
+#   - form-action              self + HMRC OAuth origins (form submissions
+#                              redirect cross-origin during the OAuth
+#                              authorize step — see _form_action_value)
 #   - base-uri 'self'         defeats <base href> hijacking
 #   - object-src 'none'       no Flash/Java/etc.
 #   - upgrade-insecure-requests
@@ -105,7 +139,7 @@ CSP_DIRECTIVES = [
     "font-src 'self' data:",
     "connect-src 'self' https://www.google-analytics.com https://www.googletagmanager.com",
     "frame-ancestors 'none'",
-    "form-action 'self'",
+    _form_action_value(),
     "base-uri 'self'",
     "object-src 'none'",
     "upgrade-insecure-requests",

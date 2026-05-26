@@ -130,6 +130,16 @@ def test_csp_blocks_framing_and_objects_and_upgrades_insecure():
     assert "base-uri 'self'" in CSP_VALUE
 
 
+def test_csp_form_action_includes_hmrc_oauth_origins():
+    """CSP3 extends form-action to apply to redirect targets, not just the
+    initial form POST destination. The HMRC OAuth flow does
+    `POST /api/hmrc/connect → 302 → https://test-api.service.hmrc.gov.uk/oauth/authorize`.
+    If form-action is 'self' only, Chrome blocks the 302 and OAuth silently
+    breaks. Both sandbox and prod HMRC origins MUST be in form-action."""
+    assert "https://test-api.service.hmrc.gov.uk" in CSP_VALUE
+    assert "https://api.service.hmrc.gov.uk" in CSP_VALUE
+
+
 def test_csp_allows_googletagmanager_for_script_and_connect():
     """Our landing page loads gtag — script-src + connect-src must allow it."""
     assert "https://www.googletagmanager.com" in CSP_VALUE
