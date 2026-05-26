@@ -145,8 +145,26 @@
             <h2>1. Who we are</h2>
             <p>
                 BankScan AI ("we", "us") provides an AI-powered tool that converts bank statements and receipts
-                into spreadsheet formats. This policy explains what personal data we collect, how we use it,
+                into spreadsheet formats, and (for MTD-enabled accounts) submits quarterly updates and tax returns
+                to HMRC on your behalf. This policy explains what personal data we collect, how we use it,
                 and who we share it with.
+            </p>
+            <p>
+                <strong>Data controller:</strong> Mitoba Consulting Ltd, trading as BankScan AI, is the data
+                controller for the personal data described in this policy. We are responsible for protecting
+                that data and for honouring your rights under UK GDPR.
+            </p>
+            <p>
+                <strong>Contact:</strong> <a href="mailto:mitchellagoma@gmail.com">mitchellagoma@gmail.com</a>
+                for general queries and data subject requests;
+                <a href="mailto:security@bankscanai.com">security@bankscanai.com</a> for security incidents
+                (see our <a href="/security">security policy</a>).
+            </p>
+            <p>
+                <strong>Supervisory authority:</strong> the Information Commissioner's Office (ICO) regulates
+                data protection in the UK. You have the right to lodge a complaint with the ICO at
+                <a href="https://ico.org.uk/make-a-complaint/" target="_blank" rel="noopener">ico.org.uk/make-a-complaint</a>
+                if you believe we have mishandled your data.
             </p>
 
             <h2>2. What we collect</h2>
@@ -154,17 +172,81 @@
                 <li><strong>Account data:</strong> email address and a hashed password when you sign up.</li>
                 <li><strong>Billing data:</strong> Stripe customer ID and subscription status (Stripe stores payment details — we never see card numbers).</li>
                 <li><strong>File content you upload:</strong> bank statements (PDF/CSV) and receipts (PDF/image) you choose to convert.</li>
+                <li><strong>HMRC connection data (MTD users only):</strong> your National Insurance Number (NINO), HMRC business IDs, and the OAuth access + refresh tokens HMRC issues us on your behalf. All AES-256-GCM encrypted at rest.</li>
+                <li><strong>HMRC submission audit trail (MTD users only):</strong> a record of every quarterly update, End of Period Statement, and final declaration we submit on your behalf, retained for at least 6 years per HMRC's vendor recognition rules.</li>
                 <li><strong>Usage metadata:</strong> parse counts, AI token usage, timestamps, and error logs used for billing, quota enforcement, and debugging.</li>
             </ul>
 
             <h2>3. How we use it</h2>
             <ul>
                 <li>To run the parsing service you asked us to run on your file.</li>
+                <li>To submit your MTD ITSA quarterly updates, EOPS, and final declarations to HMRC on your explicit instruction (MTD users only).</li>
                 <li>To enforce usage quotas, tier limits, and spend caps.</li>
                 <li>To bill for subscriptions and pre-purchased AI credit packs.</li>
                 <li>To detect and prevent abuse (rate limits, daily ceilings).</li>
-                <li>To send transactional emails (signup verification, account alerts). We do not send marketing email.</li>
+                <li>To send transactional emails (signup verification, account alerts, security notifications). We do not send marketing email.</li>
             </ul>
+
+            <h2>3a. Lawful basis for processing (UK GDPR Article 6)</h2>
+            <p>
+                Under UK GDPR Article 6, every personal-data processing activity needs a lawful basis. Ours, by purpose:
+            </p>
+            <table>
+                <thead>
+                    <tr>
+                        <th>What we do</th>
+                        <th>Lawful basis</th>
+                        <th>Reason</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>Run your account (email + password)</td>
+                        <td>Contract — Article 6(1)(b)</td>
+                        <td>Necessary to provide the service you signed up for.</td>
+                    </tr>
+                    <tr>
+                        <td>Parse uploaded bank statements / receipts</td>
+                        <td>Contract — Article 6(1)(b)</td>
+                        <td>You uploaded the file specifically for us to parse it.</td>
+                    </tr>
+                    <tr>
+                        <td>Store HMRC NINO + OAuth tokens</td>
+                        <td>Contract — Article 6(1)(b)</td>
+                        <td>Necessary to make HMRC submissions on your behalf, which is the service you asked us to perform.</td>
+                    </tr>
+                    <tr>
+                        <td>Submit to HMRC on your behalf</td>
+                        <td>Contract — Article 6(1)(b)</td>
+                        <td>Each submission is an explicit user action (you click Submit). The processing is necessary to execute that instruction.</td>
+                    </tr>
+                    <tr>
+                        <td>Retain HMRC audit trail for 6 years</td>
+                        <td>Legal obligation — Article 6(1)(c)</td>
+                        <td>HMRC's MTD vendor recognition rules require us to keep an audit trail of every submission for at least 6 years.</td>
+                    </tr>
+                    <tr>
+                        <td>Process billing (Stripe)</td>
+                        <td>Contract — Article 6(1)(b)</td>
+                        <td>Necessary to take payment for the subscription.</td>
+                    </tr>
+                    <tr>
+                        <td>Rate-limit, abuse detection, security logs</td>
+                        <td>Legitimate interests — Article 6(1)(f)</td>
+                        <td>Necessary to keep the service running for all users. Balanced against minimal-data collection.</td>
+                    </tr>
+                    <tr>
+                        <td>Transactional email (verification, alerts)</td>
+                        <td>Contract — Article 6(1)(b)</td>
+                        <td>Necessary to operate the account (e.g. confirming your email is valid).</td>
+                    </tr>
+                </tbody>
+            </table>
+            <p>
+                We do <strong>not</strong> rely on consent (Article 6(1)(a)) for any of the above — which means
+                we are also not collecting any personal data for purposes that would require your opt-in.
+                We do not run marketing email lists, advertising profiles, or third-party analytics.
+            </p>
 
             <h2>4. AI processing &amp; sub-processors</h2>
             <p>
@@ -237,11 +319,35 @@
                 accordance with their own retention policies.
             </p>
 
-            <h2>7. Your rights (UK/EU GDPR)</h2>
+            <h2>7. Your rights (UK GDPR)</h2>
             <p>
-                If you are in the UK or EU, you have the right to access, correct, delete, or export your personal data,
-                and the right to object to processing. To exercise these rights, contact us at the email listed on our
-                support page.
+                If you are in the UK or EU, you have the following rights over your personal data. To exercise
+                any of them, email <a href="mailto:mitchellagoma@gmail.com">mitchellagoma@gmail.com</a>. We
+                respond within 30 days (extendable to 90 for complex requests, with notice).
+            </p>
+            <ul>
+                <li><strong>Right of access (Art. 15):</strong> request a copy of the personal data we hold about you.</li>
+                <li><strong>Right to rectification (Art. 16):</strong> correct inaccurate or incomplete data.</li>
+                <li><strong>Right to erasure / "right to be forgotten" (Art. 17):</strong> request deletion of your data. Subject to legal retention obligations (HMRC requires we keep your submission audit trail for 6 years; on account closure we anonymise the user link).</li>
+                <li><strong>Right to restriction of processing (Art. 18):</strong> ask us to stop using your data while a dispute is being resolved.</li>
+                <li><strong>Right to data portability (Art. 20):</strong> receive your data in a machine-readable format (we export to JSON/CSV).</li>
+                <li><strong>Right to object (Art. 21):</strong> object to any processing we do under "legitimate interests" (mainly rate-limiting and security logs).</li>
+                <li><strong>Right not to be subject to automated decision-making (Art. 22):</strong> we don't make any decisions about you using purely automated processing. AI categorisation suggestions are always user-reviewable before submission.</li>
+                <li><strong>Right to lodge a complaint with the ICO:</strong> if we mishandle your data, complain at <a href="https://ico.org.uk/make-a-complaint/" target="_blank" rel="noopener">ico.org.uk/make-a-complaint</a> or call 0303 123 1113.</li>
+            </ul>
+
+            <h2 id="cookies">7a. Cookies</h2>
+            <p>
+                We use the minimum cookies needed for the service to function:
+            </p>
+            <ul>
+                <li><code>bp_auth</code> — your authenticated session, HttpOnly, Secure, SameSite=Lax. Strictly necessary; no consent banner required under PECR.</li>
+                <li><code>bp_csrf</code> — CSRF protection token (double-submit pattern). Strictly necessary.</li>
+            </ul>
+            <p>
+                We do <strong>not</strong> use third-party analytics cookies, advertising cookies, or any non-essential
+                tracking. There is no cookie banner because nothing we set requires opt-in consent under PECR /
+                UK GDPR.
             </p>
 
             <h2>8. Children</h2>
