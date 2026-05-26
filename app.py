@@ -450,6 +450,54 @@ async def terms_page(request: Request):
     )
 
 
+# ---------------------------------------------------------------------------
+# Security disclosure — RFC 9116 + customer-facing reporting page.
+# HMRC's recognition application explicitly asks for an easy contact
+# method for customers/third parties to report security risks. Without
+# these routes the answer to that question is honestly "No".
+# ---------------------------------------------------------------------------
+
+# RFC 9116 spec: https://datatracker.ietf.org/doc/html/rfc9116
+# Served as text/plain at the well-known location researchers expect.
+# Both contacts listed so the file works whether or not security@
+# is set up on the mail server — Gmail fallback keeps it valid today.
+_SECURITY_TXT = """\
+Contact: mailto:security@bankscanai.com
+Contact: mailto:mitchellagoma@gmail.com
+Expires: 2027-12-31T23:59:59Z
+Preferred-Languages: en
+Canonical: https://bankscanai.com/.well-known/security.txt
+Policy: https://bankscanai.com/security
+"""
+
+
+@app.get("/.well-known/security.txt", response_class=PlainTextResponse)
+async def security_txt():
+    """RFC 9116 security contact file. Security researchers + automated
+    vulnerability scanners (e.g. CVE programs, bug-bounty platforms) look
+    for this at the well-known location."""
+    return _SECURITY_TXT
+
+
+# Some scanners try the legacy /security.txt path before /.well-known/.
+# Serve the same content there too — no harm, makes us findable.
+@app.get("/security.txt", response_class=PlainTextResponse)
+async def security_txt_legacy():
+    return _SECURITY_TXT
+
+
+@app.get("/security", response_class=HTMLResponse)
+async def security_page(request: Request):
+    """Public-facing security/vulnerability disclosure policy. Linked
+    from the footer + referenced in security.txt's Policy field.
+    HMRC's recognition reviewer follows this link from the application."""
+    return templates.TemplateResponse(
+        request,
+        "security.html",
+        {"effective_date": "26 May 2026"},
+    )
+
+
 # ==========================================================================
 # Auth API — register, login, logout
 # ==========================================================================
