@@ -4326,6 +4326,14 @@ BLOG_POSTS = {
         "template": "blog/bank-statement-conversion-freelancers.html",
         "keywords": "bank statement conversion freelancers UK, self-employed bank statement to Excel, sole trader bank statement processing, freelancer Self Assessment bank statements, HMRC record keeping sole trader, convert bank statements for tax return freelancer, freelance bookkeeping automation UK, self-employed expense tracking bank statements",
     },
+    "bank-statement-conversion-small-business-owners": {
+        "title": "Bank Statement Conversion for Small Business Owners — Complete UK Guide (2026)",
+        "description": "Running a small Ltd company and drowning in bank statements? Complete guide to converting business bank statements for bookkeeping, VAT returns, MTD compliance, and corporation tax — built for directors who do their own books after hours.",
+        "date": "2026-05-27",
+        "author": "BankScan AI Team",
+        "template": "blog/bank-statement-conversion-small-business.html",
+        "keywords": "bank statement conversion small business UK, small business bank statement to Excel, Ltd company bank statement processing, MTD for VAT bank statements, director account bank statement conversion, small business bookkeeping automation, convert business bank statements for corporation tax, multi-account bank statement management UK",
+    },
 }
 
 
