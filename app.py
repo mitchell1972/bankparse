@@ -4342,6 +4342,14 @@ BLOG_POSTS = {
         "template": "blog/choosing-bank-statement-converter-buyers-guide.html",
         "keywords": "bank statement converter buyer's guide UK, how to choose bank statement converter, best bank statement conversion tool for accountants, bank statement converter evaluation criteria, bank statement converter questions to ask, free vs paid bank statement converter, bank statement converter comparison checklist UK",
     },
+    "bank-reconciliation-automation-uk-guide": {
+        "title": "Bank Reconciliation Automation — A Complete Guide for UK Accountants (2026)",
+        "description": "Still manually matching bank transactions at 10pm? Complete guide to bank reconciliation automation for UK accountants and bookkeepers — practical tools, workflows, and the real ROI of automating your bank rec process.",
+        "date": "2026-05-29",
+        "author": "BankScan AI Team",
+        "template": "blog/bank-reconciliation-automation-uk-guide.html",
+        "keywords": "bank reconciliation automation UK, automate bank reconciliation, bank rec software for accountants, reconciliation automation tools UK, auto-match bank transactions, bank statement reconciliation software, bookkeeping reconciliation automation, reduce reconciliation time accounting",
+    },
 }
 
 
