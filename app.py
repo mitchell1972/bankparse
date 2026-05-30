@@ -4350,6 +4350,14 @@ BLOG_POSTS = {
         "template": "blog/bank-reconciliation-automation-uk-guide.html",
         "keywords": "bank reconciliation automation UK, automate bank reconciliation, bank rec software for accountants, reconciliation automation tools UK, auto-match bank transactions, bank statement reconciliation software, bookkeeping reconciliation automation, reduce reconciliation time accounting",
     },
+    "quickbooks-bank-statement-import-guide": {
+        "title": "QuickBooks Bank Statement Import Guide for UK Accountants (2026)",
+        "description": "Your client's bank statement imports into QuickBooks as garbled data at 10pm. Here's exactly why QuickBooks import fails, which UK banks cause the worst problems, and what actually works.",
+        "date": "2026-05-30",
+        "author": "BankScan AI Team",
+        "template": "blog/quickbooks-bank-statement-import-guide.html",
+        "keywords": "QuickBooks bank statement import UK, QuickBooks import guide accountants, QuickBooks CSV import not working, QuickBooks bank feed import errors, import bank statements into QuickBooks Online, QuickBooks PDF statement import fails, QuickBooks wrong date format, QuickBooks transaction mismatch, convert bank statement for QuickBooks UK",
+    },
 }
 
 
