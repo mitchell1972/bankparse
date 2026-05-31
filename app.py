@@ -4358,6 +4358,14 @@ BLOG_POSTS = {
         "template": "blog/quickbooks-bank-statement-import-guide.html",
         "keywords": "QuickBooks bank statement import UK, QuickBooks import guide accountants, QuickBooks CSV import not working, QuickBooks bank feed import errors, import bank statements into QuickBooks Online, QuickBooks PDF statement import fails, QuickBooks wrong date format, QuickBooks transaction mismatch, convert bank statement for QuickBooks UK",
     },
+    "xero-bank-statement-import-guide": {
+        "title": "Xero Bank Statement Import Guide for UK Accountants (2026)",
+        "description": "Your client's bank statement just imported into Xero as garbled data at 10pm. Here's exactly why Xero import fails, which UK banks cause the worst problems, and what actually works in 2026.",
+        "date": "2026-05-31",
+        "author": "BankScan AI Team",
+        "template": "blog/xero-bank-statement-import-guide.html",
+        "keywords": "Xero bank statement import UK, Xero CSV import not working, import bank statements into Xero, Xero bank feed not working UK, Xero PDF statement import, Xero bank reconciliation import problems, multi-currency statement import Xero, convert bank statement for Xero UK",
+    },
 }
 
 
