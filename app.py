@@ -4366,6 +4366,14 @@ BLOG_POSTS = {
         "template": "blog/xero-bank-statement-import-guide.html",
         "keywords": "Xero bank statement import UK, Xero CSV import not working, import bank statements into Xero, Xero bank feed not working UK, Xero PDF statement import, Xero bank reconciliation import problems, multi-currency statement import Xero, convert bank statement for Xero UK",
     },
+    "sage-bank-statement-import-guide": {
+        "title": "Sage Bank Statement Import Guide for UK Accountants (2026)",
+        "description": "Sage bank feeds failing with UK statements? Complete guide to CSV imports, date format fixes, VAT handling, and PDF conversion for Sage 50 and Sage Business Cloud.",
+        "date": "2026-06-01",
+        "author": "BankScan AI Team",
+        "template": "blog/sage-bank-statement-import-guide.html",
+        "keywords": "Sage bank statement import UK, Sage 50 CSV import guide, Sage Business Cloud bank feed not working, import PDF bank statement into Sage, Sage bank statement import errors, convert bank statement for Sage UK, Sage import date format wrong, Sage accounting bank statement setup UK",
+    },
 }
 
 
