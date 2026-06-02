@@ -4374,6 +4374,14 @@ BLOG_POSTS = {
         "template": "blog/sage-bank-statement-import-guide.html",
         "keywords": "Sage bank statement import UK, Sage 50 CSV import guide, Sage Business Cloud bank feed not working, import PDF bank statement into Sage, Sage bank statement import errors, convert bank statement for Sage UK, Sage import date format wrong, Sage accounting bank statement setup UK",
     },
+    "bank-statement-automation-accounting-firms": {
+        "title": "Bank Statement Automation for Accounting Firms — How to Scale Across 30–200+ Clients",
+        "description": "Bank statement data entry doesn't scale past 30 clients. See the real maths at 50, 100, and 200 clients, and how automating statement processing transforms practice margins.",
+        "date": "2026-06-02",
+        "author": "BankScan AI Team",
+        "template": "blog/bank-statement-automation-accounting-firms.html",
+        "keywords": "bank statement automation for accounting firms UK, automate bank statement data entry accounting practice, bank statement processing for multiple clients, accounting firm bank statement conversion scaling, practice management bank statement automation, reduce bank statement processing cost accounting firm, automated bank statement processing ROI for accountants, BankScan AI 22-bank UK parser",
+    },
 }
 
 
