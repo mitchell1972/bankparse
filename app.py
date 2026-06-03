@@ -4382,6 +4382,14 @@ BLOG_POSTS = {
         "template": "blog/bank-statement-automation-accounting-firms.html",
         "keywords": "bank statement automation for accounting firms UK, automate bank statement data entry accounting practice, bank statement processing for multiple clients, accounting firm bank statement conversion scaling, practice management bank statement automation, reduce bank statement processing cost accounting firm, automated bank statement processing ROI for accountants, BankScan AI 22-bank UK parser",
     },
+    "vat-bank-statement-reconciliation-guide": {
+        "title": "VAT Bank Statement Reconciliation Guide for UK Businesses (2026)",
+        "description": "Complete guide to VAT bank statement reconciliation for UK businesses. Covers common VAT reconciliation errors, HMRC MTD requirements, step-by-step process, practice scenarios, and how to avoid penalties.",
+        "date": "2026-06-03",
+        "author": "BankScan AI Team",
+        "template": "blog/vat-bank-statement-reconciliation-guide.html",
+        "keywords": "VAT bank statement reconciliation, VAT return bank statement preparation, Making Tax Digital bank data, HMRC VAT reconciliation guide, bank statement VAT categories, MTD for VAT bank statements, UK VAT reconciliation mistakes, automated VAT bank statement reconciliation",
+    },
 }
 
 
