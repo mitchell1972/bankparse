@@ -4390,6 +4390,14 @@ BLOG_POSTS = {
         "template": "blog/vat-bank-statement-reconciliation-guide.html",
         "keywords": "VAT bank statement reconciliation, VAT return bank statement preparation, Making Tax Digital bank data, HMRC VAT reconciliation guide, bank statement VAT categories, MTD for VAT bank statements, UK VAT reconciliation mistakes, automated VAT bank statement reconciliation",
     },
+    "paper-bank-statement-digitisation-guide-uk-bookkeepers": {
+        "title": "Paper Bank Statement Digitisation Guide for UK Bookkeepers (2026)",
+        "description": "Still typing paper bank statements by hand at 10pm? Complete guide to digitising paper statements for UK bookkeepers — scanning vs photographing, OCR pitfalls, batch workflows, and how BankScan AI eliminates manual data entry entirely.",
+        "date": "2026-06-04",
+        "author": "BankScan AI Team",
+        "template": "blog/paper-bank-statement-digitisation-guide-uk-bookkeepers.html",
+        "keywords": "paper bank statement digitisation UK, scan bank statements to Excel, photograph bank statement OCR, paper statement to spreadsheet bookkeepers, digitise paper bank statements UK, convert paper bank statements for Xero, paper bank statement OCR guide, scan paper statements for QuickBooks",
+    },
 }
 
 
