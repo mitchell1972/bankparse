@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- Google tag (gtag.js) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-Y9YR7G0D7Z"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', 'G-Y9YR7G0D7Z');
+    </script>
+    <title>How to Import Bank Statements into FreeAgent — Complete UK Guide (2026) | BankScan AI</title>
+    <meta name="description" content="Step-by-step guide to importing any UK bank statement into FreeAgent. Covers CSV formatting, bank feed limitations, common import errors with bank-specific fixes, and how to pre-clean statements for FreeAgent-compatible import.">
+    <meta name="keywords" content="FreeAgent bank statement import UK, import bank statements into FreeAgent, FreeAgent CSV upload format, FreeAgent bank feed not working, convert bank statement for FreeAgent, FreeAgent PDF statement import, FreeAgent import date format wrong, FreeAgent bank statement converter UK">
+    <meta name="author" content="BankScan AI Team">
+    <meta name="robots" content="index, follow">
+    <link rel="canonical" href="https://bankscanai.com/blog/import-bank-statements-into-freeagent-guide">
+    <link rel="alternate" hreflang="en-GB" href="https://bankscanai.com/blog/import-bank-statements-into-freeagent-guide">
+
+    <meta property="og:type" content="article">
+    <meta property="og:url" content="https://bankscanai.com/blog/import-bank-statements-into-freeagent-guide">
+    <meta property="og:title" content="How to Import Bank Statements into FreeAgent — Complete UK Guide (2026)">
+    <meta property="og:description" content="FreeAgent bank feed not syncing? Step-by-step guide to importing any UK bank statement into FreeAgent — CSV formatting rules, common date errors, and bank-specific fixes for NatWest, Monzo, HSBC, Barclays, and Revolut.">
+    <meta property="og:site_name" content="BankScan AI">
+    <meta property="og:locale" content="en_GB">
+    <meta property="article:published_time" content="2026-06-05">
+    <meta property="article:author" content="BankScan AI Team">
+
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="How to Import Bank Statements into FreeAgent — Complete UK Guide (2026)">
+    <meta name="twitter:description" content="FreeAgent bank feed not syncing? Step-by-step guide to importing any UK bank statement into FreeAgent — CSV formatting rules, date errors, and bank-specific fixes.">
+
+    <!-- Article Schema -->
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "Article",
+        "headline": "How to Import Bank Statements into FreeAgent — Complete UK Guide (2026)",
+        "description": "Step-by-step guide to importing any UK bank statement into FreeAgent. Covers CSV formatting, bank feed limitations, common import errors with bank-specific fixes, and how to pre-clean statements for FreeAgent-compatible import.",
+        "author": {"@type": "Organization", "name": "BankScan AI"},
+        "publisher": {"@type": "Organization", "name": "BankScan AI", "url": "https://bankscanai.com"},
+        "datePublished": "2026-06-05",
+        "dateModified": "2026-06-05",
+        "mainEntityOfPage": "https://bankscanai.com/blog/import-bank-statements-into-freeagent-guide"
+    }
+    </script>
+
+    <!-- FAQ Schema -->
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "FAQPage",
+        "mainEntity": [
+            {
+                "@type": "Question",
+                "name": "Can I import a scanned bank statement PDF into FreeAgent?",
+                "acceptedAnswer": {
+                    "@type": "Answer",
+                    "text": "FreeAgent cannot read PDF bank statements directly — it only accepts CSV, OFX, QIF, or TSV files for statement imports. To import a scanned or PDF bank statement into FreeAgent, you must first convert the PDF to a FreeAgent-compatible CSV using a tool with OCR capability. BankScan AI extracts transaction data from scanned and digital bank statement PDFs and outputs a clean CSV formatted specifically for FreeAgent's import requirements."
+                }
+            },
+            {
+                "@type": "Question",
+                "name": "What CSV format does FreeAgent require for bank statement imports?",
+                "acceptedAnswer": {
+                    "@type": "Answer",
+                    "text": "FreeAgent expects a CSV with columns in a specific order: Date (DD/MM/YYYY), Description, Amount. The amount column should use positive values for money in (credits) and negative values for money out (debits). There should be no running balance column — including one is the most common cause of import failures. Headers can be included but should match FreeAgent's expected names exactly. BankScan AI's FreeAgent export formats CSV files to this exact specification automatically."
+                }
+            },
+            {
+                "@type": "Question",
+                "name": "Why has my FreeAgent bank feed stopped working?",
+                "acceptedAnswer": {
+                    "@type": "Answer",
+                    "text": "FreeAgent bank feeds rely on Open Banking connections that can fail for several reasons: the bank has updated its security requirements and requires re-authorisation, the 90-day consent period has expired, or the bank's Open Banking API is experiencing an outage. To restore the feed, go to Banking > Bank Accounts in FreeAgent, find the affected account, and select 'Reconnect'. If your bank does not support FreeAgent's bank feed or the feed remains unreliable, manual CSV import using a tool like BankScan AI is the most reliable alternative."
+                }
+            },
+            {
+                "@type": "Question",
+                "name": "How do I fix the date format error when importing into FreeAgent?",
+                "acceptedAnswer": {
+                    "@type": "Answer",
+                    "text": "The '#1 cause of FreeAgent import failures is incorrect date formatting. FreeAgent requires dates in DD/MM/YYYY format. If your CSV uses YYYY-MM-DD (common with digital bank exports), MM/DD/YYYY (common with US-formatted tools), or has inconsistent date formatting, FreeAgent will reject the import. Open your CSV in a spreadsheet, ensure every date cell is formatted as DD/MM/YYYY, check that dates like '05/03/2026' remain 5 March rather than being interpreted as 3 May, and save before reimporting. BankScan AI automatically outputs FreeAgent-compatible dates."
+                }
+            },
+            {
+                "@type": "Question",
+                "name": "Is my bank data secure when using a third-party converter for FreeAgent imports?",
+                "acceptedAnswer": {
+                    "@type": "Answer",
+                    "text": "Data security depends entirely on the tool you choose. Free generic online converters frequently store uploaded files on their servers without clear data retention policies, which creates UK GDPR compliance risks for accountants handling client financial data with account numbers and full transaction histories. BankScan AI uses encryption in transit and at rest, automatically deletes all uploaded files after processing, and is designed specifically for handling sensitive UK financial documents in compliance with UK GDPR requirements."
+                }
+            }
+        ]
+    }
+    </script>
+
+    <style>
+        :root {
+            --primary: #1B4F72;
+            --primary-light: #2E86C1;
+            --accent: #27AE60;
+            --bg: #FAFBFC;
+            --bg-alt: #F0F4F8;
+            --text: #2C3E50;
+            --text-light: #5D6D7E;
+            --white: #FFFFFF;
+            --border: #D5DBDE;
+            --shadow: 0 2px 16px rgba(27, 79, 114, 0.08);
+            --radius: 12px;
+            --radius-sm: 8px;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            color: var(--text); background: var(--bg); line-height: 1.7; -webkit-font-smoothing: antialiased;
+        }
+        .header {
+            position: sticky; top: 0; z-index: 100;
+            background: rgba(255,255,255,0.95); backdrop-filter: blur(12px);
+            border-bottom: 1px solid var(--border);
+        }
+        .header-inner {
+            max-width: 1140px; margin: 0 auto; padding: 0 24px;
+            display: flex; align-items: center; justify-content: space-between; height: 64px;
+        }
+        .logo { font-size: 1.35rem; font-weight: 700; color: var(--primary); text-decoration: none; letter-spacing: -0.5px; }
+        .logo span { color: var(--accent); }
+        .nav { display: flex; gap: 28px; align-items: center; }
+        .nav a { text-decoration: none; color: var(--text-light); font-size: 0.9rem; font-weight: 500; transition: color 0.2s; }
+        .nav a:hover { color: var(--primary); }
+        .nav-cta {
+            background: var(--accent) !important; color: var(--white) !important;
+            padding: 8px 20px; border-radius: 6px; font-weight: 600 !important;
+        }
+        .nav-cta:hover { background: #219a52 !important; }
+
+        .article-hero {
+            background: linear-gradient(135deg, var(--primary) 0%, #154360 100%);
+            color: var(--white); padding: 60px 24px 50px; text-align: center;
+        }
+        .article-hero .breadcrumb { font-size: 0.85rem; opacity: 0.7; margin-bottom: 16px; }
+        .article-hero .breadcrumb a { color: var(--white); text-decoration: none; }
+        .article-hero .breadcrumb a:hover { text-decoration: underline; }
+        .article-hero h1 { font-size: 2.2rem; font-weight: 700; max-width: 760px; margin: 0 auto 16px; line-height: 1.25; }
+        .article-hero .meta { font-size: 0.9rem; opacity: 0.75; }
+
+        .article { max-width: 760px; margin: 0 auto; padding: 48px 24px 64px; }
+        .article h2 { font-size: 1.5rem; color: var(--primary); margin: 40px 0 16px; font-weight: 700; line-height: 1.3; }
+        .article h3 { font-size: 1.15rem; color: var(--text); margin: 28px 0 12px; font-weight: 600; }
+        .article p { margin-bottom: 18px; font-size: 1.02rem; }
+        .article ul, .article ol { margin: 0 0 18px 24px; }
+        .article li { margin-bottom: 6px; }
+        .article a { color: var(--primary-light); text-decoration: underline; }
+        .article strong { color: var(--text); }
+
+        .pros-cons { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 16px 0 24px; }
+        .pros, .cons {
+            background: var(--white); border: 1px solid var(--border); border-radius: var(--radius-sm);
+            padding: 16px; font-size: 0.92rem;
+        }
+        .pros { border-left: 4px solid var(--accent); }
+        .cons { border-left: 4px solid #E74C3C; }
+        .pros h4, .cons h4 { font-size: 0.85rem; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
+        .pros h4 { color: var(--accent); }
+        .cons h4 { color: #E74C3C; }
+        .pros ul, .cons ul { margin: 0; padding-left: 16px; }
+        .pros li, .cons li { margin-bottom: 4px; font-size: 0.9rem; }
+
+        .time-estimate {
+            display: inline-block; background: var(--bg-alt); border-radius: 20px;
+            padding: 4px 14px; font-size: 0.82rem; color: var(--text-light); margin-bottom: 16px;
+        }
+
+        .comparison-table { width: 100%; border-collapse: collapse; margin: 24px 0; font-size: 0.88rem; }
+        .comparison-table th {
+            background: var(--primary); color: var(--white); padding: 12px 10px;
+            text-align: left; font-weight: 600; font-size: 0.82rem;
+        }
+        .comparison-table td { padding: 10px; border-bottom: 1px solid var(--border); }
+        .comparison-table tr:nth-child(even) { background: var(--bg-alt); }
+        .comparison-table .highlight { background: #E8F8F0 !important; font-weight: 600; }
+
+        .cta-box {
+            background: linear-gradient(135deg, var(--primary) 0%, #154360 100%);
+            color: var(--white); border-radius: var(--radius); padding: 32px; text-align: center;
+            margin: 40px 0;
+        }
+        .cta-box h3 { font-size: 1.3rem; margin-bottom: 12px; color: var(--white); }
+        .cta-box p { opacity: 0.85; margin-bottom: 20px; font-size: 1rem; }
+        .cta-btn {
+            display: inline-block; background: var(--accent); color: var(--white);
+            padding: 14px 32px; border-radius: 8px; text-decoration: none;
+            font-weight: 700; font-size: 1rem; transition: background 0.2s;
+        }
+        .cta-btn:hover { background: #219a52; color: var(--white); }
+
+        .warning-box {
+            background: #FEF9E7; border: 1px solid #F9E79F; border-left: 4px solid #F39C12;
+            border-radius: var(--radius-sm); padding: 16px 20px; margin: 16px 0 24px;
+            font-size: 0.93rem;
+        }
+        .warning-box strong { color: #B7950B; }
+
+        .footer {
+            background: var(--primary); color: rgba(255,255,255,0.7); padding: 40px 24px; text-align: center; font-size: 0.85rem;
+        }
+        .footer a { color: rgba(255,255,255,0.9); text-decoration: none; }
+
+        @media (max-width: 600px) {
+            .article-hero h1 { font-size: 1.5rem; }
+            .pros-cons { grid-template-columns: 1fr; }
+            .comparison-table { font-size: 0.78rem; }
+            .comparison-table th, .comparison-table td { padding: 8px 6px; }
+        }
+    </style>
+</head>
+<body>
+
+<header class="header">
+    <div class="header-inner">
+        <a href="/landing" class="logo">BankScan<span>AI</span></a>
+        <nav class="nav">
+            <a href="/blog">Blog</a>
+            <a href="/tools">Tools</a>
+            <a href="/landing">Home</a>
+            <a href="/login" class="nav-cta">Try Free</a>
+        </nav>
+    </div>
+</header>
+
+<section class="article-hero">
+    <div class="breadcrumb"><a href="/landing">Home</a> &rsaquo; <a href="/blog">Blog</a> &rsaquo; FreeAgent Bank Statement Import</div>
+    <h1>How to Import Bank Statements into FreeAgent &mdash; Complete UK Guide (2026)</h1>
+    <div class="meta">5 June 2026 &middot; 11 min read &middot; BankScan AI Team</div>
+</section>
+
+<article class="article">
+
+    <p>It is 10pm. You have a client's VAT return due tomorrow. FreeAgent's bank feed stopped syncing three weeks ago and nothing you do will bring it back. Now you are staring at a PDF bank statement, a blank spreadsheet, and the sinking realisation that your evening is about to disappear into manual CSV formatting.</p>
+
+    <p>If this sounds familiar, you are not alone. FreeAgent has over 150,000 UK users — mostly freelancers, contractors, and small business owners — and its bank feed is a genuine source of frustration. NatWest, RBS, and Mettle give FreeAgent to their business customers for free, which means there is a massive overlap between FreeAgent users and people whose bank feeds randomly stop working.</p>
+
+    <p>This guide covers every method of getting bank statements into FreeAgent in 2026: what the bank feed actually does, why CSV imports fail, how to fix them, and how to pre-clean bank statements from 22+ UK banks for seamless FreeAgent import.</p>
+
+
+    <h2>Understanding FreeAgent's Bank Import Options</h2>
+
+    <p>FreeAgent gives you three ways to get bank transactions into your account. Each has strengths and genuine limitations. Knowing which to use — and when — saves you from the 10pm panic scenario above.</p>
+
+    <h3>1. Bank Feed (Open Banking)</h3>
+    <p>FreeAgent's preferred method. When it works, transactions from your bank appear in FreeAgent automatically, usually within 24 hours. The feed uses Open Banking APIs to connect directly to your bank. It requires you to re-authorise the connection every 90 days, and this is where most problems start — missed re-authorisation means the feed goes silent. Some banks (notably Revolut, some business accounts, and certain building societies) do not support FreeAgent's bank feed at all.</p>
+
+    <h3>2. Manual Statement Upload</h3>
+    <p>FreeAgent accepts CSV, OFX, QIF, and TSV files. You download a statement from your bank's online portal, then upload it into FreeAgent. This is the fallback when the bank feed fails — and for many UK banks, it is the only option besides typing everything in by hand. The problem: each bank exports statements in its own format, and FreeAgent is picky about what it accepts.</p>
+
+    <h3>3. Manual Entry</h3>
+    <p>Typing transactions one at a time. For a business with three transactions a month, this is fine. For anyone with actual banking activity, it is a last resort.</p>
+
+    <div class="pros-cons">
+        <div class="pros">
+            <h4>Bank Feed Pros</h4>
+            <ul>
+                <li>No manual data entry once connected</li>
+                <li>Transactions appear automatically</li>
+                <li>Reconciliation is straightforward</li>
+            </ul>
+        </div>
+        <div class="cons">
+            <h4>Bank Feed Cons</h4>
+            <ul>
+                <li>90-day re-authorisation requirement</li>
+                <li>Not all UK banks supported</li>
+                <li>Cannot feed historical data (backfill)</li>
+            </ul>
+        </div>
+    </div>
+
+
+    <h2>Common FreeAgent Import Errors (and Why They Happen)</h2>
+
+    <p>When a CSV upload fails in FreeAgent, the error message is rarely helpful. Here are the real reasons imports fail, based on what we see processing thousands of UK bank statements:</p>
+
+    <h3>Date Format: DD/MM/YYYY or Nothing</h3>
+    <p>FreeAgent insists on DD/MM/YYYY. If your CSV contains any other date format — YYYY-MM-DD (common in digital bank exports), MM/DD/YYYY (common in US-formatted tools), or mixed formats — the import will fail silently or assign transactions to the wrong dates. A statement dated 05/03/2026 should be 5 March. If your spreadsheet software has helpfully "corrected" it to 3 May, FreeAgent will import it as May, and your reconciliation will be a mess.</p>
+
+    <div class="warning-box">
+        <strong>Warning:</strong> The #1 cause of FreeAgent import failures is incorrect date formatting. Before uploading any CSV, open it and check that every date uses DD/MM/YYYY format. If you see any YYYY-MM-DD or MM/DD/YYYY dates, fix them before importing — or use a conversion tool that outputs FreeAgent-compatible dates automatically.
+    </div>
+
+    <h3>Column Mapping Confusion</h3>
+    <p>FreeAgent expects columns in a specific order when it cannot automatically detect headers: Date, Description, Amount. If your CSV has columns in a different order — or has extra columns like running balance, transaction type codes, or bank reference numbers — FreeAgent will either reject the file or map amounts to the wrong column. The most dangerous scenario: FreeAgent reads the running balance column as the transaction amount, creating a reconciliation nightmare.</p>
+
+    <h3>Multi-Line Transaction Descriptions</h3>
+    <p>Several UK banks (HSBC, Barclays, Lloyds) wrap transaction descriptions across multiple lines in their PDF statements. When these are exported to CSV by generic tools, each line becomes its own row, producing phantom transactions with no amounts and descriptions split across cells. FreeAgent cannot process these mangled CSVs.</p>
+
+    <h3>Amount Sign Confusion</h3>
+    <p>FreeAgent expects positive values for money received (credits) and negative values for money spent (debits) in a single Amount column. Many banks export separate Credit and Debit columns instead, which FreeAgent does not handle natively. You must merge these into a single Amount column with correct positive/negative values before importing.</p>
+
+
+    <h2>How to Prepare Bank Statements for FreeAgent Import</h2>
+
+    <p>Here is the step-by-step process for getting any UK bank statement into FreeAgent, whether the bank feed is working or not:</p>
+
+    <ol>
+        <li><strong>Get your bank statement</strong> &mdash; Download it from your bank's online portal as a PDF or CSV. If your bank offers a "FreeAgent-compatible export" option, use it — but most do not. If you have a scanned or photographed paper statement, you will need OCR to extract the data first.</li>
+        <li><strong>Convert to a clean CSV</strong> &mdash; If your bank exported a CSV directly, check the date format and column order against FreeAgent's requirements. If your bank only provides PDF statements, use <a href="/solutions/import-bank-statements-into-freeagent">BankScan AI's FreeAgent converter</a> to extract the transactions into a properly formatted CSV. This step handles multi-line descriptions, date format correction, and Credit/Debit column merging automatically.</li>
+        <li><strong>Verify the CSV</strong> &mdash; Open the CSV in a spreadsheet. Confirm that all dates are DD/MM/YYYY, the Amount column uses negative values for debits and positive for credits, there is no running balance column, and the total of transactions matches your statement's closing balance. This two-minute check prevents most import problems.</li>
+        <li><strong>Upload to FreeAgent</strong> &mdash; In FreeAgent, go to Banking &rarr; Bank Accounts, select the relevant account, and click "Upload a Statement". Follow the prompts to map columns if FreeAgent does not auto-detect them, then review the imported transactions before confirming.</li>
+    </ol>
+
+    <p>For bulk processing — if you handle multiple client accounts or several months of statements — <a href="/tools">BankScan AI's batch converter</a> processes multiple statements at once and outputs FreeAgent-ready CSVs for all of them in a single workflow.</p>
+
+
+    <h2>Bank-Specific FreeAgent Import Challenges</h2>
+
+    <p>Every UK bank exports statements differently. Here is what to watch for with the banks most commonly used by FreeAgent customers:</p>
+
+    <h3>NatWest / RBS / Mettle</h3>
+    <p>These banks are the trio that offer FreeAgent free to business account holders, so their users are disproportionately affected by import problems. NatWest's bank feed through FreeAgent is generally reliable, but when it fails, the CSV exports from NatWest's online banking platform include a Running Balance column that FreeAgent frequently misinterprets as the transaction amount. Remove this column before importing. Mettle (NatWest's digital business account) does not offer CSV downloads in-app — you must use the web portal.</p>
+
+    <h3>Monzo (17-Column CSV)</h3>
+    <p>Monzo exports CSVs with 17 columns. FreeAgent needs 3. Every column beyond those three — category, merchant ID, local currency amount, notes and tags, receipt URL — is a potential source of mapping errors. <a href="/tools/convert-monzo-statement-to-excel">Monzo's CSV needs significant column pruning</a> before FreeAgent will accept it, and the Date column must be reformatted from Monzo's default ISO format to DD/MM/YYYY.</p>
+
+    <h3>HSBC (Multi-Line Descriptions)</h3>
+    <p>HSBC statements wrap transaction descriptions across multiple lines. <a href="/tools/convert-hsbc-statement-to-excel">Converting HSBC statements</a> for FreeAgent import means merging these lines back into single transactions, which generic tools consistently fail to do. HSBC also uses DD/MM/YYYY dates by default (good for FreeAgent) but some CSV exports add a timestamp suffix that must be stripped.</p>
+
+    <h3>Barclays (Invisible Formatting Characters)</h3>
+    <p>Barclays PDF statements contain embedded control characters that survive conversion into CSV. These invisible characters cause FreeAgent to reject the file entirely, often with no clear error message. <a href="/tools/convert-barclays-statement-to-excel">Cleaning Barclays statements</a> requires stripping these characters before FreeAgent will accept the CSV.</p>
+
+    <h3>Revolut (Multi-Currency Statements)</h3>
+    <p>Revolut statements are uniquely challenging for FreeAgent because transactions may be in multiple currencies, with both an original currency amount and a GBP equivalent. <a href="/tools/convert-revolut-statement-to-excel">Importing Revolut into FreeAgent</a> means deciding which amount to use (GBP equivalent is usually correct for UK tax reporting) and stripping the extraneous currency columns that FreeAgent cannot process.</p>
+
+
+    <h2>Method Comparison: Getting Bank Statements into FreeAgent</h2>
+
+    <div style="overflow-x: auto;">
+    <table class="comparison-table">
+        <thead>
+            <tr>
+                <th>Criteria</th>
+                <th>Manual CSV Formatting</th>
+                <th>Free Online Converters</th>
+                <th>BankScan AI</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td><strong>Speed (per statement)</strong></td>
+                <td>20&ndash;45 min</td>
+                <td>5&ndash;15 min (plus cleanup)</td>
+                <td class="highlight">&lt; 30 sec</td>
+            </tr>
+            <tr>
+                <td><strong>Date Format Accuracy</strong></td>
+                <td>Manual (error-prone)</td>
+                <td>Often swapped</td>
+                <td class="highlight">Automatic DD/MM/YYYY</td>
+            </tr>
+            <tr>
+                <td><strong>Multi-Line Description Handling</strong></td>
+                <td>Manual fix needed</td>
+                <td>Poor</td>
+                <td class="highlight">Automatic</td>
+            </tr>
+            <tr>
+                <td><strong>Scanned/Paper Statements</strong></td>
+                <td>No</td>
+                <td>No</td>
+                <td class="highlight">Yes (AI OCR)</td>
+            </tr>
+            <tr>
+                <td><strong>Monzo 17-Column Cleanup</strong></td>
+                <td>Manual (tedious)</td>
+                <td>No</td>
+                <td class="highlight">Automatic</td>
+            </tr>
+            <tr>
+                <td><strong>Revolut Multi-Currency</strong></td>
+                <td>Very difficult</td>
+                <td>No</td>
+                <td class="highlight">Handled</td>
+            </tr>
+            <tr>
+                <td><strong>Cost</strong></td>
+                <td>Free (but costs time)</td>
+                <td>Free (limited)</td>
+                <td class="highlight">From $9.99/mo</td>
+            </tr>
+            <tr>
+                <td><strong>Data Security (UK GDPR)</strong></td>
+                <td>High (local)</td>
+                <td>Low (unknown retention)</td>
+                <td class="highlight">High (encrypted, auto-delete)</td>
+            </tr>
+        </tbody>
+    </table>
+    </div>
+
+    <p>Manual CSV formatting is free in cash terms but expensive in time — at UK bookkeeping rates of &pound;25&ndash;&pound;45/hour, a 30-minute CSV formatting job costs between &pound;12.50 and &pound;22.50 in billable time. For a freelancer doing their own books at 10pm, it is even worse: every hour fixing CSV formatting is an hour you cannot bill to a client.</p>
+
+
+    <div class="cta-box">
+        <h3>Import Any Bank Statement into FreeAgent in Seconds</h3>
+        <p>Upload any UK bank statement — PDF, scanned, or CSV — and get a clean, FreeAgent-compatible CSV file. Handles all 22+ UK bank formats including NatWest, Monzo, HSBC, Barclays, and Revolut. No credit card required for your first conversion.</p>
+        <a href="/landing" class="cta-btn">Try BankScan AI Free &rarr;</a>
+    </div>
+
+
+    <h2>Frequently Asked Questions</h2>
+
+    <h3>Can I import a scanned bank statement PDF into FreeAgent?</h3>
+    <p>FreeAgent cannot read PDF bank statements directly — it only accepts CSV, OFX, QIF, or TSV files for statement imports. To import a scanned or PDF bank statement into FreeAgent, you must first convert the PDF to a FreeAgent-compatible CSV using a tool with OCR capability. <a href="/solutions/import-bank-statements-into-freeagent">BankScan AI extracts transaction data</a> from scanned and digital bank statement PDFs and outputs a clean CSV formatted specifically for FreeAgent's import requirements.</p>
+
+    <h3>What CSV format does FreeAgent require for bank statement imports?</h3>
+    <p>FreeAgent expects a CSV with columns in this order: Date (DD/MM/YYYY), Description, Amount. The Amount column should use positive values for money in and negative values for money out. Do not include a running balance column — it is the single most common cause of import failures. Headers are optional but if included should match FreeAgent's expected names. <a href="/tools/hsbc-pdf-to-csv">BankScan AI's FreeAgent CSV export</a> formats to this specification automatically.</p>
+
+    <h3>Why has my FreeAgent bank feed stopped working?</h3>
+    <p>FreeAgent bank feeds use Open Banking and require re-authorisation every 90 days. When the feed stops, it's usually because the 90-day consent period expired, the bank updated its security and needs a fresh connection, or the bank's Open Banking API is experiencing an outage. Go to Banking &rarr; Bank Accounts &rarr; select the account &rarr; Reconnect. If the feed remains unreliable — or your bank does not support it — <a href="/solutions/import-bank-statements-into-freeagent">CSV import is the most reliable fallback</a>.</p>
+
+    <h3>How do I fix the date format error when importing into FreeAgent?</h3>
+    <p>This is the #1 cause of FreeAgent import failures. FreeAgent requires DD/MM/YYYY. If your CSV contains YYYY-MM-DD (common in digital bank exports) or MM/DD/YYYY (common with US-formatted tools), FreeAgent will reject it or assign wrong dates. Open your CSV, ensure every date cell uses DD/MM/YYYY, and check that 05/03/2026 stays 5 March (not 3 May) before saving. <a href="/solutions/import-bank-statements-into-freeagent">BankScan AI handles date formatting automatically</a> for every supported UK bank.</p>
+
+    <h3>Is my bank data secure when using a third-party converter for FreeAgent imports?</h3>
+    <p>It depends entirely on the tool. Free online converters often store uploaded files on their servers with no clear data retention policy — a genuine UK GDPR risk when the files contain account numbers, sort codes, and full transaction histories. <a href="/solutions/import-bank-statements-into-freeagent">BankScan AI encrypts all data</a> in transit and at rest, automatically deletes files after processing, and is designed specifically for handling sensitive UK financial documents. Always check the privacy policy before uploading client financial data to any service.</p>
+
+
+    <p style="margin-top: 40px; font-size: 0.9rem; color: var(--text-light);">
+        <em>Last updated: 5 June 2026. Have a question about importing bank statements into FreeAgent? <a href="/landing">Visit BankScan AI</a> or read our other <a href="/blog">guides for UK accountants</a>.</em>
+    </p>
+
+</article>
+
+<footer class="footer">
+    <p>&copy; 2025 Mitoba Computer Systems LTD. All rights reserved. | <a href="/landing">Home</a> | <a href="/blog">Blog</a> | <a href="/tools">Tools</a></p>
+</footer>
+
+</body>
+</html>

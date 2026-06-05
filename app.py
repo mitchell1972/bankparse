@@ -4398,6 +4398,14 @@ BLOG_POSTS = {
         "template": "blog/paper-bank-statement-digitisation-guide-uk-bookkeepers.html",
         "keywords": "paper bank statement digitisation UK, scan bank statements to Excel, photograph bank statement OCR, paper statement to spreadsheet bookkeepers, digitise paper bank statements UK, convert paper bank statements for Xero, paper bank statement OCR guide, scan paper statements for QuickBooks",
     },
+    "import-bank-statements-into-freeagent-guide": {
+        "title": "How to Import Bank Statements into FreeAgent — Complete UK Guide (2026)",
+        "description": "FreeAgent bank feed failed at 10pm and now you're manually formatting a CSV? Complete guide to importing any UK bank statement into FreeAgent — CSV formatting rules, common date errors, and bank-specific fixes for NatWest, Monzo, HSBC, Barclays, and Revolut.",
+        "date": "2026-06-05",
+        "author": "BankScan AI Team",
+        "template": "blog/import-bank-statements-into-freeagent-guide.html",
+        "keywords": "FreeAgent bank statement import UK, import bank statements into FreeAgent, FreeAgent CSV upload format, FreeAgent bank feed not working, convert bank statement for FreeAgent, FreeAgent PDF statement import, FreeAgent import date format wrong, FreeAgent bank statement converter UK",
+    },
 }
 
 
