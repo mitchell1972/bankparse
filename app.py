@@ -4086,6 +4086,14 @@ BLOG_POSTS = {
         "template": "blog/convert-bank-statement-pdf-to-excel.html",
         "keywords": "convert bank statement to excel, bank statement PDF to Excel, bank statement to spreadsheet, UK bank statement converter",
     },
+    "convert-hsbc-statement-to-excel": {
+        "title": "How to Convert HSBC Bank Statements to Excel (2026 Guide)",
+        "description": "HSBC bank statements have multi-line transaction descriptions and split entries that break standard Excel imports. Complete guide for UK accountants to convert HSBC statements cleanly — personal, business, and Kinetic current accounts.",
+        "date": "2026-06-06",
+        "author": "BankScan AI Team",
+        "template": "blog/convert-hsbc-statement-to-excel-guide.html",
+        "keywords": "HSBC statement to Excel, convert HSBC bank statement, HSBC PDF to Excel, HSBC PDF to CSV, HSBC statement converter, HSBC to Xero, HSBC to QuickBooks",
+    },
     "convert-barclays-statement-to-excel": {
         "title": "How to Convert Barclays Bank Statements to Excel (2026 Guide)",
         "description": "Barclays bank statement PDFs contain invisible formatting characters that break Excel imports. Step-by-step guide for UK accountants to convert Barclays statements cleanly.",
