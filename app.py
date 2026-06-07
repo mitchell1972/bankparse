@@ -4070,6 +4070,15 @@ async def get_config():
 # ==========================================================================
 
 BLOG_POSTS = {
+    "bank-statement-automation-month-end-close": {
+        "title": "Month-End Close Automation for Bookkeepers — The Complete UK Guide (2026)",
+        "description": "Still processing client bank statements at 10pm on the last day of the month? Complete month-end close automation guide for UK bookkeepers — practical workflows, real bank format quirks, and tools that actually save hours.",
+        "date": "2026-06-07",
+        "author": "BankScan AI Team",
+        "template": "blog/bank-statement-automation-month-end-close.html",
+        "keywords": ["month-end close automation", "automate month-end bank statement processing UK", "bookkeeper month-end workflow", "bank statement data entry automation", "reduce month-end close time accounting"],
+        "related": ["batch-bank-statement-processing", "bank-reconciliation-automation-uk-guide", "bank-statement-automation-accounting-firms", "bank-statement-automation-sole-practitioners", "cost-of-manual-data-entry-bookkeeping"],
+    },
     "ai-transforming-bookkeeping-accounting-firms": {
         "title": "How AI Is Transforming Bookkeeping for UK Accounting Firms in 2026",
         "description": "Discover how AI-powered bookkeeping automation is helping UK accounting firms save hours on bank statement processing, reconciliation, and data entry.",
