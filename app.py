@@ -4070,6 +4070,15 @@ async def get_config():
 # ==========================================================================
 
 BLOG_POSTS = {
+    "ai-bank-statement-extraction-vs-ocr": {
+        "slug": "ai-bank-statement-extraction-vs-ocr",
+        "title": "AI Bank Statement Extraction vs Traditional OCR — Which Is Better for UK Accountants in 2026?",
+        "description": "Compare AI-powered bank statement extraction with traditional OCR. Why UK accountants are switching: accuracy, data validation, 16+ bank formats, real-world comparison.",
+        "date": "2026-06-08",
+        "author": "BankScan AI Team",
+        "template": "ai-bank-statement-extraction-vs-ocr.html",
+        "keywords": ["ai bank statement extraction", "ocr vs ai bank statements", "automated bank statement data entry", "bank statement PDF to excel AI", "AI data extraction for accountants", "traditional OCR bank statements problems", "intelligent document processing bank statements", "AI bookkeeping automation UK"]
+    },
     "bank-statement-automation-month-end-close": {
         "title": "Month-End Close Automation for Bookkeepers — The Complete UK Guide (2026)",
         "description": "Still processing client bank statements at 10pm on the last day of the month? Complete month-end close automation guide for UK bookkeepers — practical workflows, real bank format quirks, and tools that actually save hours.",
