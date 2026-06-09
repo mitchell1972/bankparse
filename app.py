@@ -4070,6 +4070,15 @@ async def get_config():
 # ==========================================================================
 
 BLOG_POSTS = {
+    "mtd-bank-statement-compliance-guide": {
+        "slug": "mtd-bank-statement-compliance-guide",
+        "title": "Making Tax Digital & Bank Statements — The Complete UK Compliance Guide for Bookkeepers (2026)",
+        "description": "MTD for Income Tax is rolling out from April 2026. Complete guide for UK bookkeepers: digital record-keeping requirements for bank statements, quarterly submissions, compatible software, and how to handle paper bank statements under MTD rules.",
+        "date": "2026-06-09",
+        "author": "BankScan AI Team",
+        "template": "blog/mtd-bank-statement-compliance-guide.html",
+        "keywords": ["Making Tax Digital bank statements", "MTD digital records bank statements", "MTD for Income Tax bookkeeping requirements 2026", "Making Tax Digital compatible software bank statements", "MTD quarterly submission bank statement records", "digital record keeping HMRC bank statements", "MTD bank statement PDF to digital format", "Making Tax Digital self-employed bank statements", "HMRC digital links bank statement spreadsheet", "MTD ITSA bank statement compliance"]
+    },
     "ai-bank-statement-extraction-vs-ocr": {
         "slug": "ai-bank-statement-extraction-vs-ocr",
         "title": "AI Bank Statement Extraction vs Traditional OCR — Which Is Better for UK Accountants in 2026?",
