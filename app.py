@@ -4070,6 +4070,14 @@ async def get_config():
 # ==========================================================================
 
 BLOG_POSTS = {
+    "self-assessment-tax-return-bank-statement-prep": {
+        "title": "Self-Assessment Tax Return Bank Statement Prep — Complete UK Guide (2026)",
+        "description": "January 31st Self Assessment deadline looming and you're staring at 12 months of unsorted bank statements? Complete step-by-step guide to preparing bank statements for your SA100 tax return — from categorising transactions to calculating allowable expenses. Stop typing at 10pm.",
+        "date": "2026-06-10",
+        "author": "BankScan AI Team",
+        "template": "blog/self-assessment-tax-return-bank-statement-prep.html",
+        "keywords": ["Self Assessment bank statement preparation", "SA100 bank statement guide", "tax return bank statement Excel", "HMRC Self Assessment allowable expenses from bank statements", "sole trader bank statement tax return", "self-employed bank statement tax prep UK", "January 31 deadline bank statements", "convert bank statements for tax return", "Self Assessment expense categorisation", "personal business split bank account tax return", "SA103 bank statement preparation", "HMRC simplified expenses bank statements"]
+    },
     "mtd-bank-statement-compliance-guide": {
         "slug": "mtd-bank-statement-compliance-guide",
         "title": "Making Tax Digital & Bank Statements — The Complete UK Compliance Guide for Bookkeepers (2026)",
