@@ -4070,6 +4070,15 @@ async def get_config():
 # ==========================================================================
 
 BLOG_POSTS = {
+    "open-banking-vs-bank-statement-conversion": {
+        "title": "Open Banking vs Bank Statement Conversion — Which Should UK Bookkeepers Actually Use? (2026)",
+        "description": "Open Banking feeds promised to eliminate manual bank statement processing for UK bookkeepers. In reality, connection failures, 90-day reauthorisation, and clients who still send PDFs mean most practices need both approaches. Honest comparison guide covering when to use each and the MTD compliance angle.",
+        "date": "2026-06-12",
+        "author": "BankScan AI Team",
+        "template": "blog/open-banking-vs-bank-statement-conversion.html",
+        "keywords": ["open banking vs bank statement conversion UK", "open banking feeds vs PDF statement", "bank feeds vs manual statement upload", "open banking bookkeeping UK", "should I use open banking or PDF conversion", "bank statement processing for accountants", "MTD bank feeds comparison", "UK bookkeeper open banking guide", "bank statement PDF to CSV vs bank feed", "hybrid bookkeeping workflow UK", "open banking limitations for accountants", "bank statement conversion backup for broken feeds"],
+        "related": ["mtd-bank-statement-compliance-guide", "choosing-bank-statement-converter-buyers-guide", "batch-bank-statement-processing", "multi-currency-bank-statement-handling", "bank-statement-automation-accounting-firms"],
+    },
     "outsourcing-vs-automating-bank-statement-data-entry": {
         "title": "Outsourcing vs Automating Bank Statement Data Entry — The Complete UK Bookkeeper's Guide (2026)",
         "description": "Should you hire a virtual assistant, outsource to a data entry service, or use AI automation? Compare costs, accuracy, turnaround time, and GDPR risks for UK bookkeeping firms processing 20–200+ client statements per month.",
