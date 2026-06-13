@@ -4070,6 +4070,15 @@ async def get_config():
 # ==========================================================================
 
 BLOG_POSTS = {
+    "bank-statement-conversion-mortgage-applications": {
+        "title": "Bank Statement Conversion for Mortgage Applications — The Complete UK Guide (2026)",
+        "description": "Your mortgage application is on hold because your bank statements are the wrong format. PDFs that won't upload, app screenshots the lender rejected, and 3 months of transactions needed in Excel by Friday. Complete guide covering lender requirements, self-employed proof of income, multi-bank statement consolidation, and step-by-step conversion for UK mortgage applicants, brokers, and accountants.",
+        "date": "2026-06-13",
+        "author": "BankScan AI Team",
+        "template": "blog/bank-statement-conversion-mortgage-applications.html",
+        "keywords": ["bank statement conversion mortgage application UK", "convert bank statements for mortgage lender", "mortgage application bank statement format", "bank statement PDF to Excel mortgage", "mortgage broker bank statement processing", "bank statements for mortgage affordability check", "self-employed mortgage bank statement proof of income", "mortgage underwriter bank statement review", "bank statement to Excel for mortgage broker", "3 months bank statements mortgage application", "UK mortgage bank statement conversion guide", "convert scanned bank statements for mortgage", "multi-bank statement consolidation mortgage", "Halifax mortgage bank statement requirements"],
+        "related": ["convert-scanned-bank-statements-to-excel", "uk-bank-statement-formats-guide", "choosing-bank-statement-converter-buyers-guide", "bank-statement-conversion-freelancers-self-employed", "bank-statement-conversion-small-business-owners", "bank-statement-data-security-gdpr-compliance"],
+    },
     "open-banking-vs-bank-statement-conversion": {
         "title": "Open Banking vs Bank Statement Conversion — Which Should UK Bookkeepers Actually Use? (2026)",
         "description": "Open Banking feeds promised to eliminate manual bank statement processing for UK bookkeepers. In reality, connection failures, 90-day reauthorisation, and clients who still send PDFs mean most practices need both approaches. Honest comparison guide covering when to use each and the MTD compliance angle.",
