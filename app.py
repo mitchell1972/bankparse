@@ -4070,6 +4070,15 @@ async def get_config():
 # ==========================================================================
 
 BLOG_POSTS = {
+    "convert-first-direct-statement-to-excel": {
+        "title": "Convert First Direct Bank Statement to Excel — Complete UK Guide (2026)",
+        "description": "First Direct's minimalist PDF statements omit metadata that generic converters expect, and abbreviated telephone banking codes leave rows unreadable. Step-by-step guide for UK bookkeepers to convert First Direct statements to Excel, CSV, or Google Sheets cleanly.",
+        "date": "2026-06-14",
+        "author": "BankScan AI Team",
+        "template": "blog/convert-first-direct-statement-to-excel.html",
+        "keywords": ["convert First Direct bank statement to Excel", "First Direct statement Excel conversion", "First Direct PDF to Excel", "First Direct bank statement converter UK", "First Direct online banking export to Excel", "First Direct DD MMM YYYY date format", "First Direct statement to Xero", "First Direct to QuickBooks", "First Direct transaction type codes Excel", "First Direct PDF to CSV", "download First Direct statement Excel"],
+        "related": ["convert-hsbc-statement-to-excel", "uk-bank-statement-formats-guide", "choosing-bank-statement-converter-buyers-guide", "import-bank-statements-into-xero-guide", "import-bank-statements-into-quickbooks-guide"],
+    },
     "bank-statement-conversion-mortgage-applications": {
         "title": "Bank Statement Conversion for Mortgage Applications — The Complete UK Guide (2026)",
         "description": "Your mortgage application is on hold because your bank statements are the wrong format. PDFs that won't upload, app screenshots the lender rejected, and 3 months of transactions needed in Excel by Friday. Complete guide covering lender requirements, self-employed proof of income, multi-bank statement consolidation, and step-by-step conversion for UK mortgage applicants, brokers, and accountants.",
