@@ -150,7 +150,7 @@ Production API subscriptions:
   - Individual Calculations 8.0
 
 Sandbox testing:
-  - Dummy National Insurance Number used: <<CONFIRM NINO — e.g. CX139207A>>
+  - Dummy National Insurance Number used: RZ507241A
   - Connection method: WEB_APP_VIA_SERVER
   - All 13 fraud-prevention headers sent on every MTD API call; validated
     against the Test Fraud Prevention Headers API.
@@ -168,19 +168,25 @@ BankScan AI (Mitoba Consulting Ltd)
 
 ---
 
-## 6. Open items before sending
+## 6. Status — SENT 2026-06-15
 
-1. **Get HMRC's actual checklist form** — it wasn't attached to the Yahoo copy
-   (links only). Open in a client that shows attachments, or ask SDST to re-send.
-2. **Confirm the sandbox NINO** to quote. Candidates found in our docs:
-   - `CX139207A` — sandbox test user "Gabi Quinn"; used for the documented
-     end-to-end OAuth + "Discover my businesses" run (2026-05-19). **Most
-     likely the one to send.**
-   - `JA057968B` — returned by the Test Fraud Prevention Headers validator.
-   - `AB123456C` — HMRC's generic example placeholder only; **not** a real
-     test user — do not send this.
-   Pick the NINO whose fraud-header calls are actually in HMRC's sandbox logs.
-3. **Verify the tax-estimate disclaimer** is visibly rendered in the app
-   (HMRC requires the in-software estimate to carry an accuracy disclaimer).
-4. **14-day freshness** — if sandbox testing was >14 days before you send,
-   re-run the phase-3 conformance pass so the log data HMRC inspects is current.
+The reply was sent to `softwaredevelopersupport@service.hmrc.gov.uk` on
+2026-06-15 with the in-year declaration above, **dummy NINO `RZ507241A`**,
+and this checklist as a PDF attachment. `RZ507241A` is the live
+sandbox-connected test user (read from the production front end, where the
+NINO is decrypted for display — it is AES-256-GCM encrypted at rest, so it
+does not appear in logs). The earlier `CX139207A` (Gabi Quinn, 2026-05-19)
+was superseded by the current connected account.
+
+Now awaiting HMRC's review (up to 10 working days, plus the specialist
+fraud-header log check). If they ask for their own checklist template,
+transcribe these same answers into it.
+
+**Watch items:**
+1. **14-day NINO freshness** — HMRC must inspect fraud-header data for
+   `RZ507241A` in their sandbox logs. If the last sandbox conformance pass
+   under that NINO was >14 days before 2026-06-15, re-run the phase-3
+   conformance pass so the log data is current, and tell SDST.
+2. **End-of-year stage** — a second Production Approvals Checklist (BSAS +
+   Individual Losses + final-declaration testing) is required before the
+   first final-declaration deadline. No time pressure now.
