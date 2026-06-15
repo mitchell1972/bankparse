@@ -50,9 +50,13 @@ A: HMRC submissions and the audit log are retained for at least 6 years
 their account or 12 months after their last login, whichever is later.
 
 **Q: Where is data stored?**
-A: Production runs on Railway (UK / EU regions). The application database
-is Turso (a managed libSQL, EU region). No data leaves the EEA except
-for HMRC API calls themselves.
+A: Production runs on Railway in the `europe-west4` region (Netherlands —
+inside the EEA; Railway has no UK region). The application database is Turso
+(a managed libSQL, EU region). No customer data leaves the EEA except the
+HMRC API calls themselves and the AI sub-processor calls to Anthropic (US,
+covered by the UK–US Data Bridge adequacy decision) — consistent with the
+"In the EEA" + "Outside the EEA with adequacy agreements" answer given on the
+Developer Hub application.
 
 **Q: Is data encrypted in transit?**
 A: TLS 1.2+ everywhere. HSTS enabled on `bankscanai.com`. HMRC API calls
