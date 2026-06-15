@@ -4070,6 +4070,26 @@ async def get_config():
 # ==========================================================================
 
 BLOG_POSTS = {
+    "convert-credit-card-statement-to-excel": {
+        "title": "Convert Credit Card Statement to Excel — Complete UK Guide (2026)",
+        "description": "Struggling to convert business credit card or expense card statements to Excel? Our complete UK guide shows bookkeepers how to handle Amex, Barclaycard, Capital On Tap, and more. No manual data entry.",
+        "date": "2026-06-16",
+        "author": "BankScan AI Team",
+        "template": "blog/convert-credit-card-statement-to-excel.html",
+        "keywords": [
+            "convert credit card statement to Excel",
+            "credit card statement Excel conversion UK",
+            "business credit card statement converter",
+            "Amex statement to Excel",
+            "Barclaycard statement to Excel",
+            "Capital On Tap statement Excel",
+            "expense card statement data entry",
+            "credit card PDF to CSV",
+            "business credit card reconciliation",
+            "how to convert credit card statements for bookkeeping UK"
+        ],
+        "related": ["batch-bank-statement-processing", "best-bank-statement-converters-2026", "cost-of-manual-data-entry-bookkeeping", "bank-statement-conversion-small-business-owners", "tax-season-bank-statement-conversion"],
+    },
     "convert-first-direct-statement-to-excel": {
         "title": "Convert First Direct Bank Statement to Excel — Complete UK Guide (2026)",
         "description": "First Direct's minimalist PDF statements omit metadata that generic converters expect, and abbreviated telephone banking codes leave rows unreadable. Step-by-step guide for UK bookkeepers to convert First Direct statements to Excel, CSV, or Google Sheets cleanly.",
