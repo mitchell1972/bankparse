@@ -4505,6 +4505,26 @@ BLOG_POSTS = {
         "template": "blog/import-bank-statements-into-freeagent-guide.html",
         "keywords": "FreeAgent bank statement import UK, import bank statements into FreeAgent, FreeAgent CSV upload format, FreeAgent bank feed not working, convert bank statement for FreeAgent, FreeAgent PDF statement import, FreeAgent import date format wrong, FreeAgent bank statement converter UK",
     },
+    "handling-duplicate-bank-statements-guide": {
+        "title": "Handling Duplicate Bank Statements — UK Bookkeeper's Guide (2026)",
+        "description": "Client sent the same bank statement twice and you've just spent 20 minutes reconciling it all over again? Complete UK bookkeeper's guide to detecting, preventing, and handling duplicate bank statements before they wreck your month-end close.",
+        "date": "2026-06-16",
+        "author": "BankScan AI Team",
+        "template": "blog/handling-duplicate-bank-statements-guide.html",
+        "keywords": [
+            "duplicate bank statements bookkeeping UK",
+            "client sent same statement twice",
+            "detect duplicate bank statements",
+            "prevent duplicate bank statement processing",
+            "bank statement reconciliation duplicates",
+            "duplicate PDF bank statements bookkeeper",
+            "avoid processing same statement twice",
+            "bank statement deduplication UK",
+            "duplicate bank statement detection workflow",
+            "stop processing duplicate client statements"
+        ],
+        "related": ["bank-reconciliation-automation-uk-guide", "batch-bank-statement-processing", "bank-statement-automation-month-end-close", "how-to-reconcile-bank-statements-faster", "cost-of-manual-data-entry-bookkeeping"],
+    },
 }
 
 
