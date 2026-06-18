@@ -1,5 +1,22 @@
 # Production Approvals Checklist — readiness pack
 
+> ## ⛔ NOT READY — DO NOT TREAT AS PASSING (updated 2026-06-18)
+>
+> On 2026-06-18 we discovered the MTD journey **has never worked against the
+> live HMRC sandbox**: every user-restricted call (Business Details `list`,
+> Obligations) returns `404 OAUTH_NINO_MISMATCH`, and the app had been
+> masking it with demo data. **There is no verified end-to-end journey.** The
+> testing claims in §4 below describe what was *intended/mocked*, not what
+> passes against real HMRC — they are retained struck-through for honesty.
+> The application already sent to SDST (NINO `RZ507241A`, see §6) was
+> **premature** and should be expected to bounce.
+>
+> Root cause + status: `hmrc/docs/oauth-nino-binding.md`. A reproducible
+> fresh-context test to prove the real journey is wired into CI
+> (`hmrc/docs/ci-real-sandbox-secrets.md`) and runs once the HMRC secrets
+> are added. **Re-engage SDST only after that run shows obligations 200 +
+> a real submit under a correctly-bound NINO.**
+
 **HMRC ref:** 2026-MCW021 (SDST email from `softwaredevelopersupport@service.hmrc.gov.uk`, 15 Jun 2026)
 **Application:** BankScan AI (production app on the HMRC Developer Hub)
 **Build type declared:** **In-year product** (quarterly updates) — see §2 for why.
@@ -73,7 +90,7 @@ self-employment + UK property**), mapped to our implementation:
 | Provide transaction-monitoring fraud-prevention header data | ✅ | All 13 `Gov-Client-*` / `Gov-Vendor-*` headers via [`hmrc/services/fraud_headers.py`](../services/fraud_headers.py), attached on **every** call through the single chokepoint [`hmrc/services/client.py`](../services/client.py) |
 | Obtain a business ID unique to each business | ✅ | Business Details API — [`hmrc/services/business_details.py`](../services/business_details.py) |
 | Create/maintain digital records; user owns + can export them | ✅ | Parsed transactions stored per user; export to Excel/CSV; raw statements deleted post-parse (see privacy policy) |
-| Submit quarterly updates for each mandated source (SE, multiple SE, UK property) | ✅ | [`hmrc/services/quarterly_updates.py`](../services/quarterly_updates.py) — SE + UK property |
+| Submit quarterly updates for each mandated source (SE, multiple SE, UK property) | ⚠️ Coded, **not verified vs real HMRC** | [`hmrc/services/quarterly_updates.py`](../services/quarterly_updates.py) — SE + UK property. Passes against mocks/stub only; has never succeeded against the live sandbox (see §4 + the banner). |
 | — foreign property income | ❌ Not supported | Declared as out of scope; we support UK SE + UK property only. Notify SDST of unsupported data items. |
 | View an estimate of income-tax liability (display or signpost) | ✅ Display, with disclaimer | Individual Calculations 8.0; the estimate is shown with an accuracy disclaimer — **verify the disclaimer text is present before submitting the checklist** (see §6 open item) |
 | Make adjustments and finalise business income for the year | ⏭️ End-of-year stage | Implemented in code; deferred to the second (end-of-year) checklist |
@@ -81,9 +98,11 @@ self-employment + UK property**), mapped to our implementation:
 | Submit non-mandated income, or divert the customer | ✅ Divert | We signpost customers to HMRC/other software for unsupported sources |
 | Make a final declaration, or divert | ⏭️ End-of-year stage | Final declaration implemented in code; deferred to the second checklist |
 
-For an **in-year product**, every row that is required at this stage is ✅.
-The ⏭️ rows are end-of-year functionality, correctly excluded from this
-checklist.
+Most rows are coded, but the **core in-year function — submitting a
+quarterly update (and even reading obligations) — has never succeeded
+against the real HMRC sandbox** (see the banner + §4). So this product is
+**not** in-year-ready until that's proven. The ⏭️ rows are end-of-year
+functionality, correctly excluded from this checklist.
 
 ---
 
@@ -104,14 +123,29 @@ checklist.
 
 ## 4. Testing requirements
 
+> **⛔ Corrected 2026-06-18 — the original claims here were false.** What
+> actually passes vs what was claimed:
+
 - **Mocked conformance suite:** 258 tests, all passing (`tests/hmrc/`).
-- **Real-sandbox conformance (phase 3):** 16 tests against the live HMRC
-  sandbox, all passing. Transcript: [`conformance-test-transcript.txt`](conformance-test-transcript.txt).
-- **End-to-end user journey** (Playwright): sign-up → CSV ingest → OAuth →
-  SE + property quarterly submit → obligations → preview-matches-payload →
-  correction loop → returning user. `tests/e2e/test_hmrc_submit_journey.py`.
-- Every endpoint in each subscribed API's documentation is exercised — this
-  must **align with the build-type declaration** (in-year set) on HMRC's form.
+  ✅ True — but these **mock** HMRC; they prove our wire shapes, not that
+  the live journey works.
+- ~~**Real-sandbox conformance (phase 3):** 16 tests against the live HMRC
+  sandbox, all passing.~~ **Misleading.** Those real-sandbox checks are
+  *app-restricted* only (client-credentials token, create-test-user,
+  create-test-business → 201). They do **not** exercise the
+  *user-restricted* journey. Against real HMRC, Business Details `list` and
+  Obligations have **never** returned 200 (100% `404 OAUTH_NINO_MISMATCH`).
+- ~~**End-to-end user journey** (Playwright): … SE + property quarterly
+  submit → obligations …~~ This Playwright journey runs against a **stub**
+  HMRC server (`tests/e2e/_hmrc_stub.py`), **not** the real sandbox. CI
+  "E2E passing" is against the stub.
+- ~~Every endpoint … is exercised~~ **False against real HMRC.** No
+  obligations retrieval or quarterly submission has ever succeeded against
+  `test-api.service.hmrc.gov.uk`.
+
+**Net:** there is **no** verified passing real-HMRC journey yet. The
+fresh-context CI job (`hmrc/docs/ci-real-sandbox-secrets.md`) exists to
+produce one once the secrets are added.
 
 > **Action — the 14-day NINO window.** HMRC checks the fraud-header data in
 > their sandbox logs against **the dummy NINO you tested with**, and requires
