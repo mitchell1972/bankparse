@@ -144,19 +144,28 @@ def _friendly_detail_for_hmrc(exc: _client.HmrcApiError) -> str:
         code = (body.get("code") or "").upper()
 
     if exc.status_code == 404 and code == "MATCHING_RESOURCE_NOT_FOUND":
-        # Sandbox builds get a one-click escape hatch; production users
-        # have to register the business via HMRC's own account.
+        # A 404 here means HMRC won't return businesses for this NINO+token
+        # pair, and there are TWO causes — we must not imply the wrong fix.
+        # Most often the Government Gateway account that was signed in is a
+        # DIFFERENT identity than this NINO (OAUTH_NINO_MISMATCH), and
+        # creating a test business will NOT fix that. Lead with the
+        # mismatch; mention the genuinely-no-business case second.
         import os
         if os.environ.get("HMRC_ENV", "sandbox").lower() != "production":
             return (
-                "HMRC has no MTD ITSA businesses against this NINO yet. "
-                "Click 'Create sandbox test business' below to provision one, "
-                "or register a business in your HMRC test account first."
+                "HMRC didn't recognise this NINO with your current sign-in. "
+                "Most likely the Government Gateway test user you signed in as "
+                "doesn't match this NINO (OAUTH_NINO_MISMATCH) — disconnect on "
+                "the Connect-to-HMRC page and sign in with the credentials that "
+                "match this NINO. If the sign-in definitely matches and the NINO "
+                "just has no business yet, use 'Set me up with a complete "
+                "sandbox' to provision one."
             )
         return (
-            "HMRC has no MTD ITSA businesses against this NINO. Register at "
-            "least one self-employment or UK property business with HMRC "
-            "before connecting."
+            "HMRC didn't recognise this NINO with your current sign-in. Make "
+            "sure you authorised with the Government Gateway account for this "
+            "NINO, and that at least one self-employment or UK property "
+            "business is registered against it with HMRC."
         )
 
     if exc.status_code == 403:

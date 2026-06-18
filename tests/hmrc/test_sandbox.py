@@ -331,9 +331,11 @@ def test_missing_business_id_in_response_returns_502():
 # ---------------------------------------------------------------------------
 
 def test_connect_businesses_404_maps_to_sandbox_hint():
-    """A fresh sandbox NINO returns 404 MATCHING_RESOURCE_NOT_FOUND. We
-    want the dashboard to see a helpful message + status 404 so the UI
-    can offer the sandbox helper buttons."""
+    """A 404 MATCHING_RESOURCE_NOT_FOUND on connect-businesses must return
+    status 404 with a message that leads with the likely OAUTH_NINO_MISMATCH
+    cause (signing in as the wrong test user) — NOT imply that creating a
+    business will fix it — while still offering the sandbox provisioner as
+    the secondary path."""
     from hmrc.services.client import HmrcApiError
     client, csrf, user = _client_with_user()
     # OAuth done but no businesses — same state as the sandbox flow this fix
@@ -357,8 +359,9 @@ def test_connect_businesses_404_maps_to_sandbox_hint():
 
     assert r.status_code == 404
     detail = r.json()["detail"]
-    # Sandbox build (HMRC_ENV=sandbox via fixture) — should mention the helper.
-    assert "Create sandbox test business" in detail
+    # Must lead with the mismatch cause, and still offer the sandbox helper.
+    assert "OAUTH_NINO_MISMATCH" in detail
+    assert "Set me up with a complete sandbox" in detail
 
 
 # ---------------------------------------------------------------------------

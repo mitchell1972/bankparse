@@ -169,15 +169,42 @@ def test_demo_mode_flag_forces_fixture_even_when_connected(monkeypatch):
     assert r.json()["demo"] is True
 
 
-def test_connected_without_business_setup_falls_back_to_demo():
-    """User connected to HMRC but hasn't told us NINO / business IDs yet —
-    panel still renders something useful instead of an error."""
+def test_connected_without_business_setup_does_NOT_show_demo():
+    """A CONNECTED user must never be shown fabricated demo obligations —
+    that masks a broken/mismatched connection (the #1 failure mode) and
+    would mislead HMRC reviewers and real customers alike. When connected
+    but no NINO/businesses are loaded, we surface the real empty state with
+    an explanation, demo=False. Regression for the OAUTH_NINO_MISMATCH
+    masking bug found 2026-06-18."""
     client, _, user = _client_with_user()
     _connect_hmrc(user["id"], with_nino=False)
     r = client.get("/api/hmrc/obligations")
     body = r.json()
     assert body["connected"] is True
-    assert body["demo"] is True
+    assert body["demo"] is False, "connected users must not see demo data"
+    assert body["obligations"] == []
+    assert body.get("error"), "must explain why no obligations loaded"
+
+
+def test_connected_with_nino_but_no_businesses_explains_mismatch():
+    """Connected + NINO stored but zero businesses (the exact shape a
+    404 MATCHING_RESOURCE_NOT_FOUND leaves behind) → no demo, and the error
+    names the likely OAUTH_NINO_MISMATCH cause."""
+    client, _, user = _client_with_user()
+    from hmrc.repositories import tokens as _tokens
+    _tokens.save_tokens(
+        user_id=user["id"], access_token="sandbox-access-token",
+        refresh_token="sandbox-refresh-token", expires_in_seconds=14400,
+        scope="read:self-assessment write:self-assessment",
+    )
+    _tokens.save_nino_and_businesses(user["id"], "MW618549B", [])
+    r = client.get("/api/hmrc/obligations")
+    body = r.json()
+    assert body["connected"] is True
+    assert body["demo"] is False
+    assert body["obligations"] == []
+    assert "MW618549B" in body["error"]
+    assert "OAUTH_NINO_MISMATCH" in body["error"]
 
 
 # ---------------------------------------------------------------------------
