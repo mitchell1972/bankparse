@@ -96,6 +96,26 @@ def test_hmrc_file_page_renders_for_authed_user():
     assert "Estimated tax owed" in body
 
 
+def test_hmrc_file_page_shows_tax_estimate_accuracy_disclaimer():
+    """HMRC minimum-functionality standard: any in-software estimate of the
+    customer's Income Tax liability MUST carry an accuracy disclaimer
+    (developer.service.hmrc.gov.uk how-to-integrate guide). Pin it so it
+    can't silently regress before / after production approval.
+    See hmrc/docs/production-approvals-checklist.md §2."""
+    client, user, _ = _authed("disclaimer@example.com")
+    r = client.get("/hmrc/file")
+    assert r.status_code == 200
+    body = r.text
+    assert 'id="taxEstimateDisclaimer"' in body, (
+        "tax-estimate accuracy disclaimer is missing from /hmrc/file — "
+        "HMRC requires it on any in-software liability estimate"
+    )
+    # The disclaimer must actually say it's an estimate and not the final
+    # liability — not just be an empty element.
+    assert "estimate only" in body
+    assert "not your final tax liability" in body
+
+
 def test_hmrc_file_page_redirects_anonymous_to_login():
     from app import app
     anon = TestClient(app, raise_server_exceptions=False, follow_redirects=False)

@@ -30,7 +30,7 @@ specific commit / file in the repo) — this document just points at them.
 | Obligations | 3.0 | List obligations | `hmrc/services/obligations.py` |
 | Self-Employment Business | 5.0 | Create period summary, EOPS | `hmrc/services/quarterly_updates.py`, `hmrc/services/annual.py` |
 | UK Property Business | 6.0 | Create period summary, EOPS | `hmrc/services/quarterly_updates.py` |
-| Business Source Adjustable Summary | 7.0 | (subscribed; not currently called — for ITSA adjustments) | n/a |
+| ~~Business Source Adjustable Summary~~ | ~~7.0~~ | **Removed from the production subscription** — not called by the in-year build. Re-add for the end-of-year checklist. See [`production-approvals-checklist.md`](production-approvals-checklist.md) §1. | n/a |
 | Individual Calculations | **8.0** | Trigger, retrieve, final declaration | `hmrc/services/annual.py` |
 
 > **2026-05-25 update:** Calculations API moved from v7.0 → v8.0 (HMRC
