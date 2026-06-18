@@ -131,13 +131,21 @@ def test_csp_blocks_framing_and_objects_and_upgrades_insecure():
 
 
 def test_csp_form_action_includes_hmrc_oauth_origins():
-    """CSP3 extends form-action to apply to redirect targets, not just the
-    initial form POST destination. The HMRC OAuth flow does
-    `POST /api/hmrc/connect → 302 → https://test-api.service.hmrc.gov.uk/oauth/authorize`.
-    If form-action is 'self' only, Chrome blocks the 302 and OAuth silently
-    breaks. Both sandbox and prod HMRC origins MUST be in form-action."""
+    """CSP3 extends form-action to apply to the WHOLE redirect chain of a
+    form submission, not just the initial target. The "Connect to HMRC"
+    button is a GET form whose chain is:
+        /api/hmrc/connect (self)
+          → test-api.service.hmrc.gov.uk/oauth/authorize
+          → test-www.tax.service.gov.uk/oauth/start   (Gov Gateway LOGIN)
+    EVERY hop must be allowed or Chrome silently blocks the navigation and
+    the button does nothing. Regression for the prod outage found
+    2026-06-18 (the *www* GG-login hosts were missing from the allowlist)."""
+    # API hosts (authorize step)
     assert "https://test-api.service.hmrc.gov.uk" in CSP_VALUE
     assert "https://api.service.hmrc.gov.uk" in CSP_VALUE
+    # Government Gateway login hosts (the step that was being blocked)
+    assert "https://test-www.tax.service.gov.uk" in CSP_VALUE
+    assert "https://www.tax.service.gov.uk" in CSP_VALUE
 
 
 def test_csp_allows_googletagmanager_for_script_and_connect():
