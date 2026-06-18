@@ -4,6 +4,7 @@ on:
   pull_request:
   push:
     branches: [main]
+  workflow_dispatch:   # run the real-sandbox journey on demand
 
 jobs:
   unit:
@@ -61,5 +62,61 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: playwright-traces
+          path: test-results/
+          if-no-files-found: ignore
+
+  real-sandbox:
+    name: Real HMRC sandbox journey (gated on secrets)
+    runs-on: ubuntu-latest
+    # NOT a PR gate. HMRC's sandbox occasionally CAPTCHAs the Government
+    # Gateway sign-in, so this must never block a merge. Runs after merges
+    # to main and on-demand (workflow_dispatch). Every test below skips
+    # cleanly when its secret is unset, so this is safe to land before the
+    # secrets are configured — it will simply skip until they exist.
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dev deps
+        run: pip install -r requirements-dev.txt
+
+      - name: Install Playwright browser
+        run: playwright install --with-deps chromium
+
+      # (a) App-restricted wire-shape checks — talk straight to HMRC's
+      #     sandbox (client_credentials token, mint test user, create test
+      #     business). Skips automatically if HMRC_CLIENT_SECRET is unset.
+      #     `-rs` prints the skip reason so a missing secret is visible.
+      - name: HMRC sandbox wire-shape checks (app-restricted)
+        run: pytest tests/e2e/test_hmrc_real_sandbox.py -q -rs
+        env:
+          HMRC_REAL_SANDBOX_E2E: '1'
+          HMRC_CLIENT_ID: ${{ secrets.HMRC_CLIENT_ID }}
+          HMRC_CLIENT_SECRET: ${{ secrets.HMRC_CLIENT_SECRET }}
+
+      # (b) THE journey HMRC needs to see: against production, mint a fresh
+      #     sandbox test user, drive Playwright through HMRC's Government
+      #     Gateway OAuth in a FRESH browser context (no sticky session —
+      #     this is what defeats the OAUTH_NINO_MISMATCH bug), then load
+      #     obligations and run a quarterly-update preview. Skips if the
+      #     prod test-user login secrets are unset.
+      - name: Full OAuth journey — mint → connect → obligations → preview
+        run: pytest tests/e2e/test_prod_hmrc_smoke.py -q -rs --browser chromium
+        env:
+          PROD_SMOKE: '1'
+          PROD_SMOKE_FULL: '1'
+          PROD_TEST_USER_EMAIL: ${{ secrets.PROD_TEST_USER_EMAIL }}
+          PROD_TEST_USER_PASSWORD: ${{ secrets.PROD_TEST_USER_PASSWORD }}
+
+      - name: Upload Playwright trace on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: real-sandbox-traces
           path: test-results/
           if-no-files-found: ignore
