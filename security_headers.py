@@ -85,17 +85,26 @@ PERMISSIONS_POLICY = ", ".join(
     ]
 )
 
-# Form-action allowlist. CSP3 extends form-action to apply to the entire
-# redirect chain triggered by a form submission, not just the initial POST
-# target. The HMRC OAuth round-trip is `POST /api/hmrc/connect` → 302 →
-# HMRC authorize URL → … → `GET /api/hmrc/callback`. If form-action is
-# 'self' only, Chrome blocks the 302 to HMRC because it's a different
-# origin, and OAuth silently breaks. Allow the HMRC API origins explicitly,
-# and additionally any origin set in HMRC_BASE_URL at boot (used by tests
-# pointing at a local stub, and by HMRC's own sandbox/prod swap).
+# Form-action allowlist. CSP3 extends form-action to apply to the ENTIRE
+# redirect chain triggered by a form submission, not just the initial
+# target. The "Connect to HMRC" button is a GET form to /api/hmrc/connect,
+# and the real OAuth chain is:
+#   /api/hmrc/connect (self)
+#     → 302 test-api.service.hmrc.gov.uk/oauth/authorize
+#     → 302 test-www.tax.service.gov.uk/oauth/start  (Government Gateway LOGIN)
+#     → … → /api/hmrc/callback (self)
+# Every hop in that chain must be in form-action or Chrome silently blocks
+# the navigation and the button appears to do nothing. The original list
+# (2026-06, PR #92) had only the *api* hosts and omitted the *www* GG-login
+# hosts — which broke the Connect button in production (found 2026-06-18).
+# Both sandbox (test-*) and production hosts are listed so the allowlist is
+# correct regardless of HMRC_ENV. HMRC_BASE_URL's origin is also added at
+# boot for the e2e stub.
 _DEFAULT_HMRC_FORM_ACTION_HOSTS = (
-    "https://test-api.service.hmrc.gov.uk",
-    "https://api.service.hmrc.gov.uk",
+    "https://test-api.service.hmrc.gov.uk",   # sandbox API (authorize)
+    "https://api.service.hmrc.gov.uk",        # production API (authorize)
+    "https://test-www.tax.service.gov.uk",    # sandbox Government Gateway login
+    "https://www.tax.service.gov.uk",         # production Government Gateway login
 )
 
 
