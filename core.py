@@ -195,6 +195,18 @@ COOKIE_MAX_AGE = 60 * 60 * 24 * 365  # 1 year
 # --- Subscription cache ---
 SUBSCRIPTION_CACHE_TTL = 3600  # 1 hour
 
+# Subscription statuses that grant access to the app. `past_due` is included
+# as a GRACE state: the card failed but Stripe is still retrying (dunning).
+# Cutting a customer off the instant a payment fails churns them over a single
+# expired card. The grace period is self-bounding — when Stripe gives up,
+# `customer.subscription.updated`/`deleted` fires and the lifecycle webhook
+# (services/billing.py::handle_subscription_lifecycle) writes the real status
+# (`canceled`/`unpaid`), which is NOT in this set, so access ends automatically.
+# This set MUST stay in sync across has_active_subscription / verify_subscription
+# / get_user_tier — a past mismatch let past_due users reach the dashboard but
+# blocked them at the parse gate as "trial_expired".
+ACCESS_GRANTING_STATUSES = ("trialing", "active", "past_due")
+
 # --- File type constants ---
 IMAGE_EXTENSIONS = [".png", ".jpg", ".jpeg", ".tiff", ".tif", ".bmp", ".webp", ".heic", ".heif"]
 RECEIPT_EXTENSIONS = [".pdf"] + IMAGE_EXTENSIONS
@@ -301,24 +313,28 @@ def verify_subscription(user: dict) -> bool:
 
     # Use cached status if fresh enough
     if time.time() - checked_at < SUBSCRIPTION_CACHE_TTL:
-        return status in ("active", "trialing")
+        return status in ACCESS_GRANTING_STATUSES
 
     # Cache is stale -- check Stripe
     stripe_customer_id = user.get("stripe_customer_id")
     if not stripe_customer_id or not STRIPE_AVAILABLE or not STRIPE_SECRET_KEY:
-        return status in ("active", "trialing")  # Fall back to cache if Stripe unavailable
+        return status in ACCESS_GRANTING_STATUSES  # Fall back to cache if Stripe unavailable
 
     try:
-        subs = stripe.Subscription.list(customer=stripe_customer_id, status="active", limit=1)
-        is_active = len(subs.data) > 0
-        new_status = "active" if is_active else "cancelled"
-        # Update cache
+        # status="all" (not "active") so we see the REAL status — a past_due or
+        # trialing sub is excluded by status="active" and would be wrongly
+        # collapsed to "cancelled", flipping a grace-period customer to no-access
+        # after the cache TTL. We mirror Stripe's truth instead.
+        subs = stripe.Subscription.list(customer=stripe_customer_id, status="all", limit=1)
+        real_status = subs.data[0].status if subs.data else "canceled"
+        is_active = real_status in ACCESS_GRANTING_STATUSES
+        # Update cache with the actual Stripe status (not a binary active/cancelled)
         if user.get("id"):
-            update_user(user["id"], subscription_status=new_status, subscription_checked_at=time.time())
+            update_user(user["id"], subscription_status=real_status, subscription_checked_at=time.time())
         return is_active
     except Exception:
         # Stripe unreachable -- fall back to cached status (don't lock out paying users)
-        return status in ("active", "trialing")
+        return status in ACCESS_GRANTING_STATUSES
 
 
 def get_user_tier(user: dict) -> str:
@@ -342,11 +358,14 @@ def get_user_tier(user: dict) -> str:
     if not verify_subscription(user):
         return "free"
 
-    # Subscriber — determine tier from Stripe price ID
+    # Subscriber — determine tier from Stripe price ID. status="all" (not
+    # "active") so a past_due grace-period customer's price is still found —
+    # status="active" would miss it and silently drop a paid Pro/Business user
+    # to the "starter" fallback below (right access, wrong limits).
     stripe_customer_id = user.get("stripe_customer_id")
     if STRIPE_AVAILABLE and STRIPE_SECRET_KEY and stripe_customer_id:
         try:
-            subs = stripe.Subscription.list(customer=stripe_customer_id, status="active", limit=1)
+            subs = stripe.Subscription.list(customer=stripe_customer_id, status="all", limit=1)
             if subs.data:
                 sub = subs.data[0]
                 try:
