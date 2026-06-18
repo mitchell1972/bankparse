@@ -61,14 +61,41 @@ def fetch_for_user(*, user_id: int, request_obj) -> ObligationsResponse:
     nino = info.get("nino")
     businesses = info.get("businesses") or []
 
-    # Three reasons to short-circuit to the demo fixture:
-    # 1) explicit env override (used in dev and the public demo)
-    # 2) user hasn't clicked /api/hmrc/connect yet
-    # 3) user is connected but hasn't told us their NINO + business IDs
-    if is_demo_mode() or not connected or not nino or not businesses:
-        rows = _demo_obligations()
+    # Demo fixture is ONLY for the explicit env override or the genuinely
+    # not-yet-connected marketing/first-launch view. Once a user is
+    # connected to HMRC we must NEVER show fabricated obligations:
+    # a broken or mismatched connection has to LOOK broken, not healthy.
+    #
+    # Pre-fix, a connected-but-unverified NINO (no businesses, because the
+    # Business Details call 404'd with OAUTH_NINO_MISMATCH) silently rendered
+    # demo rows — making a non-working connection look like it was filing
+    # fine. That masked the #1 failure mode and would mislead both HMRC's
+    # reviewers and real customers. See hmrc/docs/oauth-nino-binding.md.
+    if is_demo_mode() or not connected:
         return ObligationsResponse(
-            connected=connected, demo=True, obligations=rows, nino=nino,
+            connected=connected, demo=True, obligations=_demo_obligations(), nino=nino,
+        )
+
+    # Connected, but we have no NINO + business list to query against. Do
+    # NOT fall back to demo data — surface the real, empty state with the
+    # most likely cause so the user can act on it.
+    if not nino or not businesses:
+        if nino:
+            detail = (
+                f"Connected to HMRC, but no MTD ITSA businesses loaded for NINO {nino}. "
+                "This usually means the Government Gateway account you signed in with "
+                "doesn't match this NINO (OAUTH_NINO_MISMATCH), or no business is "
+                "registered yet. Reconnect with the matching credentials, or use "
+                "'Set me up with a complete sandbox'."
+            )
+        else:
+            detail = (
+                "Connected to HMRC, but we don't have your National Insurance Number "
+                "yet. Enter it on the dashboard ('Discover my businesses') to load "
+                "your obligations."
+            )
+        return ObligationsResponse(
+            connected=True, demo=False, obligations=[], nino=nino, error=detail,
         )
 
     rows: list[UiObligation] = []
