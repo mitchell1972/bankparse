@@ -454,3 +454,122 @@ def test_check_can_use_admin_email_always_passes():
         ok, tier, reason, _ = check_can_use(user, "statement")
     assert ok is True
     assert reason == "ok"
+
+
+# ---------------------------------------------------------------------------
+# past_due is a GRACE period, not a lockout (regression, 2026-06)
+#
+# The bug: has_active_subscription() included "past_due" (so the customer
+# reached the dashboard — see the 200 row in the dashboard matrix above), but
+# verify_subscription() / get_user_tier() did NOT. A past_due customer's tier
+# therefore collapsed to "free", and the free-tier branch of check_can_use
+# blocked every parse as "trial_expired". Net: they could log in but couldn't
+# use the app. These tests pin all three functions to the same status set.
+# ---------------------------------------------------------------------------
+
+def test_verify_subscription_past_due_keeps_access():
+    """The single line that was wrong: a past_due user with a warm cache
+    (the lifecycle webhook just set the status) must verify as a subscriber
+    so it agrees with has_active_subscription / the dashboard gate."""
+    from core import verify_subscription
+    user = {
+        "id": 1, "email": "pastdue-verify@example.com",
+        "subscription_status": "past_due",
+        "stripe_customer_id": "cus_x",
+        "stripe_subscription_id": "sub_x",
+        "subscription_checked_at": time.time(),  # warm cache → no Stripe call
+    }
+    assert verify_subscription(user) is True
+
+
+def test_get_user_tier_past_due_does_not_collapse_to_free(monkeypatch):
+    """A past_due customer with a Stripe customer id must resolve to a PAID
+    tier, never 'free' — 'free' would route them into the trial gate and
+    block them. With Stripe unconfigured in tests, get_user_tier falls
+    through to the 'starter' paid default; the assertion is simply: not
+    'free'."""
+    import core
+    monkeypatch.setattr(core, "STRIPE_AVAILABLE", False)
+    user = {
+        "id": 1, "email": "pastdue-tier@example.com",
+        "subscription_status": "past_due",
+        "stripe_customer_id": "cus_x",
+        "stripe_subscription_id": "sub_x",
+        "subscription_checked_at": time.time(),
+    }
+    tier = core.get_user_tier(user)
+    assert tier != "free", f"past_due must not collapse to free, got {tier!r}"
+
+
+def test_check_can_use_past_due_user_is_not_blocked(monkeypatch):
+    """The whole bug in one assertion: a past_due customer is NOT blocked at
+    the parse gate. Before the fix this returned (False, 'free',
+    'trial_expired'). After, they pass on their paid tier (budget permitting)."""
+    import core
+    from core import check_can_use
+    monkeypatch.setattr(core, "STRIPE_AVAILABLE", False)
+    user = {
+        "id": 1, "email": "pastdue-canuse@example.com",
+        "grandfathered_trial": 0,
+        "subscription_status": "past_due",
+        "stripe_customer_id": "cus_x",
+        "stripe_subscription_id": "sub_x",
+        "subscription_checked_at": time.time(),
+        "trial_end_at": None,
+    }
+    with patch("core.is_email_verified", return_value=True), \
+         patch("core.get_global_daily_ai_spend", return_value=0.0), \
+         patch("core.get_user_today_spend", return_value=0.0), \
+         patch("core.get_monthly_ai_spend", return_value=0.0), \
+         patch("core.get_credit_balance", return_value=999.0):
+        ok, tier, reason, _ = check_can_use(user, "statement")
+    assert ok is True, f"past_due customer blocked at parse gate: reason={reason!r}"
+    assert reason == "ok"
+    assert tier != "free"
+
+
+def test_verify_subscription_stale_cache_mirrors_real_status_not_cancelled(monkeypatch):
+    """The nastiest part of the bug: the stale-cache refresh queried Stripe
+    with status='active' (which excludes past_due) and wrote back a binary
+    'active'/'cancelled' — silently flipping a past_due grace-period customer
+    to 'cancelled' once the 1h TTL expired. It must now query status='all'
+    and persist Stripe's real status."""
+    import core
+
+    captured: dict = {}
+
+    class _FakeSubObj:
+        status = "past_due"
+
+    class _FakeSubList:
+        data = [_FakeSubObj()]
+
+    class _FakeSubscription:
+        @staticmethod
+        def list(**kwargs):
+            captured["list_kwargs"] = kwargs
+            return _FakeSubList()
+
+    class _FakeStripe:
+        Subscription = _FakeSubscription
+
+    def _fake_update(uid, **kwargs):
+        captured["update_kwargs"] = kwargs
+
+    monkeypatch.setattr(core, "STRIPE_AVAILABLE", True)
+    monkeypatch.setattr(core, "STRIPE_SECRET_KEY", "sk_test_x")
+    monkeypatch.setattr(core, "stripe", _FakeStripe)
+    monkeypatch.setattr(core, "update_user", _fake_update)
+
+    user = {
+        "id": 1, "email": "pastdue-stale@example.com",
+        "subscription_status": "past_due",
+        "stripe_customer_id": "cus_x",
+        "stripe_subscription_id": "sub_x",
+        "subscription_checked_at": 0,  # stale → forces the Stripe refresh path
+    }
+    assert core.verify_subscription(user) is True
+    # Queried ALL statuses, not just active:
+    assert captured["list_kwargs"].get("status") == "all"
+    # Wrote back Stripe's real status, NOT a collapsed 'cancelled':
+    assert captured["update_kwargs"].get("subscription_status") == "past_due"
