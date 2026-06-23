@@ -276,7 +276,7 @@
             if (res.status === 403) { document.getElementById('loadingState').textContent = 'Admin access required.'; return; }
             const data = await res.json();
             allUsers = data.users || [];
-            subscribers = allUsers.filter(u => u.subscription_status === 'active' || u.subscription_status === 'trialing');
+            subscribers = allUsers.filter(u => ['active', 'trialing', 'past_due'].includes(u.subscription_status));
 
             renderStats();
             renderTable();
@@ -289,8 +289,14 @@
     }
 
     function renderStats() {
+        // "Paying" = Stripe 'active' AND a Stripe customer record exists. The
+        // customer-id check excludes orphan/test rows (e.g. http-test@) that
+        // are marked active in the DB but were never billed. This is still our
+        // DB's view — confirm against Stripe with scripts/reconcile_subscribers.py.
+        const paidCount = allUsers.filter(u => u.subscription_status === 'active' && u.stripe_customer_id).length;
+        const trialCount = allUsers.filter(u => u.subscription_status === 'trialing').length;
+        const pastDueCount = allUsers.filter(u => u.subscription_status === 'past_due').length;
         const freeCount = allUsers.filter(u => !u.subscription_status || u.subscription_status === 'cancelled').length;
-        const activeCount = subscribers.length;
         const now = Date.now() / 1000;
         const recentCount = allUsers.filter(u => u.created_at && (now - u.created_at) < 7 * 86400).length;
 
@@ -299,10 +305,19 @@
                 <div class="stat-value">${allUsers.length}</div>
                 <div class="stat-label">Total Users</div>
             </div>
-            <div class="stat-card accent">
-                <div class="stat-value">${activeCount}</div>
-                <div class="stat-label">Active Subscribers</div>
+            <div class="stat-card accent" title="Stripe 'active' with a customer record. Our DB's view — verify real billing with scripts/reconcile_subscribers.py.">
+                <div class="stat-value">${paidCount}</div>
+                <div class="stat-label">Paying</div>
             </div>
+            <div class="stat-card" title="In a free trial — £0 so far. Not revenue yet.">
+                <div class="stat-value">${trialCount}</div>
+                <div class="stat-label">On Trial</div>
+            </div>
+            ${pastDueCount > 0 ? `
+            <div class="stat-card danger" title="Card failing, Stripe retrying (grace period). At risk of churn.">
+                <div class="stat-value">${pastDueCount}</div>
+                <div class="stat-label">Payment Failing</div>
+            </div>` : ''}
             <div class="stat-card">
                 <div class="stat-value">${freeCount}</div>
                 <div class="stat-label">Free Users</div>
@@ -422,7 +437,7 @@
                 return;
             }
             allUsers = allUsers.filter(u => u.id !== id);
-            subscribers = allUsers.filter(u => u.subscription_status === 'active' || u.subscription_status === 'trialing');
+            subscribers = allUsers.filter(u => ['active', 'trialing', 'past_due'].includes(u.subscription_status));
             renderStats();
             renderTable();
         } catch (e) {
