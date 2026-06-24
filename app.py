@@ -4070,6 +4070,26 @@ async def get_config():
 # ==========================================================================
 
 BLOG_POSTS = {
+    "bank-statement-data-entry-mistakes-guide": {
+        "title": "7 Bank Statement Data Entry Mistakes UK Bookkeepers Make — And How to Fix Them",
+        "description": "Are you making these costly bank statement data entry errors? Transposition mistakes, hidden formatting, column mismapping, duplicate entries — learn the 7 most common manual data entry errors and exactly how to eliminate them.",
+        "date": "2026-06-24",
+        "author": "BankScan AI Team",
+        "template": "blog/bank-statement-data-entry-mistakes-guide.html",
+        "keywords": [
+            "bank statement data entry mistakes",
+            "manual data entry errors bookkeeping",
+            "bank statement typing errors",
+            "avoid data entry mistakes accounting",
+            "bank statement conversion errors",
+            "bookkeeping data entry errors UK",
+            "common bookkeeping mistakes",
+            "automate bank statement data entry",
+            "transposition errors bookkeeping",
+            "bank statement formatting errors"
+        ],
+        "related": ["cost-of-manual-data-entry-bookkeeping", "how-to-reconcile-bank-statements-faster", "bank-reconciliation-automation-uk-guide", "uk-bank-statement-formats-guide", "best-bank-statement-converters-2026"],
+    },
     "convert-credit-card-statement-to-excel": {
         "title": "Convert Credit Card Statement to Excel — Complete UK Guide (2026)",
         "description": "Struggling to convert business credit card or expense card statements to Excel? Our complete UK guide shows bookkeepers how to handle Amex, Barclaycard, Capital On Tap, and more. No manual data entry.",
