@@ -138,6 +138,16 @@ def init_db():
             scan_month TEXT DEFAULT NULL,
             created_at REAL DEFAULT (strftime('%s', 'now'))
         )""",
+        # First-party blog read counter. One row per blog slug; `views` is
+        # incremented on each non-bot page load (see app.py::blog_post). This
+        # is our own number for "is anyone reading the blog?", independent of
+        # Google Analytics. Counts page loads (reads), not unique visitors —
+        # GA4 is the source of truth for unique users.
+        """CREATE TABLE IF NOT EXISTS blog_views (
+            slug TEXT PRIMARY KEY,
+            views INTEGER NOT NULL DEFAULT 0,
+            last_viewed_at REAL NOT NULL DEFAULT (strftime('%s', 'now'))
+        )""",
         """CREATE TABLE IF NOT EXISTS sessions (
             session_id TEXT PRIMARY KEY,
             statements_used INTEGER DEFAULT 0,
@@ -880,6 +890,28 @@ def increment_usage(session_id: str, mode: str):
             {column} = {column} + 1,
             updated_at = strftime('%s', 'now')
     """, (session_id,))
+
+
+# --- Blog read counter ---
+
+def increment_blog_view(slug: str):
+    """Record one read of a blog post. Upserts the slug's row and bumps the
+    count by 1. Caller is responsible for filtering bots."""
+    _execute("""
+        INSERT INTO blog_views (slug, views, last_viewed_at)
+        VALUES (?, 1, strftime('%s', 'now'))
+        ON CONFLICT(slug) DO UPDATE SET
+            views = views + 1,
+            last_viewed_at = strftime('%s', 'now')
+    """, (slug,))
+
+
+def get_blog_views() -> list[dict]:
+    """All blog read counts, most-read first. Slugs that have never been read
+    simply have no row (callers default them to 0)."""
+    return _fetchall_dicts(
+        "SELECT slug, views, last_viewed_at FROM blog_views ORDER BY views DESC"
+    )
 
 
 # --- OTP functions ---
