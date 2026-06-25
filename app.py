@@ -4563,6 +4563,31 @@ BLOG_POSTS = {
         ],
         "related": ["bank-reconciliation-automation-uk-guide", "batch-bank-statement-processing", "bank-statement-automation-month-end-close", "how-to-reconcile-bank-statements-faster", "cost-of-manual-data-entry-bookkeeping"],
     },
+    "standing-order-direct-debit-extraction-guide": {
+        "title": "How to Extract Standing Orders and Direct Debits from Bank Statements — Complete UK Guide (2026)",
+        "description": "Manually hunting for standing orders and direct debits in 50-page bank statements at 10pm? Complete UK guide to extracting recurring payments for cash flow forecasting, bank switching audits, and MTD reporting.",
+        "date": "2026-06-25",
+        "author": "BankScan AI Team",
+        "template": "blog/standing-order-direct-debit-extraction-guide.html",
+        "keywords": [
+            "extract standing orders from bank statements",
+            "extract direct debits from bank statements",
+            "identify recurring payments bank statement",
+            "standing order extraction accounting",
+            "direct debit identification bookkeeping",
+            "bank statement recurring payment analysis",
+            "MTD recurring payment reporting",
+            "cash flow standing order tracking",
+            "bank switching standing order audit",
+            "automated direct debit extraction",
+            "recurring payment extraction UK banks",
+            "how to find direct debits bank statement",
+            "standing order direct debit audit workflow",
+            "bank statement payment type identification",
+            "accountant recurring payment extraction tool"
+        ],
+        "related": ["bank-statement-cash-flow-forecasting-guide", "mtd-bank-statement-compliance-guide", "bank-reconciliation-automation-uk-guide", "uk-bank-statement-formats-guide", "bank-statement-automation-accounting-firms"],
+    },
 }
 
 
