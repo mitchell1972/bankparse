@@ -250,6 +250,7 @@
                 <button class="active" onclick="switchTab('all')">All Users</button>
                 <button onclick="switchTab('subscribers')">Subscribers</button>
                 <button onclick="switchTab('free')">Free Users</button>
+                <button onclick="switchTab('blog')">Blog</button>
             </div>
 
             <input type="text" class="search-box" id="searchBox" placeholder="Search by email...">
@@ -265,6 +266,8 @@
 <script>
     let allUsers = [];
     let subscribers = [];
+    let blogPosts = [];
+    let blogTotal = 0;
     let currentTab = 'all';
     let sortCol = 'created_at';
     let sortAsc = false;
@@ -277,6 +280,17 @@
             const data = await res.json();
             allUsers = data.users || [];
             subscribers = allUsers.filter(u => ['active', 'trialing', 'past_due'].includes(u.subscription_status));
+
+            // Blog read counts come from a separate endpoint; non-critical, so
+            // a failure here must not block the rest of the dashboard.
+            try {
+                const bres = await fetch('/api/admin/blog-views');
+                if (bres.ok) {
+                    const bdata = await bres.json();
+                    blogPosts = bdata.posts || [];
+                    blogTotal = bdata.total_views || 0;
+                }
+            } catch (e) { /* leave blog stats empty */ }
 
             renderStats();
             renderTable();
@@ -326,6 +340,10 @@
                 <div class="stat-value">${recentCount}</div>
                 <div class="stat-label">Signed Up (7d)</div>
             </div>
+            <div class="stat-card" title="First-party blog reads (bots filtered). Page loads by real visitors; GA4 has unique users + full history.">
+                <div class="stat-value">${blogTotal.toLocaleString()}</div>
+                <div class="stat-label">Blog Reads</div>
+            </div>
         `;
     }
 
@@ -351,7 +369,33 @@
         return list;
     }
 
+    function renderBlogTable() {
+        const q = document.getElementById('searchBox').value.toLowerCase();
+        let posts = blogPosts;
+        if (q) posts = posts.filter(p => (p.title || '').toLowerCase().includes(q) || (p.slug || '').toLowerCase().includes(q));
+        if (posts.length === 0) {
+            document.getElementById('tableContainer').innerHTML = '<div class="empty-state">No blog reads recorded yet.</div>';
+            return;
+        }
+        let html = `<table><thead><tr>
+            <th>Post</th>
+            <th>Reads</th>
+            <th>Last read</th>
+        </tr></thead><tbody>`;
+        for (const p of posts) {
+            const last = p.last_viewed_at ? new Date(p.last_viewed_at * 1000).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
+            html += `<tr>
+                <td><a href="/blog/${escapeHtml(p.slug)}" target="_blank" rel="noopener">${escapeHtml(p.title)}</a></td>
+                <td>${(p.views || 0).toLocaleString()}</td>
+                <td>${last}</td>
+            </tr>`;
+        }
+        html += '</tbody></table>';
+        document.getElementById('tableContainer').innerHTML = html;
+    }
+
     function renderTable() {
+        if (currentTab === 'blog') { renderBlogTable(); return; }
         const users = getFilteredUsers();
         if (users.length === 0) {
             document.getElementById('tableContainer').innerHTML = '<div class="empty-state">No users found.</div>';
@@ -388,7 +432,7 @@
     function switchTab(tab) {
         currentTab = tab;
         document.querySelectorAll('.tab-bar button').forEach((btn, i) => {
-            btn.classList.toggle('active', ['all','subscribers','free'][i] === tab);
+            btn.classList.toggle('active', ['all','subscribers','free','blog'][i] === tab);
         });
         renderTable();
     }

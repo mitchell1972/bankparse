@@ -3994,6 +3994,36 @@ async def admin_users(request: Request):
     })
 
 
+@app.get("/api/admin/blog-views")
+async def admin_blog_views(request: Request):
+    """Admin-only: first-party blog read counts per post (bots filtered).
+
+    Returns every published post (even unread ones, at 0) joined with its
+    stored read count, most-read first, plus the total across the blog."""
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required.")
+    email = (user.get("email") or "").lower()
+    if email not in UNLIMITED_EMAILS:
+        raise HTTPException(status_code=403, detail="Admin access required.")
+
+    counts = {r["slug"]: r for r in database.get_blog_views()}
+    posts = []
+    for slug, data in BLOG_POSTS.items():
+        row = counts.get(slug)
+        posts.append({
+            "slug": slug,
+            "title": data.get("title", slug),
+            "views": int(row["views"]) if row else 0,
+            "last_viewed_at": row["last_viewed_at"] if row else None,
+        })
+    posts.sort(key=lambda p: p["views"], reverse=True)
+    return JSONResponse({
+        "total_views": sum(p["views"] for p in posts),
+        "posts": posts,
+    })
+
+
 @app.delete("/api/admin/users/{user_id}")
 async def admin_delete_user(request: Request, user_id: int):
     """Admin-only endpoint to delete a user."""
@@ -4591,6 +4621,24 @@ BLOG_POSTS = {
 }
 
 
+_BOT_UA_MARKERS = (
+    "bot", "crawl", "spider", "slurp", "bingpreview", "facebookexternalhit",
+    "embedly", "pinterest", "redditbot", "whatsapp", "telegram",
+    "headlesschrome", "python-requests", "curl/", "wget", "go-http", "axios",
+    "scrapy", "lighthouse", "preview", "monitor", "uptime",
+)
+
+
+def _looks_like_bot(user_agent: str) -> bool:
+    """Best-effort bot filter for the blog read counter. Errs toward marking
+    empty/suspicious agents as bots so the 'readers' number reflects humans,
+    not Googlebot. This is a metric filter, not a security control."""
+    ua = (user_agent or "").lower().strip()
+    if not ua:
+        return True
+    return any(marker in ua for marker in _BOT_UA_MARKERS)
+
+
 @app.get("/blog", response_class=HTMLResponse)
 async def blog_index(request: Request):
     """Blog listing page."""
@@ -4608,6 +4656,16 @@ async def blog_post(request: Request, slug: str):
     """Individual blog post page."""
     if slug not in BLOG_POSTS:
         raise HTTPException(status_code=404, detail="Blog post not found")
+    # First-party read counter — best-effort, bots filtered, and wrapped so a
+    # metric write can never break the page. Note: the response is browser-
+    # cacheable (max-age below), so a returning visitor within 24h is not
+    # recounted — the number skews toward unique readers. GA4 stays the
+    # precise source of truth.
+    if not _looks_like_bot(request.headers.get("user-agent", "")):
+        try:
+            database.increment_blog_view(slug)
+        except Exception:
+            logger.debug("blog view counter failed for slug=%s", slug, exc_info=True)
     post = BLOG_POSTS[slug]
     response = templates.TemplateResponse(request, post["template"], {"post": post, "slug": slug})
     response.headers["Cache-Control"] = "public, max-age=86400, s-maxage=86400"
