@@ -4100,6 +4100,22 @@ async def get_config():
 # ==========================================================================
 
 BLOG_POSTS = {
+    "automatically-categorise-bank-statement-transactions-guide": {
+        "title": "How to Automatically Categorise Bank Statement Transactions — Complete UK Guide (2026)",
+        "description": "Stop manually coding bank transactions at 10pm. Complete UK guide to automatically categorising utilities, supplies, payroll, and rent from bank statements — saving hours every month for bookkeepers using Xero, QuickBooks, Sage, and FreeAgent.",
+        "date": "2026-06-26",
+        "author": "BankScan AI Team",
+        "template": "blog/automatically-categorise-bank-statement-transactions-guide.html",
+        "keywords": [
+            "automatically categorise bank statement transactions",
+            "bank transaction categorisation UK",
+            "auto categorise bank transactions Xero",
+            "transaction categorisation tool bookkeepers",
+            "bank statement expense categorisation",
+            "automate transaction coding UK"
+        ],
+        "related": ["cost-of-manual-data-entry-bookkeeping", "how-to-reconcile-bank-statements-faster", "bank-reconciliation-automation-uk-guide", "bank-statement-automation-month-end-close", "choosing-bank-statement-converter-buyers-guide"],
+    },
     "bank-statement-data-entry-mistakes-guide": {
         "title": "7 Bank Statement Data Entry Mistakes UK Bookkeepers Make — And How to Fix Them",
         "description": "Are you making these costly bank statement data entry errors? Transposition mistakes, hidden formatting, column mismapping, duplicate entries — learn the 7 most common manual data entry errors and exactly how to eliminate them.",
