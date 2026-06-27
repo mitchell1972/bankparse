@@ -4634,6 +4634,15 @@ BLOG_POSTS = {
         ],
         "related": ["bank-statement-cash-flow-forecasting-guide", "mtd-bank-statement-compliance-guide", "bank-reconciliation-automation-uk-guide", "uk-bank-statement-formats-guide", "bank-statement-automation-accounting-firms"],
     },
+    "year-end-bank-statement-processing-guide": {
+        "title": "Year-End Bank Statement Processing — Complete UK Guide for Bookkeepers (2026)",
+        "description": "Drowning in client bank statements at year-end? Complete UK guide covering year-end workflow checklist, bulk conversion strategies for 16+ bank formats, common deadline pitfalls, and how to process December and March year-end statements without working until midnight.",
+        "date": "2026-06-27",
+        "author": "BankScan AI Team",
+        "template": "blog/year-end-bank-statement-processing-guide.html",
+        "keywords": ["year-end bank statement processing UK", "year-end bookkeeping bank statements", "December year-end bank statement conversion", "March year-end tax return bank statements", "bulk bank statement processing year-end", "accountant year-end bank statement workflow", "bookkeeper year-end close bank statements", "year-end bank reconciliation guide UK", "client bank statements year-end deadline", "bank statement conversion year-end accounting", "UK bookkeeper year-end statement processing", "year-end bank statement to Excel bulk conversion"],
+        "related": ["bulk-bank-statement-conversion-for-accountants", "bank-statement-automation-month-end-close", "how-to-reconcile-bank-statements-faster", "self-assessment-tax-return-bank-statement-prep", "uk-bank-statement-formats-guide", "batch-bank-statement-processing"],
+    },
 }
 
 
