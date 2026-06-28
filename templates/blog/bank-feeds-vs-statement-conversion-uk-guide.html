@@ -1,0 +1,635 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- Google tag (gtag.js) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-Y9YR7G0D7Z"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', 'G-Y9YR7G0D7Z');
+    </script>
+    <title>Bank Feeds vs Bank Statement Conversion — Which Should UK Bookkeepers Actually Rely On? (2026)</title>
+    <meta name="description" content="Bank feed broken again? Nationwide won't give you a CSV? Client sent 2 years of PDFs? Complete UK guide comparing Open Banking feeds vs manual statement conversion — when to use each, what fails, and how to stay productive when your feed goes down.">
+    <meta name="keywords" content="bank feeds vs statement conversion UK, Open Banking feed not working, bank feed broken fix, manual statement upload vs auto feed, bank feed alternatives UK, Nationwide no CSV export, Open Banking 90-day reauthorisation, bank statement conversion vs feed, when bank feeds fail, UK bookkeeper bank feed issues">
+    <meta name="author" content="BankScan AI Team">
+    <meta name="robots" content="index, follow">
+    <link rel="canonical" href="https://bankscanai.com/blog/bank-feeds-vs-statement-conversion-uk-guide">
+    <link rel="alternate" hreflang="en-GB" href="https://bankscanai.com/blog/bank-feeds-vs-statement-conversion-uk-guide">
+
+    <meta property="og:type" content="article">
+    <meta property="og:url" content="https://bankscanai.com/blog/bank-feeds-vs-statement-conversion-uk-guide">
+    <meta property="og:title" content="Bank Feeds vs Bank Statement Conversion — Which Should UK Bookkeepers Actually Rely On? (2026)">
+    <meta property="og:description" content="Bank feed broken again? Open Banking reauthorisation expired? Client sent PDFs instead? Complete UK guide comparing bank feeds vs statement conversion — when each fails, what actually works, and how to stay productive when your feed goes down.">
+    <meta property="og:image" content="https://bankscanai.com/static/img/og-bank-feeds-vs-conversion.png">
+    <meta property="og:site_name" content="BankScan AI">
+    <meta property="og:locale" content="en_GB">
+    <meta property="article:published_time" content="2026-06-28">
+    <meta property="article:author" content="BankScan AI Team">
+
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Bank Feeds vs Bank Statement Conversion — Which Should UK Bookkeepers Actually Rely On? (2026)">
+    <meta name="twitter:description" content="Bank feed broken again? Open Banking reauthorisation expired? Complete UK guide comparing bank feeds vs statement conversion — when each fails and what to do about it.">
+    <meta name="twitter:image" content="https://bankscanai.com/static/img/og-bank-feeds-vs-conversion.png">
+
+    <!-- Article Schema -->
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "Article",
+        "headline": "Bank Feeds vs Bank Statement Conversion — Which Should UK Bookkeepers Actually Rely On? (2026)",
+        "description": "Bank feeds promise automatic transaction import via Open Banking, but connection failures, 90-day reauthorisation requirements, and banks that still don't offer CSV exports mean UK bookkeepers need a reliable backup strategy. Complete comparison guide covering when feeds work, when they fail, and how statement conversion keeps your bookkeeping moving when they do.",
+        "author": {"@type": "Organization", "name": "BankScan AI"},
+        "publisher": {"@type": "Organization", "name": "BankScan AI", "url": "https://bankscanai.com"},
+        "datePublished": "2026-06-28",
+        "dateModified": "2026-06-28",
+        "mainEntityOfPage": "https://bankscanai.com/blog/bank-feeds-vs-statement-conversion-uk-guide"
+    }
+    </script>
+
+    <!-- FAQ Schema -->
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "FAQPage",
+        "mainEntity": [
+            {
+                "@type": "Question",
+                "name": "Why do bank feeds keep disconnecting in the UK?",
+                "acceptedAnswer": {
+                    "@type": "Answer",
+                    "text": "UK bank feeds disconnect for three main reasons: (1) Open Banking 90-day reauthorisation — FCA regulations require you to re-consent every 90 days, and missing the renewal email or in-app prompt breaks the connection silently. (2) Bank-side changes — when a bank updates its online banking platform or API, the feed provider's integration can break until they deploy a fix, which can take days or weeks. (3) Multi-factor authentication changes — if a client resets their password or changes their MFA method, the stored authentication token is invalidated. The result: transactions stop importing without warning, and you only discover it when you sit down to reconcile."
+                }
+            },
+            {
+                "@type": "Question",
+                "name": "Which UK banks don't support Open Banking feeds?",
+                "acceptedAnswer": {
+                    "@type": "Answer",
+                    "text": "While the CMA9 (the nine largest UK banks) are required to offer Open Banking access, the quality varies dramatically. Nationwide does not offer CSV exports through online banking and its Open Banking feed can be unreliable for business accounts. Virgin Money and Metro Bank have limited Open Banking APIs that some accounting platforms don't fully support. Many building societies and specialist banks (Cater Allen, Unity Trust, Al Rayan) have no Open Banking feed at all. Even among supported banks, features like historical transaction access (beyond 90 days) and joint account feeds remain inconsistent across providers. Always check your specific bank and account type before relying on a feed."
+                }
+            },
+            {
+                "@type": "Question",
+                "name": "What's the difference between bank feeds and bank statement conversion?",
+                "acceptedAnswer": {
+                    "@type": "Answer",
+                    "text": "Bank feeds connect directly to your bank's servers via Open Banking APIs and pull transactions automatically — usually daily — into your accounting software. Bank statement conversion takes a statement file (PDF, CSV, or scanned paper) and extracts the same transaction data into a structured format like Excel or CSV for manual import. Feeds are automatic but fragile — they break when connections fail or authorisation expires. Statement conversion is a manual trigger but works with any bank, any account type, and any time period — including historical statements a feed could never access. Most UK bookkeeping practices use both: feeds for day-to-day transaction flow on supported accounts, and statement conversion as the safety net when feeds fail or for unsupported banks."
+                }
+            },
+            {
+                "@type": "Question",
+                "name": "How do I import bank statements when the bank feed is broken?",
+                "acceptedAnswer": {
+                    "@type": "Answer",
+                    "text": "When your bank feed breaks, you have three immediate options: (1) Check reauthorisation — log into online banking, look for a 'renew access' or 'reauthorise' prompt, and reconnect the feed. This fixes most temporary disconnections. (2) Download a CSV or PDF statement from online banking and run it through a bank statement converter like BankScan AI to get clean Excel or CSV output, then import it manually into your accounting software. (3) For banks with no download option at all (some business accounts are PDF-only), use a converter that handles PDF extraction for your specific bank's format. The key insight: don't wait for the feed to fix itself while your reconciliation pile grows — convert the statement now, reconcile now, and sort out the feed connection afterwards."
+                }
+            },
+            {
+                "@type": "Question",
+                "name": "Is statement conversion slower than bank feeds?",
+                "acceptedAnswer": {
+                    "@type": "Answer",
+                    "text": "Per statement, yes — a bank feed imports transactions automatically while statement conversion requires downloading and uploading a file. But 'slower' assumes the feed is working. When a feed is broken, the alternative isn't 'feed vs conversion' — it's 'conversion vs manual data entry.' BankScan AI converts a bank statement PDF to Excel in under 30 seconds. Manual data entry of the same statement takes 20–45 minutes. In that comparison, conversion is dramatically faster. The productivity question isn't whether conversion is slower than a working feed — it's whether you have a reliable backup when the feed isn't working. Without one, every feed outage means hours of manual typing."
+                }
+            },
+            {
+                "@type": "Question",
+                "name": "Can I use both bank feeds and statement conversion?",
+                "acceptedAnswer": {
+                    "@type": "Answer",
+                    "text": "Yes, and this is exactly what most efficient UK bookkeeping practices do. Use bank feeds as your primary transaction pipeline for supported accounts — they handle the day-to-day flow automatically. But maintain statement conversion as your backup for: (1) clients whose bank feed has disconnected and won't reconnect quickly, (2) banks that don't offer feeds (Nationwide business, building societies, specialist banks), (3) historical statements beyond the feed's 90-day lookback, (4) client-provided PDFs when you're onboarding, and (5) year-end when you need to verify feed data against original statements. Having both tools means you never tell a client 'I can't reconcile your accounts because the feed is down.'"
+                }
+            },
+            {
+                "@type": "Question",
+                "name": "Does BankScan AI work when bank feeds fail?",
+                "acceptedAnswer": {
+                    "@type": "Answer",
+                    "text": "Yes — BankScan AI is purpose-built for exactly this situation. When your client's bank feed disconnects, you can download their statement PDF or CSV from online banking, upload it to BankScan AI, and get a clean Excel or CSV file in under 30 seconds. It handles all 16+ major UK bank formats — including the tricky ones like HSBC (multi-line descriptions), Nationwide (no CSV export), and First Direct (abbreviated transaction codes). The output imports directly into Xero, QuickBooks, Sage, or FreeAgent. Rather than waiting for a feed to reconnect while your month-end deadline approaches, you keep moving — and handle the feed reconnection when you're not under time pressure."
+                }
+            }
+        ]
+    }
+    </script>
+
+    <style>
+        :root {
+            --primary: #1B4F72;
+            --primary-light: #2E86C1;
+            --accent: #27AE60;
+            --bg: #FAFBFC;
+            --bg-alt: #F0F4F8;
+            --text: #2C3E50;
+            --text-light: #5D6D7E;
+            --white: #FFFFFF;
+            --border: #D5DBDE;
+            --shadow: 0 2px 16px rgba(27, 79, 114, 0.08);
+            --radius: 12px;
+            --radius-sm: 8px;
+            --red: #E74C3C;
+            --amber: #F39C12;
+            --green: #27AE60;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            color: var(--text); background: var(--bg); line-height: 1.7; -webkit-font-smoothing: antialiased;
+        }
+        .header {
+            position: sticky; top: 0; z-index: 100;
+            background: rgba(255,255,255,0.95); backdrop-filter: blur(12px);
+            border-bottom: 1px solid var(--border);
+        }
+        .header-inner {
+            max-width: 1140px; margin: 0 auto; padding: 0 24px;
+            display: flex; align-items: center; justify-content: space-between; height: 64px;
+        }
+        .logo { font-size: 1.35rem; font-weight: 700; color: var(--primary); text-decoration: none; letter-spacing: -0.5px; }
+        .logo span { color: var(--accent); }
+        .nav { display: flex; gap: 28px; align-items: center; }
+        .nav a { text-decoration: none; color: var(--text-light); font-size: 0.9rem; font-weight: 500; transition: color 0.2s; }
+        .nav a:hover { color: var(--primary); }
+        .nav-cta {
+            background: var(--accent) !important; color: var(--white) !important;
+            padding: 8px 20px; border-radius: 6px; font-weight: 600 !important;
+        }
+        .nav-cta:hover { background: #219a52 !important; }
+
+        .article-hero {
+            background: linear-gradient(135deg, var(--primary) 0%, #154360 100%);
+            color: var(--white); padding: 60px 24px 50px; text-align: center;
+        }
+        .article-hero .breadcrumb { font-size: 0.85rem; opacity: 0.7; margin-bottom: 16px; }
+        .article-hero .breadcrumb a { color: var(--white); text-decoration: none; }
+        .article-hero .breadcrumb a:hover { text-decoration: underline; }
+        .article-hero h1 { font-size: 2.2rem; font-weight: 700; max-width: 760px; margin: 0 auto 16px; line-height: 1.25; }
+        .article-hero .meta { font-size: 0.9rem; opacity: 0.75; }
+
+        .article { max-width: 760px; margin: 0 auto; padding: 48px 24px 64px; }
+        .article h2 { font-size: 1.5rem; color: var(--primary); margin: 40px 0 16px; font-weight: 700; line-height: 1.3; }
+        .article h3 { font-size: 1.15rem; color: var(--text); margin: 28px 0 12px; font-weight: 600; }
+        .article p { margin-bottom: 18px; font-size: 1.02rem; }
+        .article ul, .article ol { margin: 0 0 18px 24px; }
+        .article li { margin-bottom: 6px; }
+        .article a { color: var(--primary-light); text-decoration: underline; }
+        .article strong { color: var(--text); }
+
+        .pros-cons { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 16px 0 24px; }
+        .pros, .cons {
+            background: var(--white); border: 1px solid var(--border); border-radius: var(--radius-sm);
+            padding: 16px; font-size: 0.92rem;
+        }
+        .pros { border-left: 4px solid var(--accent); }
+        .cons { border-left: 4px solid var(--red); }
+        .pros h4, .cons h4 { font-size: 0.85rem; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
+        .pros h4 { color: var(--accent); }
+        .cons h4 { color: var(--red); }
+        .pros ul, .cons ul { margin: 0; padding-left: 16px; }
+        .pros li, .cons li { margin-bottom: 4px; font-size: 0.9rem; }
+
+        .time-estimate {
+            display: inline-block; background: var(--bg-alt); border-radius: 20px;
+            padding: 4px 14px; font-size: 0.82rem; color: var(--text-light); margin-bottom: 16px;
+        }
+
+        .comparison-table { width: 100%; border-collapse: collapse; margin: 24px 0; font-size: 0.88rem; }
+        .comparison-table th {
+            background: var(--primary); color: var(--white); padding: 12px 10px;
+            text-align: left; font-weight: 600; font-size: 0.82rem;
+        }
+        .comparison-table td { padding: 10px; border-bottom: 1px solid var(--border); }
+        .comparison-table tr:nth-child(even) { background: var(--bg-alt); }
+        .comparison-table .highlight { background: #E8F8F0 !important; font-weight: 600; }
+        .comparison-table .warn { background: #FDEDEC !important; }
+
+        .cta-box {
+            background: linear-gradient(135deg, var(--primary) 0%, #154360 100%);
+            color: var(--white); border-radius: var(--radius); padding: 32px; text-align: center;
+            margin: 40px 0;
+        }
+        .cta-box h3 { font-size: 1.3rem; margin-bottom: 12px; color: var(--white); }
+        .cta-box p { opacity: 0.85; margin-bottom: 20px; font-size: 1rem; }
+        .cta-btn {
+            display: inline-block; background: var(--accent); color: var(--white);
+            padding: 14px 32px; border-radius: 8px; text-decoration: none;
+            font-weight: 700; font-size: 1rem; transition: background 0.2s;
+        }
+        .cta-btn:hover { background: #219a52; color: var(--white); }
+
+        .warning-box {
+            background: #FEF9E7; border: 1px solid #F9E79F; border-left: 4px solid var(--amber);
+            border-radius: var(--radius-sm); padding: 16px 20px; margin: 16px 0 24px;
+            font-size: 0.93rem;
+        }
+        .warning-box strong { color: #B7950B; }
+
+        .traffic-light {
+            display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin: 20px 0 28px;
+        }
+        .tl-box {
+            border-radius: var(--radius-sm); padding: 16px; text-align: center;
+            border: 1px solid var(--border);
+        }
+        .tl-box .tl-header { font-weight: 700; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+        .tl-box .tl-desc { font-size: 0.85rem; color: var(--text-light); line-height: 1.5; }
+        .tl-red { border-left: 5px solid var(--red); background: #FDEDEC; }
+        .tl-red .tl-header { color: var(--red); }
+        .tl-amber { border-left: 5px solid var(--amber); background: #FEF9E7; }
+        .tl-amber .tl-header { color: #B7950B; }
+        .tl-green { border-left: 5px solid var(--green); background: #E8F8F0; }
+        .tl-green .tl-header { color: #1E8449; }
+
+        .footer {
+            background: var(--primary); color: rgba(255,255,255,0.7); padding: 40px 24px; text-align: center; font-size: 0.85rem;
+        }
+        .footer a { color: rgba(255,255,255,0.9); text-decoration: none; }
+
+        @media (max-width: 600px) {
+            .article-hero h1 { font-size: 1.5rem; }
+            .pros-cons { grid-template-columns: 1fr; }
+            .traffic-light { grid-template-columns: 1fr; }
+            .comparison-table { font-size: 0.78rem; }
+            .comparison-table th, .comparison-table td { padding: 8px 6px; }
+        }
+    </style>
+</head>
+<body>
+
+<header class="header">
+    <div class="header-inner">
+        <a href="/landing" class="logo">BankScan<span>AI</span></a>
+        <nav class="nav">
+            <a href="/blog">Blog</a>
+            <a href="/tools">Tools</a>
+            <a href="/landing">Home</a>
+            <a href="/login" class="nav-cta">Try Free</a>
+        </nav>
+    </div>
+</header>
+
+<section class="article-hero">
+    <div class="breadcrumb"><a href="/landing">Home</a> &rsaquo; <a href="/blog">Blog</a> &rsaquo; Bank Feeds vs Statement Conversion</div>
+    <h1>Bank Feeds vs Bank Statement Conversion — Which Should UK Bookkeepers Actually Rely On? (2026)</h1>
+    <div class="meta">28 June 2026 &middot; 11 min read &middot; BankScan AI Team</div>
+</section>
+
+<article class="article">
+
+    <p>It's 10pm on a Wednesday. You've opened Xero to reconcile a client's accounts before the VAT deadline on Friday. You click into the bank transactions screen, expecting the usual stream of neatly imported entries.</p>
+
+    <p>Nothing. Last transaction imported: six days ago. The bank feed is down. Again.</p>
+
+    <p>You check the connection status — "Reauthorisation required." The client didn't click the renewal email. Or their online banking password changed. Or the bank updated its API and your accounting platform hasn't caught up yet. It doesn't matter why. What matters is you have 45 minutes of reconciliation to do and no data to do it with.</p>
+
+    <p>This is the moment every UK bookkeeper knows. The moment you realise that bank feeds — for all their convenience when they work — are a single point of failure. And when they fail, you're left with a choice: wait (and miss your deadline), or find another way.</p>
+
+    <p>This guide is about that other way. It's an honest comparison of bank feeds and bank statement conversion — not marketing fluff, but a practical framework for when to use each, what actually breaks, and how to build a workflow that keeps you productive no matter what the bank's API is doing tonight.</p>
+
+    <p>If you're currently staring at a broken feed and need a fix right now, skip to <a href="#when-feeds-fail">What to Do When Your Bank Feed Breaks</a> — it covers your immediate next steps.</p>
+
+
+    <h2>What Bank Feeds Actually Are (And What They Aren't)</h2>
+
+    <p>Let's start with the basics, because there's a surprising amount of confusion about what a bank feed actually does — and what it doesn't.</p>
+
+    <h3>How Bank Feeds Work</h3>
+    <p>A bank feed is a direct data connection between your accounting software (Xero, QuickBooks, Sage, FreeAgent) and your client's bank account. It uses <strong>Open Banking APIs</strong> — the same regulated framework that powers everything from Monzo's app to your mortgage broker's affordability check. Once authorised, the feed pulls new transactions automatically, usually once a day, and drops them into your accounting platform's reconciliation screen.</p>
+
+    <p>When it works, it's brilliant. Transactions appear without anyone lifting a finger. You reconcile by matching imported entries against invoices and receipts. The whole system feels frictionless — right up until it doesn't.</p>
+
+    <h3>What Bank Feeds Don't Do</h3>
+    <p>This is the part that catches people out. Bank feeds do <strong>not</strong>:</p>
+    <ul>
+        <li><strong>Go back more than 90 days</strong> — Open Banking regulations typically limit historical data access to the last 90 days of transactions. Need last year's statements for a tax return? The feed can't help.</li>
+        <li><strong>Work with every bank</strong> — Only the CMA9 (the UK's nine largest banks) are required to offer Open Banking. Building societies, specialist banks, and many business account providers either don't participate or offer limited access.</li>
+        <li><strong>Work with every account type</strong> — Joint accounts, trust accounts, and some business accounts have restricted or no feed support even at banks that otherwise offer it.</li>
+        <li><strong>Stay connected forever</strong> — FCA regulations require reauthorisation every 90 days. Miss the renewal and the feed stops silently.</li>
+        <li><strong>Handle PDF statements from clients</strong> — When a new client hands you two years of PDF bank statements at onboarding, the feed can't touch them.</li>
+    </ul>
+
+    <div class="warning-box">
+        <strong>🧠 The mental model that helps:</strong> Think of bank feeds as a <em>conveyor belt</em> — they move new transactions from the bank to your software automatically. Think of statement conversion as a <em>forklift</em> — it moves any batch of transactions, from any time period, in any format, whenever you need it moved. You need both. The conveyor belt handles the day-to-day. The forklift handles everything the conveyor belt can't reach.
+    </div>
+
+
+    <h2>Why Bank Feeds Break (And Why You're Googling This at 10pm)</h2>
+
+    <p>If you're reading this at an unsociable hour, you've probably just discovered that a bank feed has stopped working. You're not alone — broken bank feeds are one of the most common complaints on AccountingWEB forums, in bookkeeping Facebook groups, and in the Xero and QuickBooks community boards. Here's exactly what's going wrong:</p>
+
+    <h3>1. The 90-Day Reauthorisation Cliff</h3>
+    <p>Under FCA Open Banking regulations, bank feed access must be reconfirmed every 90 days. The bank sends a renewal prompt — usually an email or an in-app notification — to the account holder. If the account holder is your client and they either miss the email or don't understand what it's for, the feed disconnects. Your accounting software won't always alert you proactively — the transactions just stop appearing. You discover it when you sit down to reconcile, which is why it's always 10pm on a deadline night.</p>
+
+    <h3>2. Bank-Side API Changes</h3>
+    <p>Banks update their online banking platforms and APIs regularly. When they do, the feed provider (Xero's Yodlee integration, QuickBooks' Open Banking connector, etc.) needs to update their integration to match. This lag can be hours, days, or — in the worst cases — weeks. During that window, your feed is dead and there is nothing you can do to fix it from your end.</p>
+
+    <h3>3. Authentication Drift</h3>
+    <p>If a client changes their online banking password, resets their MFA method, or their bank introduces a new security step (which happens frequently in the UK as banks tighten fraud controls), the stored authentication token becomes invalid. The feed breaks. And unlike a password reset on a website, there's no "click here to update" button — you often have to disconnect and reconnect the entire feed, which can trigger a fresh 90-day countdown.</p>
+
+    <h3>4. Banks That Simply Don't Play Ball</h3>
+    <p>Some UK banks offer Open Banking in theory but deliver a frustrating experience in practice. Nationwide business accounts are a notorious example — they don't offer CSV downloads through online banking, and their Open Banking feed can be intermittent. Virgin Money and Metro Bank have API implementations that some accounting platforms struggle with. And many smaller providers (Unity Trust, Cater Allen, Al Rayan) have no feed at all.</p>
+
+    <div class="traffic-light">
+        <div class="tl-box tl-red">
+            <div class="tl-header">🔴 Feed Completely Dead</div>
+            <div class="tl-desc">Reauthorisation expired and the client is unreachable. API changed and the platform hasn't patched it yet. No transactions coming in — reconciliation is blocked.</div>
+        </div>
+        <div class="tl-box tl-amber">
+            <div class="tl-header">🟠 Feed Partially Broken</div>
+            <div class="tl-desc">Transactions are importing but some are duplicated, miscategorised, or missing dates. The feed is technically connected but the data isn't trustworthy.</div>
+        </div>
+        <div class="tl-box tl-green">
+            <div class="tl-header">🟢 Feed Working Perfectly</div>
+            <div class="tl-desc">Transactions import daily, categories are consistent, dates are correct. You reconcile in minutes. Enjoy it — and have a backup plan for when it changes.</div>
+        </div>
+    </div>
+
+    <p><strong>Every hour your bank feed is broken is an hour of manual data entry.</strong> Or it would be, if you didn't have a backup strategy. Let's look at what that strategy looks like.</p>
+
+
+    <h2 id="when-feeds-fail">What to Do When Your Bank Feed Breaks — The 10-Minute Recovery Plan</h2>
+
+    <p>Before we dive into the broader comparison, here's your immediate action plan for right now, at 10pm, with a dead feed:</p>
+
+    <ol>
+        <li><strong>Don't wait for the feed to fix itself.</strong> Feed outages can last hours or days. If you have a deadline, waiting is not a strategy — it's procrastination dressed as patience.</li>
+        <li><strong>Log into the client's online banking directly.</strong> You have authority to do this (you're their bookkeeper). Navigate to the statement or transaction history view for the period you need to reconcile.</li>
+        <li><strong>Download the statement.</strong> Look for an export or download option. CSV is ideal. PDF is more common — especially for business accounts and older statements. If neither is available, take a screenshot of the transaction list (last resort).</li>
+        <li><strong>Convert the statement to Excel or CSV.</strong> Upload the downloaded file to a bank statement converter that understands UK bank formats. <a href="/landing">BankScan AI</a> handles all 16+ major UK banks and outputs a clean spreadsheet in under 30 seconds.</li>
+        <li><strong>Import into your accounting software and reconcile.</strong> Most platforms accept CSV imports directly. Xero, QuickBooks, Sage, and FreeAgent all have manual import options. Get the reconciliation done now, and sort out the feed reconnection when you're not under time pressure.</li>
+    </ol>
+
+    <div class="warning-box">
+        <strong>⏰ The deadline principle:</strong> Reconnecting a bank feed and reconciling are two separate jobs. One is admin, the other is bookkeeping. Do the bookkeeping first — because that's what your client's deadline actually depends on. The feed reconnection can wait until tomorrow morning when you're not racing a clock.
+    </div>
+
+
+    <h2>Bank Feeds vs Statement Conversion: The Honest Comparison</h2>
+
+    <p>Now that we've covered why feeds break and what to do about it, let's compare the two approaches on their actual merits — not marketing promises, but real-world behaviour.</p>
+
+    <div style="overflow-x: auto;">
+    <table class="comparison-table">
+        <thead>
+            <tr>
+                <th>Criteria</th>
+                <th>Bank Feeds</th>
+                <th>Statement Conversion</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td><strong>How it works</strong></td>
+                <td>Direct API connection to bank servers via Open Banking</td>
+                <td>Upload a statement file (PDF/CSV/scan), AI extracts transactions into structured format</td>
+            </tr>
+            <tr>
+                <td><strong>Speed (per statement)</strong></td>
+                <td class="highlight">Automatic — transactions appear daily without any action</td>
+                <td>Under 30 seconds upload-to-Excel with a purpose-built converter</td>
+            </tr>
+            <tr>
+                <td><strong>Reliability</strong></td>
+                <td class="warn">Depends on client reauthorising every 90 days, bank API stability, and platform integration</td>
+                <td class="highlight">Always works — if you have the statement file, you can convert it</td>
+            </tr>
+            <tr>
+                <td><strong>Historical access</strong></td>
+                <td class="warn">Limited to ~90 days of transactions under Open Banking regulations</td>
+                <td class="highlight">Unlimited — works with statements from any date, including archived and scanned paper statements</td>
+            </tr>
+            <tr>
+                <td><strong>Bank coverage</strong></td>
+                <td class="warn">CMA9 banks only (9 largest UK banks). Building societies and specialist banks often excluded.</td>
+                <td class="highlight">Any bank, any account type — if a statement exists, it can be converted</td>
+            </tr>
+            <tr>
+                <td><strong>Client onboarding</strong></td>
+                <td class="warn">Requires client to authorise access — can take days if client is slow to respond</td>
+                <td class="highlight">Immediate — client hands you PDFs at the first meeting, you convert them same day</td>
+            </tr>
+            <tr>
+                <td><strong>Ongoing maintenance</strong></td>
+                <td class="warn">Reauthorisation every 90 days. Breaks on password changes, MFA updates, bank API changes</td>
+                <td class="highlight">Zero maintenance — statement files don't expire or disconnect</td>
+            </tr>
+            <tr>
+                <td><strong>Data independence</strong></td>
+                <td class="warn">Cannot access transaction data if feed is disconnected</td>
+                <td class="highlight">Works with any statement file you have — downloaded, emailed, or scanned</td>
+            </tr>
+            <tr>
+                <td><strong>Best for</strong></td>
+                <td>Day-to-day transaction flow on supported accounts with attentive clients who reauthorise on time</td>
+                <td>Historical data, unsupported banks, onboarding, feed failures, year-end verification, and any situation where "waiting" isn't an option</td>
+            </tr>
+        </tbody>
+    </table>
+    </div>
+
+
+    <h2>When Bank Feeds Win — And You Should Absolutely Use Them</h2>
+
+    <p>This isn't an anti-feed argument. Bank feeds are the right tool for a specific job, and when that job lines up with what feeds are good at, they're the best option available.</p>
+
+    <h3>Use Bank Feeds When:</h3>
+    <ul>
+        <li><strong>You're managing day-to-day transaction flow</strong> — For ongoing bookkeeping where transactions trickle in daily, feeds eliminate the need to download and convert statements every day. This is their sweet spot.</li>
+        <li><strong>The client's bank is well-supported</strong> — Barclays, HSBC, Lloyds, NatWest, and Santander all have mature Open Banking APIs that work reliably with major accounting platforms. If your client banks with a CMA9 institution, feeds are likely stable.</li>
+        <li><strong>The client is responsive</strong> — If your client clicks reauthorisation emails within 24 hours, the 90-day renewal is a minor inconvenience, not a workflow blocker.</li>
+        <li><strong>You're doing high-frequency reconciliation</strong> — Practices that reconcile weekly or daily benefit enormously from feeds because the transaction volume per session is small and manageable.</li>
+    </ul>
+
+    <div class="pros-cons">
+        <div class="pros">
+            <h4>Where Feeds Excel</h4>
+            <ul>
+                <li>Zero manual effort for daily transaction import</li>
+                <li>Near-real-time visibility of client cash positions</li>
+                <li>Automatic categorisation rules in most platforms</li>
+                <li>Seamless when everything is configured correctly</li>
+            </ul>
+        </div>
+        <div class="cons">
+            <h4>Where Feeds Fall Short</h4>
+            <ul>
+                <li>Silent failures — you discover the problem when you reconcile</li>
+                <li>No historical data beyond 90 days</li>
+                <li>Unsupported banks and account types</li>
+                <li>Dependency on client action (reauthorisation)</li>
+            </ul>
+        </div>
+    </div>
+
+
+    <h2>When Statement Conversion Wins — The Safety Net Every Practice Needs</h2>
+
+    <p>Statement conversion is not a competitor to bank feeds — it's the backup that catches everything feeds drop. Here's when it's not just useful, but essential.</p>
+
+    <h3>Use Statement Conversion When:</h3>
+    <ul>
+        <li><strong>A bank feed has broken and you have a deadline</strong> — This is the scenario that drives bookkeepers to Google at 10pm. Statement conversion means you download the PDF from online banking, convert it in 30 seconds, and reconcile tonight — instead of waiting days for a feed to reconnect.</li>
+        <li><strong>You're onboarding a new client</strong> — New clients bring historical statements — often two years' worth, in PDF format, from multiple banks, some scanned from paper. Feeds can't touch any of this. A statement converter processes the entire batch while you work on something else.</li>
+        <li><strong>The bank doesn't offer Open Banking feeds</strong> — Nationwide (no CSV export), Virgin Money (limited API), Metro Bank (inconsistent), building societies, and specialist banks. If there's no feed, conversion is the only automated option. The alternative is manual data entry.</li>
+        <li><strong>You need historical data for tax returns or MTD</strong> — Making Tax Digital requires accurate transaction-level data going back further than 90 days. Bank feeds can't provide this. Statement conversion can — for any year, any bank, any format.</li>
+        <li><strong>You're verifying feed data at year-end</strong> — Smart practices cross-reference feed-imported transactions against original bank statements at year-end. It's a professional scepticism step that catches missing transactions and feed gaps before they become problems.</li>
+    </ul>
+
+    <h3>The Hidden Cost of Not Having a Backup</h3>
+    <p>Every bookkeeping practice has moments when bank feeds fail. The practices that handle these smoothly have a conversion workflow ready. The practices that don't have a conversion workflow spend those hours doing manual data entry — typing transaction after transaction from a PDF into Excel, one line at a time. At 20–45 minutes per statement, a single broken feed on a monthly client can cost hours. Across a practice with 20 clients, the annual cost of not having a backup is measured in days, not hours.</p>
+
+
+    <h2>UK Bank Feed Pitfalls: Bank by Bank</h2>
+
+    <p>Not all bank feeds are created equal. Here's what to expect from the major UK banks — based on real bookkeeper experiences, forum discussions, and our own testing across 16+ UK bank formats.</p>
+
+    <h3>CMA9 Banks — Feed Support Overview</h3>
+
+    <div style="overflow-x: auto;">
+    <table class="comparison-table">
+        <thead>
+            <tr>
+                <th>Bank</th>
+                <th>Feed Reliability</th>
+                <th>CSV Export Available?</th>
+                <th>Common Pain Points</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td><strong>Barclays</strong></td>
+                <td class="highlight">Generally stable</td>
+                <td>Yes — personal and business</td>
+                <td>Business account MFA can interfere with feed reconnection. CSV formatting is clean but dates are sometimes US-formatted.</td>
+            </tr>
+            <tr>
+                <td><strong>HSBC</strong></td>
+                <td>Moderate — feed works but requires frequent reauthorisation</td>
+                <td>Personal: yes. Business: PDF-only</td>
+                <td>Multi-line transaction descriptions break CSV structure. Business accounts are PDF-only — the feed is the only automated path, making failures more painful.</td>
+            </tr>
+            <tr>
+                <td><strong>Lloyds</strong></td>
+                <td class="highlight">Generally stable</td>
+                <td>Yes — most account types</td>
+                <td>Business account CSV export uses non-standard column ordering that some platforms misinterpret.</td>
+            </tr>
+            <tr>
+                <td><strong>NatWest</strong></td>
+                <td class="highlight">Generally stable</td>
+                <td>Yes — most account types</td>
+                <td>Feed reconnection sometimes requires full disconnect/reconnect rather than simple renewal.</td>
+            </tr>
+            <tr>
+                <td><strong>Santander</strong></td>
+                <td>Moderate — platform-dependent</td>
+                <td>Yes — personal and business</td>
+                <td>Feed integration varies by accounting platform. Xero support is solid; QuickBooks can be intermittent.</td>
+            </tr>
+            <tr>
+                <td><strong>Nationwide</strong></td>
+                <td class="warn">Intermittent — business accounts particularly problematic</td>
+                <td class="warn">No CSV export from online banking</td>
+                <td>No CSV download option at all. Open Banking feed is unreliable for business accounts. This is the bank that drives the most conversion need.</td>
+            </tr>
+            <tr>
+                <td><strong>Virgin Money</strong></td>
+                <td class="warn">Limited — API coverage is patchy</td>
+                <td>Limited — account-dependent</td>
+                <td>API implementation is newer and less mature than other CMA9 banks. Not all accounting platforms fully support it.</td>
+            </tr>
+            <tr>
+                <td><strong>Metro Bank</strong></td>
+                <td class="warn">Inconsistent — platform-dependent</td>
+                <td>Yes — most account types</td>
+                <td>Feed connection stability varies. Some bookkeepers report it works flawlessly; others have persistent disconnection issues.</td>
+            </tr>
+        </tbody>
+    </table>
+    </div>
+
+    <h3>Non-CMA9 Banks — No Feed, No Problem</h3>
+    <p>Banks outside the CMA9 — including building societies (Coventry, Yorkshire, Skipton), specialist banks (Cater Allen, Unity Trust, Al Rayan, Cashplus), and some digital-only providers — typically have <strong>no Open Banking feed at all</strong>. For these accounts, statement conversion isn't a backup — it's the primary workflow. The good news: because there's no feed to maintain, there's nothing to break. Download the statement, convert it, import it, done.</p>
+
+
+    <h2>The Hybrid Approach That Actually Works</h2>
+
+    <p>The most efficient UK bookkeeping practices don't choose between bank feeds and statement conversion. They use both as complementary tools in a single workflow:</p>
+
+    <ol>
+        <li><strong>Bank feeds for day-to-day flow</strong> — Connect every supported account to your accounting platform's feed. This handles 80% of your transaction volume with zero manual effort.</li>
+        <li><strong>Statement conversion for everything feeds can't reach</strong> — Unsupported banks. Historical statements. Client onboarding. Broken feeds. Year-end verification. Keep a converter like <a href="/landing">BankScan AI</a> bookmarked for these moments.</li>
+        <li><strong>Monthly feed health check</strong> — Once a month, spend 5 minutes checking that all client feeds are still connected and importing. Catch disconnections before they become deadline-night emergencies.</li>
+        <li><strong>Year-end cross-reference</strong> — At year-end, download the original bank statements for each client and spot-check a sample against your feed-imported data. This catches feed gaps, duplicates, and data corruption before they become compliance issues.</li>
+    </ol>
+
+    <div class="warning-box">
+        <strong>🛡️ Professional scepticism:</strong> Trusting a bank feed without verification is like trusting a client's spreadsheet without checking the formulas. The feed is an input — it's not the final record. The original bank statement is the source of truth. Smart practices compare them.
+    </div>
+
+    <p>This hybrid approach means you get the automation of feeds when they work, the reliability of conversion when they don't, and you never tell a client "I can't reconcile your accounts because your bank feed is down."</p>
+
+
+    <h2>Real-World Scenarios: What Would You Do?</h2>
+
+    <h3>Scenario 1: The 10pm VAT Deadline Emergency</h3>
+    <p>It's Wednesday night. VAT return due Friday. One client's HSBC business feed has been silent for six days. Reauthorisation email went to the client, who hasn't opened it. You need the last week of transactions <em>now</em>.</p>
+    <p><strong>The feed-only approach:</strong> Call the client (unlikely to answer at 10pm), explain how to reauthorise, wait. Return tomorrow, hope it's fixed, rush the reconciliation. Risk: it's not fixed, and you're doing a Thursday night panic instead of a Wednesday night one.</p>
+    <p><strong>The hybrid approach:</strong> Log into HSBC online banking, download the last week's statement as a PDF, upload to BankScan AI, get a clean CSV in under 30 seconds, import into your accounting software, reconcile. Done by 10:30pm. Sort out the feed reconnection tomorrow morning when the client is awake.</p>
+
+    <h3>Scenario 2: New Client Onboarding</h3>
+    <p>New client signs. Hands you two years of statements — 24 PDFs from three different banks including Nationwide (no CSV export) and a building society savings account (no feed at all). First meeting is tomorrow and you want to show them you're on top of things.</p>
+    <p><strong>The feed-only approach:</strong> Set up feeds for the two banks that support them. Wait for 90-day history to populate. For Nationwide and the building society, there is no feed path — you'll be doing manual data entry for these accounts regardless. Client waits a week for you to be "set up."</p>
+    <p><strong>The hybrid approach:</strong> Upload all 24 PDFs to BankScan AI as a batch. Get clean Excel files for every statement in minutes. Import the data into your platform. Walk into the first meeting with their full transaction history already loaded. Set up feeds for the supported accounts afterwards, as a nice-to-have, not a blocker.</p>
+
+    <h3>Scenario 3: Year-End Verification</h3>
+    <p>It's December year-end for a limited company client. You've been using feeds all year, but you need to be certain the data is complete before finalising the accounts and submitting to HMRC.</p>
+    <p><strong>The feed-only approach:</strong> Trust the feed data. Hope nothing was missed. Submit. This is what most practices do — and it's a compliance risk. If a feed gap went unnoticed in March, you won't discover it now.</p>
+    <p><strong>The hybrid approach:</strong> Download the original bank statements for the full year. Convert them all to Excel with BankScan AI. Run a quick reconciliation between the feed data and the statement data. Any discrepancies surface immediately. Fix them before submission. Sleep better.</p>
+
+
+    <div class="cta-box">
+        <h3>When Your Bank Feed Breaks, Don't Wait — Convert</h3>
+        <p>BankScan AI handles all 16+ major UK bank formats — including the tricky ones like HSBC, Nationwide, and First Direct that other converters struggle with. Upload any statement PDF or CSV and get a clean Excel file in under 30 seconds. Free first conversion, no credit card needed.</p>
+        <a href="/landing" class="cta-btn">Try BankScan AI Free →</a>
+    </div>
+
+
+    <h2>Frequently Asked Questions</h2>
+
+    <h3>Why do bank feeds keep disconnecting in the UK?</h3>
+    <p>UK bank feeds disconnect for three main reasons: (1) <strong>Open Banking 90-day reauthorisation</strong> — FCA regulations require you to re-consent every 90 days, and missing the renewal email or in-app prompt breaks the connection silently. (2) <strong>Bank-side changes</strong> — when a bank updates its online banking platform or API, the feed provider's integration can break until they deploy a fix, which can take days or weeks. (3) <strong>Multi-factor authentication changes</strong> — if a client resets their password or changes their MFA method, the stored authentication token is invalidated. The result: transactions stop importing without warning, and you only discover it when you sit down to reconcile.</p>
+
+    <h3>Which UK banks don't support Open Banking feeds?</h3>
+    <p>While the CMA9 (the nine largest UK banks) are required to offer Open Banking access, the quality varies dramatically. Nationwide does not offer CSV exports through online banking and its Open Banking feed can be unreliable for business accounts. Virgin Money and Metro Bank have limited Open Banking APIs that some accounting platforms don't fully support. Many building societies and specialist banks (Cater Allen, Unity Trust, Al Rayan) have no Open Banking feed at all. Even among supported banks, features like historical transaction access (beyond 90 days) and joint account feeds remain inconsistent across providers. Always check your specific bank and account type before relying on a feed.</p>
+
+    <h3>What's the difference between bank feeds and bank statement conversion?</h3>
+    <p>Bank feeds connect directly to your bank's servers via Open Banking APIs and pull transactions automatically — usually daily — into your accounting software. Bank statement conversion takes a statement file (PDF, CSV, or scanned paper) and extracts the same transaction data into a structured format like Excel or CSV for manual import. Feeds are automatic but fragile — they break when connections fail or authorisation expires. Statement conversion is a manual trigger but works with any bank, any account type, and any time period — including historical statements a feed could never access. Most UK bookkeeping practices use both: feeds for day-to-day transaction flow on supported accounts, and <a href="/landing">statement conversion</a> as the safety net when feeds fail or for unsupported banks.</p>
+
+    <h3>How do I import bank statements when the bank feed is broken?</h3>
+    <p>When your bank feed breaks, you have three immediate options: (1) <strong>Check reauthorisation</strong> — log into online banking, look for a 'renew access' or 'reauthorise' prompt, and reconnect the feed. This fixes most temporary disconnections. (2) <strong>Download a CSV or PDF statement</strong> from online banking and run it through a bank statement converter like <a href="/landing">BankScan AI</a> to get clean Excel or CSV output, then import it manually into your accounting software. (3) <strong>For banks with no download option at all</strong> (some business accounts are PDF-only), use a converter that handles PDF extraction for your specific bank's format. The key insight: don't wait for the feed to fix itself while your reconciliation pile grows — convert the statement now, reconcile now, and sort out the feed connection afterwards.</p>
+
+    <h3>Is statement conversion slower than bank feeds?</h3>
+    <p>Per statement, yes — a bank feed imports transactions automatically while statement conversion requires downloading and uploading a file. But 'slower' assumes the feed is working. When a feed is broken, the alternative isn't 'feed vs conversion' — it's 'conversion vs manual data entry.' <a href="/landing">BankScan AI</a> converts a bank statement PDF to Excel in under 30 seconds. Manual data entry of the same statement takes 20–45 minutes. In that comparison, conversion is dramatically faster. The productivity question isn't whether conversion is slower than a working feed — it's whether you have a reliable backup when the feed isn't working. Without one, every feed outage means hours of manual typing.</p>
+
+    <h3>Can I use both bank feeds and statement conversion?</h3>
+    <p>Yes, and this is exactly what most efficient UK bookkeeping practices do. Use bank feeds as your primary transaction pipeline for supported accounts — they handle the day-to-day flow automatically. But maintain statement conversion as your backup for: (1) clients whose bank feed has disconnected and won't reconnect quickly, (2) banks that don't offer feeds (Nationwide business, building societies, specialist banks), (3) historical statements beyond the feed's 90-day lookback, (4) client-provided PDFs when you're onboarding, and (5) year-end when you need to verify feed data against original statements. Having both tools means you never tell a client 'I can't reconcile your accounts because the feed is down.'</p>
+
+    <h3>Does BankScan AI work when bank feeds fail?</h3>
+    <p>Yes — BankScan AI is purpose-built for exactly this situation. When your client's bank feed disconnects, you can download their statement PDF or CSV from online banking, upload it to <a href="/landing">BankScan AI</a>, and get a clean Excel or CSV file in under 30 seconds. It handles all 16+ major UK bank formats — including the tricky ones like HSBC (multi-line descriptions), Nationwide (no CSV export), and First Direct (abbreviated transaction codes). The output imports directly into Xero, QuickBooks, Sage, or FreeAgent. Rather than waiting for a feed to reconnect while your month-end deadline approaches, you keep moving — and handle the feed reconnection when you're not under time pressure. We've also published dedicated guides for <a href="/blog/xero-bank-statement-import-guide">Xero</a>, <a href="/blog/import-bank-statements-into-quickbooks-guide">QuickBooks</a>, <a href="/blog/sage-bank-statement-import-guide">Sage</a>, and <a href="/blog/import-bank-statements-into-freeagent-guide">FreeAgent</a> imports if you need platform-specific help.</p>
+
+
+    <p style="margin-top: 40px; font-size: 0.9rem; color: var(--text-light);">
+        <em>Last updated: 28 June 2026. BankScan AI supports 16+ UK bank formats — read our <a href="/blog/uk-bank-statement-formats-guide">UK bank statement formats guide</a> or browse all <a href="/blog">blog posts for UK accountants and bookkeepers</a>.</em>
+    </p>
+
+</article>
+
+<footer class="footer">
+    <p>&copy; 2025 Mitoba Computer Systems LTD. All rights reserved. | <a href="/landing">Home</a> | <a href="/blog">Blog</a> | <a href="/tools">Tools</a></p>
+</footer>
+
+</body>
+</html>
