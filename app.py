@@ -4100,6 +4100,31 @@ async def get_config():
 # ==========================================================================
 
 BLOG_POSTS = {
+    "bank-statement-rental-income-landlord-guide": {
+        "title": "Bank Statement Rental Income Tracking — Complete UK Landlord Guide (2026)",
+        "description": "10pm on a Sunday and you're staring at 12 months of bank statements trying to work out your rental profit for your tax return. Complete step-by-step guide for UK landlords to track rental income, mortgage interest, repairs, and deductible expenses from bank statements. Covers HMRC requirements, MTD quarterly submissions, and how to stop manual data entry for good.",
+        "date": "2026-06-29",
+        "author": "BankScan AI Team",
+        "template": "blog/bank-statement-rental-income-landlord-guide.html",
+        "keywords": [
+            "rental income bank statement tracking UK",
+            "landlord bank statement analysis",
+            "rental income expense tracking from bank statements",
+            "UK landlord tax return bank statement preparation",
+            "property rental income bank statement Excel",
+            "MTD quarterly submission rental income bank statements",
+            "track rental income multiple properties UK",
+            "landlord deductible expenses bank statement",
+            "convert rental bank statements for accountant",
+            "HMRC rental income bank statement requirements",
+            "self assessment rental income bank statements",
+            "landlord mortgage interest bank statement tracking",
+            "separate personal rental transactions bank account",
+            "UK landlord bank statement conversion guide",
+            "rental accounts bank statement template UK"
+        ],
+        "related": ["self-assessment-tax-return-bank-statement-prep", "bank-statement-conversion-property-investors", "automatically-categorise-bank-statement-transactions-guide", "mtd-bank-statement-compliance-guide", "bank-statement-automation-sole-practitioners"],
+    },
     "automatically-categorise-bank-statement-transactions-guide": {
         "title": "How to Automatically Categorise Bank Statement Transactions — Complete UK Guide (2026)",
         "description": "Stop manually coding bank transactions at 10pm. Complete UK guide to automatically categorising utilities, supplies, payroll, and rent from bank statements — saving hours every month for bookkeepers using Xero, QuickBooks, Sage, and FreeAgent.",
