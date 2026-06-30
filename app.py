@@ -4100,6 +4100,31 @@ async def get_config():
 # ==========================================================================
 
 BLOG_POSTS = {
+    "speed-up-bank-statement-processing-uk-bookkeepers": {
+        "title": "How to Speed Up Bank Statement Processing — The UK Bookkeeper's Workflow Guide (2026)",
+        "description": "Practical workflow strategies to speed up bank statement processing for UK bookkeepers. Covers common bottlenecks, batch processing, automation tradeoffs, template-driven workflows, and how to reclaim hours of billable time lost to manual data entry every week.",
+        "date": "2026-06-30",
+        "author": "BankScan AI Team",
+        "template": "blog/speed-up-bank-statement-processing-uk-bookkeepers.html",
+        "keywords": [
+            "speed up bank statement processing UK",
+            "bookkeeper workflow automation",
+            "bank statement processing workflow",
+            "reduce bank statement processing time",
+            "bookkeeping efficiency tips UK",
+            "batch processing bank statements",
+            "automate bank statement data entry UK",
+            "bookkeeper time management bank statements",
+            "bank statement import process improvement",
+            "bookkeeping productivity UK",
+            "speed up client statement processing",
+            "bank statement processing best practices",
+            "bookkeeping workflow optimisation",
+            "stop manual bank statement data entry",
+            "bank statement automation ROI"
+        ],
+        "related": ["cost-of-manual-data-entry-bookkeeping", "batch-bank-statement-processing", "choosing-bank-statement-converter-buyers-guide", "bank-reconciliation-automation-uk-guide", "bank-statement-automation-month-end-close", "bank-statement-automation-sole-practitioners"],
+    },
     "bank-statement-rental-income-landlord-guide": {
         "title": "Bank Statement Rental Income Tracking — Complete UK Landlord Guide (2026)",
         "description": "10pm on a Sunday and you're staring at 12 months of bank statements trying to work out your rental profit for your tax return. Complete step-by-step guide for UK landlords to track rental income, mortgage interest, repairs, and deductible expenses from bank statements. Covers HMRC requirements, MTD quarterly submissions, and how to stop manual data entry for good.",
