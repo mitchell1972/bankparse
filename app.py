@@ -4301,6 +4301,15 @@ BLOG_POSTS = {
         "template": "blog/convert-hsbc-statement-to-excel-guide.html",
         "keywords": "convert HSBC bank statement to Excel, HSBC statement Excel conversion, HSBC PDF to Excel, HSBC bank statement converter UK, HSBC online banking export to Excel",
     },
+    "convert-bank-of-scotland-statement-to-excel": {
+        "slug": "convert-bank-of-scotland-statement-to-excel",
+        "title": "How to Convert Bank of Scotland Statements to Excel (2026 Guide)",
+        "description": "Struggling with Bank of Scotland PDF statements? Learn how to convert BOS business and personal statements to clean Excel in seconds.",
+        "date": "2026-07-01",
+        "author": "BankScan AI Team",
+        "template": "blog/convert-bank-of-scotland-statement-to-excel-guide.html",
+        "keywords": ["convert bank of scotland statement to excel", "bank of scotland pdf to excel", "BOS bank statement converter", "bank of scotland csv export", "bank of scotland statement format", "convert BOS statement to spreadsheet", "bank of scotland business statement excel", "bank of scotland online banking export", "BOS bank statement to csv", "bank of scotland statement parser", "bank of scotland pdf converter UK", "halifax bank of scotland statement format", "lloyds group bank statement conversion", "bank of scotland excel template", "convert BOS pdf to excel free"]
+    },
     "convert-barclays-statement-to-excel": {
         "title": "How to Convert Barclays Bank Statements to Excel (2026 Guide)",
         "description": "Barclays bank statement PDFs contain invisible formatting characters that break Excel imports. Step-by-step guide for UK accountants to convert Barclays statements cleanly.",
